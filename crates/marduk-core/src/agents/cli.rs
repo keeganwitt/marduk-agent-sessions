@@ -91,7 +91,11 @@ impl Cli {
     }
 
     pub fn path(&self) -> Option<PathBuf> {
-        self.resolved.lock().unwrap().as_ref().map(|(path, _)| path.clone())
+        self.resolved
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|(path, _)| path.clone())
     }
 
     pub fn info(&self) -> CliInfo {
@@ -120,7 +124,11 @@ const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Runs `program args…` and returns its standard output. Output is read while the process
 /// runs; reading only after it exits would deadlock once the output fills the pipe buffer.
-pub fn run_capture(program: &Path, args: &[&str], timeout: std::time::Duration) -> Result<String, String> {
+pub fn run_capture(
+    program: &Path,
+    args: &[&str],
+    timeout: std::time::Duration,
+) -> Result<String, String> {
     use std::io::Read;
     use std::process::{Command, Stdio};
 

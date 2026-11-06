@@ -9,7 +9,10 @@ use std::path::{Path, PathBuf};
 
 /// `<root>/<folder>/*.jsonl`, the layout Claude Code and Pi both use. A missing root is an
 /// agent that isn't installed; other read errors make the scan incomplete.
-pub(crate) fn jsonl_two_levels(root: &Path, result: &mut crate::adapter::ScanResult) -> Vec<PathBuf> {
+pub(crate) fn jsonl_two_levels(
+    root: &Path,
+    result: &mut crate::adapter::ScanResult,
+) -> Vec<PathBuf> {
     let folders = match std::fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
@@ -25,12 +28,11 @@ pub(crate) fn jsonl_two_levels(root: &Path, result: &mut crate::adapter::ScanRes
             continue;
         }
         match std::fs::read_dir(&folder) {
-            Ok(entries) => files.extend(
-                entries
-                    .flatten()
-                    .map(|entry| entry.path())
-                    .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl") && path.is_file()),
-            ),
+            Ok(entries) => {
+                files.extend(entries.flatten().map(|entry| entry.path()).filter(|path| {
+                    path.extension().is_some_and(|ext| ext == "jsonl") && path.is_file()
+                }))
+            }
             Err(error) => result.record_error(format!("{}: {error}", folder.display())),
         }
     }
@@ -78,7 +80,11 @@ pub(crate) fn find_program(name: &str) -> Option<PathBuf> {
 }
 
 fn find_in(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
-    let candidates: &[&str] = if cfg!(windows) { &["exe", "cmd", "bat"] } else { &[""] };
+    let candidates: &[&str] = if cfg!(windows) {
+        &["exe", "cmd", "bat"]
+    } else {
+        &[""]
+    };
     dirs.iter().find_map(|dir| {
         candidates.iter().find_map(|ext| {
             let path = if ext.is_empty() {

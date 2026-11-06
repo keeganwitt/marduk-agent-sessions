@@ -67,13 +67,18 @@ mod tests {
     #[test]
     fn recent_within_window() {
         let now = SystemTime::now();
-        assert!(fingerprint_aged(Duration::from_secs(10), now).is_recent(now, Duration::from_secs(60)));
+        assert!(
+            fingerprint_aged(Duration::from_secs(10), now).is_recent(now, Duration::from_secs(60))
+        );
     }
 
     #[test]
     fn not_recent_outside_window() {
         let now = SystemTime::now();
-        assert!(!fingerprint_aged(Duration::from_secs(120), now).is_recent(now, Duration::from_secs(60)));
+        assert!(
+            !fingerprint_aged(Duration::from_secs(120), now)
+                .is_recent(now, Duration::from_secs(60))
+        );
     }
 
     #[test]

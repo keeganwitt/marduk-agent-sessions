@@ -28,7 +28,10 @@ pub fn path_size(path: &Path) -> u64 {
     let Ok(entries) = fs::read_dir(path) else {
         return 0;
     };
-    entries.flatten().map(|entry| path_size(&entry.path())).sum()
+    entries
+        .flatten()
+        .map(|entry| path_size(&entry.path()))
+        .sum()
 }
 
 /// True when `path` resolves to a location strictly below one of `roots`.

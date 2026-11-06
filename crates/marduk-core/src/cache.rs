@@ -17,7 +17,12 @@ impl<V, T> Default for ParseCache<V, T> {
 }
 
 impl<V: PartialEq + Clone, T: Clone> ParseCache<V, T> {
-    pub fn get_or_parse<E>(&self, path: &Path, validator: V, parse: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
+    pub fn get_or_parse<E>(
+        &self,
+        path: &Path,
+        validator: V,
+        parse: impl FnOnce() -> Result<T, E>,
+    ) -> Result<T, E> {
         if let Some((cached, value)) = self.entries.lock().unwrap().get(path)
             && *cached == validator
         {
@@ -33,7 +38,10 @@ impl<V: PartialEq + Clone, T: Clone> ParseCache<V, T> {
 
     /// Drops entries for files the latest scan didn't see, so the cache can't grow forever.
     pub fn retain(&self, seen: &HashSet<PathBuf>) {
-        self.entries.lock().unwrap().retain(|path, _| seen.contains(path));
+        self.entries
+            .lock()
+            .unwrap()
+            .retain(|path, _| seen.contains(path));
     }
 
     pub fn len(&self) -> usize {
@@ -61,9 +69,18 @@ mod tests {
         };
         let path = Path::new("/s.jsonl");
 
-        assert_eq!(cache.get_or_parse(path, 1, || parse("first")).unwrap(), "first");
-        assert_eq!(cache.get_or_parse(path, 1, || parse("ignored")).unwrap(), "first");
-        assert_eq!(cache.get_or_parse(path, 2, || parse("second")).unwrap(), "second");
+        assert_eq!(
+            cache.get_or_parse(path, 1, || parse("first")).unwrap(),
+            "first"
+        );
+        assert_eq!(
+            cache.get_or_parse(path, 1, || parse("ignored")).unwrap(),
+            "first"
+        );
+        assert_eq!(
+            cache.get_or_parse(path, 2, || parse("second")).unwrap(),
+            "second"
+        );
         assert_eq!(parses.get(), 2);
     }
 
@@ -71,7 +88,11 @@ mod tests {
     fn failed_parses_are_not_cached() {
         let cache: ParseCache<u64, String> = ParseCache::default();
         let path = Path::new("/s.jsonl");
-        assert!(cache.get_or_parse(path, 1, || Err::<String, _>("boom")).is_err());
+        assert!(
+            cache
+                .get_or_parse(path, 1, || Err::<String, _>("boom"))
+                .is_err()
+        );
         assert!(cache.is_empty());
     }
 
@@ -79,7 +100,9 @@ mod tests {
     fn retain_drops_unseen_files() {
         let cache: ParseCache<u64, u64> = ParseCache::default();
         for name in ["/a", "/b"] {
-            cache.get_or_parse(Path::new(name), 1, || Ok::<_, ()>(1)).unwrap();
+            cache
+                .get_or_parse(Path::new(name), 1, || Ok::<_, ()>(1))
+                .unwrap();
         }
         cache.retain(&HashSet::from([PathBuf::from("/a")]));
         assert_eq!(cache.len(), 1);

@@ -37,13 +37,22 @@ pub fn content_text(content: &Value) -> Option<String> {
         Value::String(text) => text.clone(),
         Value::Array(blocks) => blocks
             .iter()
-            .filter(|block| matches!(block["type"].as_str(), Some("text" | "input_text" | "output_text")))
+            .filter(|block| {
+                matches!(
+                    block["type"].as_str(),
+                    Some("text" | "input_text" | "output_text")
+                )
+            })
             .filter_map(|block| block["text"].as_str())
             .collect::<Vec<_>>()
             .join("\n"),
         _ => return None,
     };
-    if text.trim().is_empty() { None } else { Some(text) }
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 pub fn to_title(text: &str) -> Option<String> {

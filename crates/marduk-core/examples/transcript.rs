@@ -7,7 +7,10 @@ use marduk_core::RUNNING_WINDOW;
 use marduk_core::catalog::{self, Catalog};
 
 fn main() {
-    let catalog = Catalog::new(marduk_core::default_adapters(Default::default()), RUNNING_WINDOW);
+    let catalog = Catalog::new(
+        marduk_core::default_adapters(Default::default()),
+        RUNNING_WINDOW,
+    );
     let scans = catalog.scan();
     let notes = scans
         .iter()
@@ -24,7 +27,11 @@ fn main() {
         println!("{count} transcripts noted: {note}");
     }
     for scan in scans {
-        let Some(largest) = scan.sessions.iter().max_by_key(|session| session.size_bytes) else {
+        let Some(largest) = scan
+            .sessions
+            .iter()
+            .max_by_key(|session| session.size_bytes)
+        else {
             continue;
         };
         let started = Instant::now();
@@ -47,8 +54,15 @@ fn main() {
                     started.elapsed(),
                     transcript.omitted
                 );
-                if let Some(first) = transcript.head.iter().find(|m| m.role == marduk_core::Role::User) {
-                    println!("  first prompt: {}", first.text.chars().take(100).collect::<String>());
+                if let Some(first) = transcript
+                    .head
+                    .iter()
+                    .find(|m| m.role == marduk_core::Role::User)
+                {
+                    println!(
+                        "  first prompt: {}",
+                        first.text.chars().take(100).collect::<String>()
+                    );
                 }
             }
             Err(error) => println!("{}: {error}", scan.display_name),

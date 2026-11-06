@@ -41,7 +41,9 @@ fn clean_name(name: &str) -> Result<String, String> {
         return Err("A label needs a name.".to_string());
     }
     if name.chars().count() > MAX_NAME_CHARS {
-        return Err(format!("Label names can be at most {MAX_NAME_CHARS} characters."));
+        return Err(format!(
+            "Label names can be at most {MAX_NAME_CHARS} characters."
+        ));
     }
     Ok(name)
 }
@@ -60,7 +62,9 @@ fn agent_of(key: &str) -> &str {
 
 fn sql_error(error: rusqlite::Error) -> String {
     match error {
-        rusqlite::Error::SqliteFailure(failure, _) if failure.code == rusqlite::ErrorCode::ConstraintViolation => {
+        rusqlite::Error::SqliteFailure(failure, _)
+            if failure.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
             "There's already a label with that name.".to_string()
         }
         other => other.to_string(),
@@ -70,7 +74,8 @@ fn sql_error(error: rusqlite::Error) -> String {
 impl LabelStore {
     pub fn open(path: &Path) -> Result<Self, String> {
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|error| format!("Couldn't create {}: {error}", dir.display()))?;
+            std::fs::create_dir_all(dir)
+                .map_err(|error| format!("Couldn't create {}: {error}", dir.display()))?;
         }
         Self::with_connection(Connection::open(path).map_err(|error| error.to_string())?)
     }
@@ -132,7 +137,10 @@ impl LabelStore {
         check_color(color)?;
         let connection = self.connection.lock().unwrap();
         connection
-            .execute("insert into labels (name, color) values (?1, ?2)", params![name, color])
+            .execute(
+                "insert into labels (name, color) values (?1, ?2)",
+                params![name, color],
+            )
             .map_err(sql_error)?;
         Ok(Label {
             id: connection.last_insert_rowid(),
@@ -170,7 +178,13 @@ impl LabelStore {
     }
 
     /// Adds and removes labels on sessions in one transaction.
-    pub fn apply(&self, keys: &[String], add: &[i64], remove: &[i64], now: SystemTime) -> Result<(), String> {
+    pub fn apply(
+        &self,
+        keys: &[String],
+        add: &[i64],
+        remove: &[i64],
+        now: SystemTime,
+    ) -> Result<(), String> {
         let mut connection = self.connection.lock().unwrap();
         let transaction = connection.transaction().map_err(sql_error)?;
         for key in keys {
@@ -209,7 +223,9 @@ impl LabelStore {
             .map_err(sql_error)?;
         let mut by_session: HashMap<String, Vec<i64>> = HashMap::new();
         for row in statement
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
             .map_err(sql_error)?
         {
             let (key, id) = row.map_err(sql_error)?;
@@ -301,7 +317,9 @@ impl LabelStore {
         self.connection
             .lock()
             .unwrap()
-            .query_row("select name from labels where id = ?1", [id], |row| row.get(0))
+            .query_row("select name from labels where id = ?1", [id], |row| {
+                row.get(0)
+            })
             .optional()
             .ok()
             .flatten()
@@ -328,12 +346,27 @@ mod tests {
         let work = store.create("  Work  ", "blue").unwrap();
         store.create("keep", "green").unwrap();
         assert_eq!(work.name, "Work");
-        assert!(store.create("WORK", "red").unwrap_err().contains("already a label"));
-        assert!(store.create("x", "neon").unwrap_err().contains("isn't one of"));
+        assert!(
+            store
+                .create("WORK", "red")
+                .unwrap_err()
+                .contains("already a label")
+        );
+        assert!(
+            store
+                .create("x", "neon")
+                .unwrap_err()
+                .contains("isn't one of")
+        );
         assert!(store.create("   ", "red").is_err());
 
         store
-            .apply(&keys(&["codex:a", "codex:b"]), &[work.id], &[], SystemTime::now())
+            .apply(
+                &keys(&["codex:a", "codex:b"]),
+                &[work.id],
+                &[],
+                SystemTime::now(),
+            )
             .unwrap();
 
         let labels = store.labels().unwrap();
@@ -350,8 +383,12 @@ mod tests {
         let work = store.create("Work", "blue").unwrap();
         let keep = store.create("Keep", "green").unwrap();
         let now = SystemTime::now();
-        store.apply(&keys(&["codex:a"]), &[work.id, keep.id], &[], now).unwrap();
-        store.apply(&keys(&["codex:a"]), &[work.id], &[keep.id], now).unwrap();
+        store
+            .apply(&keys(&["codex:a"]), &[work.id, keep.id], &[], now)
+            .unwrap();
+        store
+            .apply(&keys(&["codex:a"]), &[work.id], &[keep.id], now)
+            .unwrap();
         assert_eq!(store.assignments().unwrap()["codex:a"], vec![work.id]);
 
         store.delete(work.id).unwrap();
@@ -374,10 +411,18 @@ mod tests {
         let store = store();
         let work = store.create("Work", "blue").unwrap();
         store
-            .apply(&keys(&["codex:a", "codex:b"]), &[work.id], &[], SystemTime::now())
+            .apply(
+                &keys(&["codex:a", "codex:b"]),
+                &[work.id],
+                &[],
+                SystemTime::now(),
+            )
             .unwrap();
         store.forget(&keys(&["codex:a"])).unwrap();
-        assert_eq!(store.assignments().unwrap().keys().collect::<Vec<_>>(), vec!["codex:b"]);
+        assert_eq!(
+            store.assignments().unwrap().keys().collect::<Vec<_>>(),
+            vec!["codex:b"]
+        );
     }
 
     #[test]
@@ -396,14 +441,24 @@ mod tests {
         let seen = HashSet::from(["codex:here".to_string()]);
         let complete = HashSet::from(["codex"]);
 
-        assert_eq!(store.reconcile(&seen, &complete, start + DAY, PRUNE_GRACE).unwrap(), 0);
         assert_eq!(
-            store.reconcile(&seen, &complete, start + 8 * DAY, PRUNE_GRACE).unwrap(),
+            store
+                .reconcile(&seen, &complete, start + DAY, PRUNE_GRACE)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            store
+                .reconcile(&seen, &complete, start + 8 * DAY, PRUNE_GRACE)
+                .unwrap(),
             1
         );
 
         let remaining: HashSet<String> = store.assignments().unwrap().into_keys().collect();
-        assert_eq!(remaining, HashSet::from(["codex:here".into(), "pi:unknown".into()]));
+        assert_eq!(
+            remaining,
+            HashSet::from(["codex:here".into(), "pi:unknown".into()])
+        );
     }
 
     #[test]
@@ -411,7 +466,9 @@ mod tests {
         let store = store();
         let work = store.create("Work", "blue").unwrap();
         let start = SystemTime::now();
-        store.apply(&keys(&["codex:a"]), &[work.id], &[], start).unwrap();
+        store
+            .apply(&keys(&["codex:a"]), &[work.id], &[], start)
+            .unwrap();
         let complete = HashSet::from(["codex"]);
         store
             .reconcile(
@@ -440,7 +497,10 @@ mod tests {
     fn persists_across_reopening() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nested").join("labels.db");
-        let work = LabelStore::open(&path).unwrap().create("Work", "blue").unwrap();
+        let work = LabelStore::open(&path)
+            .unwrap()
+            .create("Work", "blue")
+            .unwrap();
         let reopened = LabelStore::open(&path).unwrap();
         assert_eq!(reopened.label_name(work.id).as_deref(), Some("Work"));
     }

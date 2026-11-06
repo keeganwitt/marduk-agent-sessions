@@ -115,7 +115,16 @@ mod tests {
         let plain = dir.path().join("plain");
         std::fs::write(&plain, "").unwrap();
 
-        assert!(set_path(&catalog, &overrides, &store, "claude", Some("/bin/sh".into())).is_err());
+        assert!(
+            set_path(
+                &catalog,
+                &overrides,
+                &store,
+                "claude",
+                Some("/bin/sh".into())
+            )
+            .is_err()
+        );
         assert!(set_path(&catalog, &overrides, &store, "codex", Some("codex".into())).is_err());
         let error = set_path(
             &catalog,
@@ -147,14 +156,20 @@ mod tests {
         )
         .unwrap();
 
-        let codex = result.iter().find(|status| status.agent == "codex").unwrap();
+        let codex = result
+            .iter()
+            .find(|status| status.agent == "codex")
+            .unwrap();
         assert_eq!(codex.path.as_deref(), Some(fake.to_str().unwrap()));
         assert!(codex.overridden);
         assert_eq!(codex.version.as_deref(), Some("codex-cli 9.9.9"));
         assert_eq!(store.get().cli_paths.get("codex"), Some(&fake));
 
         let reloaded = Arc::new(CliOverrides::default());
-        apply_saved(&SettingsStore::load(dir.path().join("settings.json")), &reloaded);
+        apply_saved(
+            &SettingsStore::load(dir.path().join("settings.json")),
+            &reloaded,
+        );
         assert_eq!(reloaded.get("codex"), Some(fake));
 
         let cleared = set_path(&catalog, &overrides, &store, "codex", None).unwrap();

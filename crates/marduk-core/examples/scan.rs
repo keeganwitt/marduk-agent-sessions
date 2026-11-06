@@ -7,7 +7,10 @@ use marduk_core::RUNNING_WINDOW;
 use marduk_core::catalog::Catalog;
 
 fn main() {
-    let catalog = Catalog::new(marduk_core::default_adapters(Default::default()), RUNNING_WINDOW);
+    let catalog = Catalog::new(
+        marduk_core::default_adapters(Default::default()),
+        RUNNING_WINDOW,
+    );
     let now = SystemTime::now();
     let started = std::time::Instant::now();
     let scans = catalog.scan();
@@ -22,7 +25,11 @@ fn main() {
             .iter()
             .filter(|session| session.parent_id.is_some())
             .count();
-        let untitled = scan.sessions.iter().filter(|session| session.title.is_none()).count();
+        let untitled = scan
+            .sessions
+            .iter()
+            .filter(|session| session.title.is_none())
+            .count();
         let running = scan
             .sessions
             .iter()

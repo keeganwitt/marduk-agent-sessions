@@ -21,7 +21,9 @@ struct AppSettings {
     overrides: Arc<CliOverrides>,
 }
 
-async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(work)
         .await
         .map_err(|error| error.to_string())
@@ -133,7 +135,8 @@ async fn delete_sessions(
             .filter(|(_, outcome)| {
                 matches!(
                     outcome,
-                    marduk_core::DeleteOutcome::Trashed { .. } | marduk_core::DeleteOutcome::DeletedByAgent { .. }
+                    marduk_core::DeleteOutcome::Trashed { .. }
+                        | marduk_core::DeleteOutcome::DeletedByAgent { .. }
                 )
             })
             .filter_map(|(uid, _)| keys.get(uid).cloned())
@@ -164,7 +167,10 @@ async fn toggle_archive(
 }
 
 #[tauri::command]
-async fn reveal_session_file(catalog: tauri::State<'_, SharedCatalog>, path: String) -> Result<(), String> {
+async fn reveal_session_file(
+    catalog: tauri::State<'_, SharedCatalog>,
+    path: String,
+) -> Result<(), String> {
     let catalog = catalog.inner().clone();
     blocking(move || {
         let path = std::path::PathBuf::from(path);
@@ -186,7 +192,10 @@ async fn file_details(
 }
 
 #[tauri::command]
-async fn open_project_dir(catalog: tauri::State<'_, SharedCatalog>, uid: String) -> Result<(), String> {
+async fn open_project_dir(
+    catalog: tauri::State<'_, SharedCatalog>,
+    uid: String,
+) -> Result<(), String> {
     let catalog = catalog.inner().clone();
     blocking(move || {
         let dir = catalog.project_dir(&uid)?;
@@ -196,7 +205,10 @@ async fn open_project_dir(catalog: tauri::State<'_, SharedCatalog>, uid: String)
 }
 
 #[tauri::command]
-async fn load_transcript(catalog: tauri::State<'_, SharedCatalog>, uid: String) -> Result<TranscriptDto, String> {
+async fn load_transcript(
+    catalog: tauri::State<'_, SharedCatalog>,
+    uid: String,
+) -> Result<TranscriptDto, String> {
     let catalog = catalog.inner().clone();
     blocking(move || catalog.transcript(&uid).map(dto::transcript_dto)).await?
 }
@@ -228,8 +240,14 @@ fn get_theme(settings: tauri::State<'_, AppSettings>) -> settings::Theme {
 }
 
 #[tauri::command]
-fn set_theme(settings: tauri::State<'_, AppSettings>, theme: settings::Theme) -> Result<(), String> {
-    settings.store.update(|current| current.theme = theme).map(|_| ())
+fn set_theme(
+    settings: tauri::State<'_, AppSettings>,
+    theme: settings::Theme,
+) -> Result<(), String> {
+    settings
+        .store
+        .update(|current| current.theme = theme)
+        .map(|_| ())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

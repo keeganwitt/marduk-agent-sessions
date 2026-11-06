@@ -28,7 +28,8 @@ impl PiAdapter {
     }
 
     pub fn from_env() -> Self {
-        let agent_dir = env_dir("PI_CODING_AGENT_DIR").unwrap_or_else(|| home_dir().join(".pi").join("agent"));
+        let agent_dir =
+            env_dir("PI_CODING_AGENT_DIR").unwrap_or_else(|| home_dir().join(".pi").join("agent"));
         Self::new(agent_dir.join("sessions"))
     }
 }
@@ -60,7 +61,10 @@ impl AgentAdapter for PiAdapter {
     }
 
     fn estimate_scan_bytes(&self) -> u64 {
-        total_size(&jsonl_two_levels(&self.sessions_dir, &mut ScanResult::default()))
+        total_size(&jsonl_two_levels(
+            &self.sessions_dir,
+            &mut ScanResult::default(),
+        ))
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {
@@ -83,7 +87,10 @@ fn active_branch(records: &[Value]) -> std::collections::HashSet<String> {
         .filter_map(|record| Some((record["id"].as_str()?, record["parentId"].as_str())))
         .collect();
     let mut active = std::collections::HashSet::new();
-    let mut current = records.iter().rev().find_map(|record| record["id"].as_str());
+    let mut current = records
+        .iter()
+        .rev()
+        .find_map(|record| record["id"].as_str());
     while let Some(id) = current {
         if !active.insert(id.to_string()) {
             break;
@@ -108,22 +115,34 @@ fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
         {
             continue;
         }
-        let timestamp = record["timestamp"].as_str().and_then(jsonl::parse_timestamp);
+        let timestamp = record["timestamp"]
+            .as_str()
+            .and_then(jsonl::parse_timestamp);
         match record["type"].as_str() {
             Some("message") => append_message(&mut builder, &record["message"], timestamp),
-            Some("compaction" | "branch_summary") => {
-                builder.text(Role::Context, record["summary"].as_str().unwrap_or_default(), timestamp)
-            }
+            Some("compaction" | "branch_summary") => builder.text(
+                Role::Context,
+                record["summary"].as_str().unwrap_or_default(),
+                timestamp,
+            ),
             _ => {}
         }
     }
     Ok(builder.finish())
 }
 
-fn append_message(builder: &mut TranscriptBuilder, message: &Value, timestamp: Option<chrono::DateTime<chrono::Utc>>) {
+fn append_message(
+    builder: &mut TranscriptBuilder,
+    message: &Value,
+    timestamp: Option<chrono::DateTime<chrono::Utc>>,
+) {
     let content = &message["content"];
     match message["role"].as_str() {
-        Some("user") => builder.text(Role::User, &jsonl::content_text(content).unwrap_or_default(), timestamp),
+        Some("user") => builder.text(
+            Role::User,
+            &jsonl::content_text(content).unwrap_or_default(),
+            timestamp,
+        ),
         Some("assistant") => {
             let blocks = match content {
                 Value::Array(blocks) => blocks.clone(),
@@ -131,9 +150,11 @@ fn append_message(builder: &mut TranscriptBuilder, message: &Value, timestamp: O
             };
             for block in &blocks {
                 match block["type"].as_str() {
-                    Some("text") => {
-                        builder.text(Role::Assistant, block["text"].as_str().unwrap_or_default(), timestamp)
-                    }
+                    Some("text") => builder.text(
+                        Role::Assistant,
+                        block["text"].as_str().unwrap_or_default(),
+                        timestamp,
+                    ),
                     Some("toolCall" | "tool_call" | "tool_use") => builder.tool_call(
                         block["id"].as_str(),
                         block["name"].as_str().unwrap_or("tool"),
@@ -155,11 +176,13 @@ fn append_message(builder: &mut TranscriptBuilder, message: &Value, timestamp: O
             &transcript::tool_output_text(content),
             timestamp,
         ),
-        Some("branchSummary" | "branch_summary" | "compactionSummary" | "compaction_summary") => builder.text(
-            Role::Context,
-            message["summary"].as_str().unwrap_or_default(),
-            timestamp,
-        ),
+        Some("branchSummary" | "branch_summary" | "compactionSummary" | "compaction_summary") => {
+            builder.text(
+                Role::Context,
+                message["summary"].as_str().unwrap_or_default(),
+                timestamp,
+            )
+        }
         _ => {}
     }
 }
@@ -214,7 +237,9 @@ fn parse_file(path: &Path) -> std::io::Result<Parsed> {
 impl PiAdapter {
     fn read_session(&self, path: &Path, progress: &dyn ScanProgress) -> std::io::Result<Session> {
         let fingerprint = fs_util::fingerprint(path)?;
-        let parsed = self.cache.get_or_parse(path, fingerprint, || parse_file(path))?;
+        let parsed = self
+            .cache
+            .get_or_parse(path, fingerprint, || parse_file(path))?;
         progress.advance(fingerprint.len);
         Ok(session_from(path, parsed, fingerprint))
     }
@@ -231,7 +256,10 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         project_dir: parsed.cwd,
         title,
         created: parsed.span.first.or_else(|| fs_util::created(path)),
-        last_activity: parsed.span.last.unwrap_or_else(|| fingerprint.modified.into()),
+        last_activity: parsed
+            .span
+            .last
+            .unwrap_or_else(|| fingerprint.modified.into()),
         size_bytes: fingerprint.len,
         archived: false,
         primary_file: path.to_path_buf(),
@@ -282,8 +310,14 @@ mod tests {
         assert_eq!(session.key(), "pi:01a1adaa-395a-7422-9391-5092469eda9a");
         assert_eq!(session.project_dir.as_deref(), Some("/Users/me/work"));
         assert_eq!(session.title.as_deref(), Some("refactor the parser"));
-        assert_eq!(session.last_activity.to_rfc3339(), "2026-11-05T21:45:00+00:00");
-        assert_eq!(session.created.unwrap().to_rfc3339(), "2026-11-05T21:42:56.603+00:00");
+        assert_eq!(
+            session.last_activity.to_rfc3339(),
+            "2026-11-05T21:45:00+00:00"
+        );
+        assert_eq!(
+            session.created.unwrap().to_rfc3339(),
+            "2026-11-05T21:42:56.603+00:00"
+        );
         assert_eq!(session.files, vec![path]);
     }
 
@@ -296,14 +330,20 @@ mod tests {
         ]
         .join("\n");
         write_session(root.path(), &content);
-        assert_eq!(scan_one(root.path()).title.as_deref(), Some("Named session"));
+        assert_eq!(
+            scan_one(root.path()).title.as_deref(),
+            Some("Named session")
+        );
     }
 
     #[test]
     fn missing_header_falls_back_to_file_name_id() {
         let root = tempfile::tempdir().unwrap();
         write_session(root.path(), "");
-        assert_eq!(scan_one(root.path()).id, "01a1adaa-395a-7422-9391-5092469eda9a");
+        assert_eq!(
+            scan_one(root.path()).id,
+            "01a1adaa-395a-7422-9391-5092469eda9a"
+        );
     }
 
     #[test]
@@ -325,10 +365,16 @@ mod tests {
 
         let messages = adapter.transcript(&session).unwrap().head;
 
-        let texts: Vec<&str> = messages.iter().map(|message| message.text.as_str()).collect();
+        let texts: Vec<&str> = messages
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect();
         assert_eq!(texts[0], "rewound prompt");
         assert!(!texts.contains(&"abandoned answer"));
-        assert_eq!(messages[1].tool.as_ref().unwrap().output.as_deref(), Some("a.txt"));
+        assert_eq!(
+            messages[1].tool.as_ref().unwrap().output.as_deref(),
+            Some("a.txt")
+        );
         assert_eq!(messages[2].text, "Found a.txt");
     }
 

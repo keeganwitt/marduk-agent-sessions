@@ -66,7 +66,9 @@ impl CodexAdapter {
         progress: &dyn ScanProgress,
     ) -> std::io::Result<Session> {
         let fingerprint = fs_util::fingerprint(path)?;
-        let parsed = self.cache.get_or_parse(path, fingerprint, || parse_file(path))?;
+        let parsed = self
+            .cache
+            .get_or_parse(path, fingerprint, || parse_file(path))?;
         progress.advance(fingerprint.len);
         Ok(session_from(path, archived, titles, parsed, fingerprint))
     }
@@ -83,10 +85,10 @@ impl CodexAdapter {
         if !fs_util::looks_like_uuid(&session.id) {
             return Err("Codex can only manage sessions that have a UUID id.".to_string());
         }
-        let program = self
-            .cli
-            .path()
-            .ok_or_else(|| self.cli.missing_reason("Codex", "delete and archive Codex sessions"))?;
+        let program = self.cli.path().ok_or_else(|| {
+            self.cli
+                .missing_reason("Codex", "delete and archive Codex sessions")
+        })?;
         let mut args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
         args.push(session.id.clone());
         Ok(AgentCommand { program, args })
@@ -117,7 +119,8 @@ impl AgentAdapter for CodexAdapter {
                 Err(error) => result.record_error(format!("{}: {error}", path.display())),
             }
         }
-        self.cache.retain(&rollouts.into_iter().map(|(path, _)| path).collect());
+        self.cache
+            .retain(&rollouts.into_iter().map(|(path, _)| path).collect());
         if compressed > 0 {
             result.record_error(format!(
                 "{compressed} compressed rollouts (.jsonl.zst) were skipped; Marduk can't read them yet."
@@ -128,7 +131,12 @@ impl AgentAdapter for CodexAdapter {
 
     fn estimate_scan_bytes(&self) -> u64 {
         let (rollouts, _) = self.rollouts(&mut ScanResult::default());
-        total_size(&rollouts.into_iter().map(|(path, _)| path).collect::<Vec<_>>())
+        total_size(
+            &rollouts
+                .into_iter()
+                .map(|(path, _)| path)
+                .collect::<Vec<_>>(),
+        )
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {
@@ -151,12 +159,21 @@ impl AgentAdapter for CodexAdapter {
     }
 
     fn archive_command(&self, session: &Session) -> Option<AgentCommand> {
-        let verb = if session.archived { "unarchive" } else { "archive" };
+        let verb = if session.archived {
+            "unarchive"
+        } else {
+            "archive"
+        };
         self.command(session, &[verb]).ok()
     }
 }
 
-fn collect_rollouts(dir: &Path, files: &mut Vec<PathBuf>, compressed: &mut usize, result: &mut ScanResult) {
+fn collect_rollouts(
+    dir: &Path,
+    files: &mut Vec<PathBuf>,
+    compressed: &mut usize,
+    result: &mut ScanResult,
+) {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
@@ -235,7 +252,10 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
         Some("session_meta") => {
             if let Ok(meta) = serde_json::from_str::<Value>(payload.get()) {
                 parsed.id = meta["id"].as_str().map(str::to_string).or(parsed.id.take());
-                parsed.cwd = meta["cwd"].as_str().map(str::to_string).or(parsed.cwd.take());
+                parsed.cwd = meta["cwd"]
+                    .as_str()
+                    .map(str::to_string)
+                    .or(parsed.cwd.take());
                 parsed.parent_id = parent_thread(&meta).or(parsed.parent_id.take());
                 parsed.spawned |= meta["source"]["subagent"]["thread_spawn"].is_object();
                 parsed
@@ -243,7 +263,9 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
                     .observe(meta["timestamp"].as_str().and_then(jsonl::parse_timestamp));
             }
         }
-        Some("event_msg") if parsed.first_prompt.is_none() && payload.get().contains("\"user_message\"") => {
+        Some("event_msg")
+            if parsed.first_prompt.is_none() && payload.get().contains("\"user_message\"") =>
+        {
             if let Ok(event) = serde_json::from_str::<Value>(payload.get())
                 && event["type"] == "user_message"
                 && let Some(text) = event["message"].as_str().filter(|text| !is_injected(text))
@@ -251,12 +273,15 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
                 parsed.first_prompt = Some(text.to_string());
             }
         }
-        Some("response_item") if parsed.first_prompt.is_none() && payload.get().contains("\"user\"") => {
+        Some("response_item")
+            if parsed.first_prompt.is_none() && payload.get().contains("\"user\"") =>
+        {
             if let Ok(item) = serde_json::from_str::<Value>(payload.get())
                 && item["type"] == "message"
                 && item["role"] == "user"
             {
-                parsed.first_prompt = jsonl::content_text(&item["content"]).filter(|text| !is_injected(text));
+                parsed.first_prompt =
+                    jsonl::content_text(&item["content"]).filter(|text| !is_injected(text));
             }
         }
         _ => {}
@@ -275,8 +300,7 @@ fn parent_thread(meta: &Value) -> Option<String> {
     .map(str::to_string)
 }
 
-const ENCRYPTED_ONLY_NOTE: &str =
-    "This session only contains an encrypted context record from Codex, so there's nothing readable to show.";
+const ENCRYPTED_ONLY_NOTE: &str = "This session only contains an encrypted context record from Codex, so there's nothing readable to show.";
 
 /// Uses `response_item` records only; `event_msg` repeats the same conversation.
 fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
@@ -289,7 +313,9 @@ fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
         if record["type"] != "response_item" {
             return;
         }
-        let timestamp = record["timestamp"].as_str().and_then(jsonl::parse_timestamp);
+        let timestamp = record["timestamp"]
+            .as_str()
+            .and_then(jsonl::parse_timestamp);
         let item = &record["payload"];
         match item["type"].as_str() {
             Some("message") => {
@@ -380,7 +406,10 @@ fn session_from(
         project_dir: parsed.cwd,
         title,
         created: parsed.span.first.or_else(|| fs_util::created(path)),
-        last_activity: parsed.span.last.unwrap_or_else(|| fingerprint.modified.into()),
+        last_activity: parsed
+            .span
+            .last
+            .unwrap_or_else(|| fingerprint.modified.into()),
         size_bytes: fingerprint.len,
         archived,
         primary_file: path.to_path_buf(),
@@ -424,9 +453,9 @@ mod tests {
     #[test]
     fn scans_active_and_archived_rollouts() {
         let home = tempfile::tempdir().unwrap();
-        let active = home
-            .path()
-            .join(format!("sessions/2026/11/06/rollout-2026-11-06T18-05-08-{ID}.jsonl"));
+        let active = home.path().join(format!(
+            "sessions/2026/11/06/rollout-2026-11-06T18-05-08-{ID}.jsonl"
+        ));
         write(&active, &rollout(ID));
         let archived_id = "019e98e4-15db-7de3-af03-a2b011ccb8d5";
         write(
@@ -446,9 +475,18 @@ mod tests {
         assert_eq!(session.key(), format!("codex:{ID}"));
         assert!(!session.archived);
         assert_eq!(session.project_dir.as_deref(), Some("/work/api"));
-        assert_eq!(session.title.as_deref(), Some("Add pagination to the users endpoint"));
-        assert_eq!(session.last_activity.to_rfc3339(), "2026-11-06T19:00:00+00:00");
-        assert_eq!(session.created.unwrap().to_rfc3339(), "2026-11-06T18:05:08+00:00");
+        assert_eq!(
+            session.title.as_deref(),
+            Some("Add pagination to the users endpoint")
+        );
+        assert_eq!(
+            session.last_activity.to_rfc3339(),
+            "2026-11-06T19:00:00+00:00"
+        );
+        assert_eq!(
+            session.created.unwrap().to_rfc3339(),
+            "2026-11-06T18:05:08+00:00"
+        );
         assert_eq!(session.files, vec![active]);
         assert!(sessions[1].archived);
     }
@@ -457,12 +495,16 @@ mod tests {
     fn thread_name_from_index_wins_unless_it_is_injected() {
         let home = tempfile::tempdir().unwrap();
         write(
-            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
             &rollout(ID),
         );
         let other = "019e98e4-29fd-7f63-8cae-b345db610f8c";
         write(
-            &home.path().join(format!("sessions/2026/11/06/rollout-y-{other}.jsonl")),
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-y-{other}.jsonl")),
             &rollout(other),
         );
         write(
@@ -470,7 +512,9 @@ mod tests {
             &[
                 format!(r#"{{"id":"{ID}","thread_name":"old-name"}}"#),
                 format!(r#"{{"id":"{ID}","thread_name":"pagination-work"}}"#),
-                format!(r#"{{"id":"{other}","thread_name":"<command-name>/clear</command-name>"}}"#),
+                format!(
+                    r#"{{"id":"{other}","thread_name":"<command-name>/clear</command-name>"}}"#
+                ),
             ]
             .join("\n"),
         );
@@ -479,7 +523,10 @@ mod tests {
         let title_of = |id: &str| sessions.iter().find(|s| s.id == id).unwrap().title.clone();
 
         assert_eq!(title_of(ID).as_deref(), Some("pagination-work"));
-        assert_eq!(title_of(other).as_deref(), Some("Add pagination to the users endpoint"));
+        assert_eq!(
+            title_of(other).as_deref(),
+            Some("Add pagination to the users endpoint")
+        );
     }
 
     #[test]
@@ -502,9 +549,9 @@ mod tests {
     fn id_falls_back_to_uuid_suffix_of_file_name() {
         let home = tempfile::tempdir().unwrap();
         write(
-            &home
-                .path()
-                .join(format!("sessions/2026/01/01/rollout-2026-01-01T00-00-00-{ID}.jsonl")),
+            &home.path().join(format!(
+                "sessions/2026/01/01/rollout-2026-01-01T00-00-00-{ID}.jsonl"
+            )),
             "",
         );
         assert_eq!(adapter(home.path(), None).scan().sessions[0].id, ID);
@@ -525,7 +572,9 @@ mod tests {
         ]
         .join("\n");
         write(
-            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
             &content,
         );
         let codex = adapter(home.path(), None);
@@ -534,7 +583,10 @@ mod tests {
         let messages = codex.transcript(&session).unwrap().head;
 
         let roles: Vec<Role> = messages.iter().map(|message| message.role).collect();
-        assert_eq!(roles, vec![Role::Context, Role::User, Role::Tool, Role::Assistant]);
+        assert_eq!(
+            roles,
+            vec![Role::Context, Role::User, Role::Tool, Role::Assistant]
+        );
         let tool = messages[2].tool.as_ref().unwrap();
         assert_eq!(tool.name, "exec_command");
         assert_eq!(tool.output.as_deref(), Some("ci.yml"));
@@ -563,17 +615,35 @@ mod tests {
             ),
         );
         write(
-            &home.path().join(format!("sessions/2026/11/06/rollout-c-{ID}.jsonl")),
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-c-{ID}.jsonl")),
             &rollout(ID),
         );
 
         let sessions = adapter(home.path(), None).scan().sessions;
-        let parent_of = |id: &str| sessions.iter().find(|s| s.id == id).unwrap().parent_id.clone();
+        let parent_of = |id: &str| {
+            sessions
+                .iter()
+                .find(|s| s.id == id)
+                .unwrap()
+                .parent_id
+                .clone()
+        };
 
         assert_eq!(parent_of(guardian).as_deref(), Some("parent-1"));
         assert_eq!(parent_of(spawned).as_deref(), Some("parent-2"));
-        let cascades = |id: &str| sessions.iter().find(|s| s.id == id).unwrap().deleted_with_parent;
-        assert!(!cascades(guardian), "codex delete leaves guardian reviews behind");
+        let cascades = |id: &str| {
+            sessions
+                .iter()
+                .find(|s| s.id == id)
+                .unwrap()
+                .deleted_with_parent
+        };
+        assert!(
+            !cascades(guardian),
+            "codex delete leaves guardian reviews behind"
+        );
         assert!(cascades(spawned));
         assert_eq!(parent_of(ID), None);
     }
@@ -589,7 +659,9 @@ mod tests {
         ]
         .join("\n");
         write(
-            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
             &content,
         );
         let codex = adapter(home.path(), None);
@@ -611,7 +683,9 @@ mod tests {
             r#"{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done"}]}}"#
         );
         write(
-            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
             &content,
         );
         let codex = adapter(home.path(), None);
@@ -622,14 +696,17 @@ mod tests {
     #[test]
     fn rescans_reuse_unchanged_files_and_reread_changed_ones() {
         let home = tempfile::tempdir().unwrap();
-        let path = home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl"));
+        let path = home
+            .path()
+            .join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl"));
         let prompt = |text: &str| {
             format!(
                 "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{ID}\"}}}}\n{{\"type\":\"event_msg\",\"payload\":{{\"type\":\"user_message\",\"message\":\"{text}\"}}}}"
             )
         };
         write(&path, &prompt("first prompt"));
-        let stamp = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+        let stamp =
+            filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
         filetime::set_file_mtime(&path, stamp).unwrap();
         let codex = adapter(home.path(), None);
         let title = |codex: &CodexAdapter| codex.scan().sessions.remove(0).title;
@@ -651,7 +728,9 @@ mod tests {
     fn delete_and_archive_use_the_codex_cli() {
         let home = tempfile::tempdir().unwrap();
         write(
-            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
             &rollout(ID),
         );
         let codex = adapter(home.path(), Some("/bin/codex"));
@@ -668,16 +747,24 @@ mod tests {
                 warning: None,
             }
         );
-        assert_eq!(codex.archive_command(&session).unwrap().args, vec!["archive", ID]);
+        assert_eq!(
+            codex.archive_command(&session).unwrap().args,
+            vec!["archive", ID]
+        );
         session.archived = true;
-        assert_eq!(codex.archive_command(&session).unwrap().args, vec!["unarchive", ID]);
+        assert_eq!(
+            codex.archive_command(&session).unwrap().args,
+            vec!["unarchive", ID]
+        );
     }
 
     #[test]
     fn read_only_without_cli_or_uuid() {
         let home = tempfile::tempdir().unwrap();
         write(
-            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
             &rollout(ID),
         );
         let without_cli = adapter(home.path(), None);
@@ -690,6 +777,8 @@ mod tests {
 
         session.id = "not-a-uuid".into();
         let with_cli = adapter(home.path(), Some("/bin/codex"));
-        assert!(matches!(with_cli.delete_plan(&session), DeletePlan::ReadOnly { reason } if reason.contains("UUID")));
+        assert!(
+            matches!(with_cli.delete_plan(&session), DeletePlan::ReadOnly { reason } if reason.contains("UUID"))
+        );
     }
 }

@@ -16,8 +16,7 @@ use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
 /// Copilot's delete is an in-session slash command (`/session delete`), so Marduk moves the
 /// folder to the Trash, which leaves Copilot's search index pointing at it.
-const INDEX_WARNING: &str =
-    "Copilot's session search index keeps an entry for this session until you run `/chronicle reindex` in Copilot.";
+const INDEX_WARNING: &str = "Copilot's session search index keeps an entry for this session until you run `/chronicle reindex` in Copilot.";
 
 /// GitHub Copilot CLI keeps one folder per session at `session-state/<id>/`, holding an
 /// `events.jsonl` event log and a flat `workspace.yaml` with the name, summary and folders.
@@ -50,9 +49,16 @@ impl CopilotAdapter {
         }
     }
 
-    fn read_session(&self, dir: &Path, events: &Path, progress: &dyn ScanProgress) -> std::io::Result<Session> {
+    fn read_session(
+        &self,
+        dir: &Path,
+        events: &Path,
+        progress: &dyn ScanProgress,
+    ) -> std::io::Result<Session> {
         let fingerprint = fs_util::fingerprint(events)?;
-        let parsed = self.cache.get_or_parse(events, fingerprint, || parse_events(events))?;
+        let parsed = self
+            .cache
+            .get_or_parse(events, fingerprint, || parse_events(events))?;
         progress.advance(fingerprint.len);
         Ok(session_from(dir, events, parsed, fingerprint))
     }
@@ -93,7 +99,12 @@ impl AgentAdapter for CopilotAdapter {
 
     fn estimate_scan_bytes(&self) -> u64 {
         let folders = self.session_folders(&mut ScanResult::default());
-        total_size(&folders.iter().map(|dir| dir.join("events.jsonl")).collect::<Vec<_>>())
+        total_size(
+            &folders
+                .iter()
+                .map(|dir| dir.join("events.jsonl"))
+                .collect::<Vec<_>>(),
+        )
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {
@@ -126,7 +137,10 @@ fn unquote(value: &str) -> String {
         if value.len() >= 2 && value.starts_with(quote) && value.ends_with(quote) {
             let inner = &value[1..value.len() - 1];
             return if quote == '"' {
-                inner.replace("\\\"", "\"").replace("\\n", "\n").replace("\\\\", "\\")
+                inner
+                    .replace("\\\"", "\"")
+                    .replace("\\n", "\n")
+                    .replace("\\\\", "\\")
             } else {
                 inner.replace("''", "'")
             };
@@ -140,7 +154,10 @@ fn parse_workspace(text: &str) -> Workspace {
     let mut workspace = Workspace::default();
     let mut lines = text.lines().peekable();
     while let Some(line) = lines.next() {
-        if line.trim().is_empty() || line.trim_start().starts_with('#') || line.starts_with([' ', '\t']) {
+        if line.trim().is_empty()
+            || line.trim_start().starts_with('#')
+            || line.starts_with([' ', '\t'])
+        {
             continue;
         }
         let Some((key, rest)) = line.split_once(':') else {
@@ -163,7 +180,8 @@ fn parse_workspace(text: &str) -> Workspace {
         } else {
             unquote(rest)
         };
-        let value = Some(value).filter(|value| !value.is_empty() && value != "null" && value != "~");
+        let value =
+            Some(value).filter(|value| !value.is_empty() && value != "null" && value != "~");
         match key.trim() {
             "id" => workspace.id = value,
             "cwd" => workspace.cwd = value,
@@ -190,9 +208,11 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
     let Ok(record) = serde_json::from_str::<Value>(line) else {
         return;
     };
-    parsed
-        .span
-        .observe(record["timestamp"].as_str().and_then(jsonl::parse_timestamp));
+    parsed.span.observe(
+        record["timestamp"]
+            .as_str()
+            .and_then(jsonl::parse_timestamp),
+    );
     let data = &record["data"];
     match record["type"].as_str() {
         Some("session.start") => {
@@ -219,17 +239,27 @@ fn parse_events(events: &Path) -> std::io::Result<Parsed> {
     Ok(parsed)
 }
 
-fn session_from(dir: &Path, events: &Path, mut parsed: Parsed, fingerprint: Fingerprint) -> Session {
+fn session_from(
+    dir: &Path,
+    events: &Path,
+    mut parsed: Parsed,
+    fingerprint: Fingerprint,
+) -> Session {
     let workspace = fs::read_to_string(dir.join("workspace.yaml"))
         .map(|text| parse_workspace(&text))
         .unwrap_or_default();
-    parsed
-        .span
-        .observe(workspace.updated_at.as_deref().and_then(jsonl::parse_timestamp));
-    let id = parsed
-        .session_id
-        .or(workspace.id)
-        .unwrap_or_else(|| dir.file_name().unwrap_or_default().to_string_lossy().into_owned());
+    parsed.span.observe(
+        workspace
+            .updated_at
+            .as_deref()
+            .and_then(jsonl::parse_timestamp),
+    );
+    let id = parsed.session_id.or(workspace.id).unwrap_or_else(|| {
+        dir.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned()
+    });
     let title = [workspace.name, workspace.summary, parsed.first_prompt]
         .into_iter()
         .flatten()
@@ -246,7 +276,10 @@ fn session_from(dir: &Path, events: &Path, mut parsed: Parsed, fingerprint: Fing
         project_dir: workspace.cwd.or(workspace.git_root).or(parsed.start_cwd),
         title,
         created,
-        last_activity: parsed.span.last.unwrap_or_else(|| fingerprint.modified.into()),
+        last_activity: parsed
+            .span
+            .last
+            .unwrap_or_else(|| fingerprint.modified.into()),
         size_bytes: fs_util::path_size(dir),
         archived: false,
         primary_file: events.to_path_buf(),
@@ -280,22 +313,33 @@ fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
         let Ok(record) = serde_json::from_str::<Value>(line) else {
             return;
         };
-        let timestamp = record["timestamp"].as_str().and_then(jsonl::parse_timestamp);
+        let timestamp = record["timestamp"]
+            .as_str()
+            .and_then(jsonl::parse_timestamp);
         let data = &record["data"];
-        let mut call = |builder: &mut TranscriptBuilder, id: &str, name: &str, arguments: &Value| {
-            if !id.is_empty() {
-                names.insert(id.to_string(), name.to_string());
-                if !seen_calls.insert(id.to_string()) {
-                    return;
+        let mut call =
+            |builder: &mut TranscriptBuilder, id: &str, name: &str, arguments: &Value| {
+                if !id.is_empty() {
+                    names.insert(id.to_string(), name.to_string());
+                    if !seen_calls.insert(id.to_string()) {
+                        return;
+                    }
                 }
-            }
-            let id = Some(id).filter(|id| !id.is_empty());
-            builder.tool_call(id, name, &transcript::tool_input_text(arguments), timestamp);
-        };
+                let id = Some(id).filter(|id| !id.is_empty());
+                builder.tool_call(id, name, &transcript::tool_input_text(arguments), timestamp);
+            };
         match record["type"].as_str() {
-            Some("user.message") => builder.text(Role::User, data["content"].as_str().unwrap_or_default(), timestamp),
+            Some("user.message") => builder.text(
+                Role::User,
+                data["content"].as_str().unwrap_or_default(),
+                timestamp,
+            ),
             Some("assistant.message") => {
-                builder.text(Role::Assistant, data["content"].as_str().unwrap_or_default(), timestamp);
+                builder.text(
+                    Role::Assistant,
+                    data["content"].as_str().unwrap_or_default(),
+                    timestamp,
+                );
                 for request in data["toolRequests"].as_array().into_iter().flatten() {
                     call(
                         &mut builder,
@@ -328,9 +372,11 @@ fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
                 data["summaryContent"].as_str().unwrap_or_default(),
                 timestamp,
             ),
-            Some("session.task_complete") => {
-                builder.text(Role::Context, data["summary"].as_str().unwrap_or_default(), timestamp)
-            }
+            Some("session.task_complete") => builder.text(
+                Role::Context,
+                data["summary"].as_str().unwrap_or_default(),
+                timestamp,
+            ),
             _ => {}
         }
     })?;
@@ -343,7 +389,12 @@ mod tests {
 
     const ID: &str = "459987cf-cdb8-4ba0-9065-f470cbe762ce";
 
-    fn write_session(root: &Path, dir_name: &str, events: &[&str], workspace: Option<&str>) -> PathBuf {
+    fn write_session(
+        root: &Path,
+        dir_name: &str,
+        events: &[&str],
+        workspace: Option<&str>,
+    ) -> PathBuf {
         let dir = root.join(dir_name);
         fs::create_dir_all(dir.join("checkpoints")).unwrap();
         fs::write(dir.join("checkpoints").join("1.json"), "{}").unwrap();
@@ -390,8 +441,14 @@ mod tests {
         assert_eq!(session.key(), format!("copilot:{ID}"));
         assert_eq!(session.title.as_deref(), Some("Login fix"));
         assert_eq!(session.project_dir.as_deref(), Some("/work/ax-repo"));
-        assert_eq!(session.created.unwrap().to_rfc3339(), "2026-04-25T15:42:00+00:00");
-        assert_eq!(session.last_activity.to_rfc3339(), "2026-04-25T16:00:00+00:00");
+        assert_eq!(
+            session.created.unwrap().to_rfc3339(),
+            "2026-04-25T15:42:00+00:00"
+        );
+        assert_eq!(
+            session.last_activity.to_rfc3339(),
+            "2026-04-25T16:00:00+00:00"
+        );
         assert_eq!(session.files, vec![dir.clone()]);
         assert_eq!(session.primary_file, dir.join("events.jsonl"));
         assert!(session.size_bytes > 0);
@@ -406,7 +463,10 @@ mod tests {
             &events(),
             Some("summary: >\n  Fixed the\n  redirect\n"),
         );
-        assert_eq!(scan_one(root.path()).title.as_deref(), Some("Fixed the redirect"));
+        assert_eq!(
+            scan_one(root.path()).title.as_deref(),
+            Some("Fixed the redirect")
+        );
 
         let other = tempfile::tempdir().unwrap();
         write_session(other.path(), ID, &events(), None);
@@ -435,7 +495,10 @@ mod tests {
         let messages = adapter.transcript(&session).unwrap().head;
 
         let roles: Vec<Role> = messages.iter().map(|message| message.role).collect();
-        assert_eq!(roles, vec![Role::User, Role::Assistant, Role::Tool, Role::Context]);
+        assert_eq!(
+            roles,
+            vec![Role::User, Role::Assistant, Role::Tool, Role::Context]
+        );
         let tool = messages[2].tool.as_ref().unwrap();
         assert_eq!(tool.name, "bash");
         assert_eq!(tool.output.as_deref(), Some("login.ts"));

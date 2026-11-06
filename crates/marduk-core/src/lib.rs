@@ -23,7 +23,9 @@ pub fn home_dir() -> std::path::PathBuf {
 
 pub const RUNNING_WINDOW: Duration = Duration::from_secs(5 * 60);
 
-pub fn default_adapters(overrides: std::sync::Arc<agents::cli::CliOverrides>) -> Vec<Box<dyn AgentAdapter>> {
+pub fn default_adapters(
+    overrides: std::sync::Arc<agents::cli::CliOverrides>,
+) -> Vec<Box<dyn AgentAdapter>> {
     vec![
         Box::new(agents::claude::ClaudeAdapter::from_env()),
         Box::new(agents::codex::CodexAdapter::from_env(overrides.clone())),

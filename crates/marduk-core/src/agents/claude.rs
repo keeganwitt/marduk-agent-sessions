@@ -60,7 +60,10 @@ impl AgentAdapter for ClaudeAdapter {
     }
 
     fn estimate_scan_bytes(&self) -> u64 {
-        total_size(&jsonl_two_levels(&self.projects_dir, &mut ScanResult::default()))
+        total_size(&jsonl_two_levels(
+            &self.projects_dir,
+            &mut ScanResult::default(),
+        ))
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {
@@ -92,12 +95,16 @@ fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
         if record["isSidechain"] == true {
             return;
         }
-        let timestamp = record["timestamp"].as_str().and_then(jsonl::parse_timestamp);
+        let timestamp = record["timestamp"]
+            .as_str()
+            .and_then(jsonl::parse_timestamp);
         let is_meta = record["isMeta"] == true;
         let content = &record["message"]["content"];
         match record["type"].as_str() {
             Some("user") => match content {
-                serde_json::Value::String(text) => builder.text(user_role(is_meta, text), text, timestamp),
+                serde_json::Value::String(text) => {
+                    builder.text(user_role(is_meta, text), text, timestamp)
+                }
                 serde_json::Value::Array(blocks) => {
                     for block in blocks {
                         match block["type"].as_str() {
@@ -119,9 +126,11 @@ fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
             Some("assistant") => {
                 for block in content.as_array().into_iter().flatten() {
                     match block["type"].as_str() {
-                        Some("text") => {
-                            builder.text(Role::Assistant, block["text"].as_str().unwrap_or_default(), timestamp)
-                        }
+                        Some("text") => builder.text(
+                            Role::Assistant,
+                            block["text"].as_str().unwrap_or_default(),
+                            timestamp,
+                        ),
                         Some("tool_use") => builder.tool_call(
                             block["id"].as_str(),
                             block["name"].as_str().unwrap_or("tool"),
@@ -132,7 +141,11 @@ fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
                     }
                 }
             }
-            Some("summary") => builder.text(Role::Context, record["summary"].as_str().unwrap_or_default(), timestamp),
+            Some("summary") => builder.text(
+                Role::Context,
+                record["summary"].as_str().unwrap_or_default(),
+                timestamp,
+            ),
             _ => {}
         }
     })?;
@@ -167,10 +180,15 @@ struct Parsed {
 
 impl Parsed {
     fn title(self) -> Option<String> {
-        [self.custom_title, self.ai_title, self.summary, self.first_prompt]
-            .into_iter()
-            .flatten()
-            .find_map(|candidate| jsonl::to_title(&candidate))
+        [
+            self.custom_title,
+            self.ai_title,
+            self.summary,
+            self.first_prompt,
+        ]
+        .into_iter()
+        .flatten()
+        .find_map(|candidate| jsonl::to_title(&candidate))
     }
 }
 
@@ -185,7 +203,9 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
         parsed.cwd = record.cwd;
     }
     match record.kind.as_deref() {
-        Some("custom-title") => parsed.custom_title = record.custom_title.or(parsed.custom_title.take()),
+        Some("custom-title") => {
+            parsed.custom_title = record.custom_title.or(parsed.custom_title.take())
+        }
         Some("ai-title") => parsed.ai_title = record.ai_title.or(parsed.ai_title.take()),
         Some("summary") => parsed.summary = record.summary.or(parsed.summary.take()),
         Some("user") if parsed.first_prompt.is_none() && record.is_meta != Some(true) => {
@@ -216,16 +236,25 @@ fn parse_file(path: &Path) -> std::io::Result<Parsed> {
 impl ClaudeAdapter {
     fn read_session(&self, path: &Path, progress: &dyn ScanProgress) -> std::io::Result<Session> {
         let fingerprint = fs_util::fingerprint(path)?;
-        let parsed = self.cache.get_or_parse(path, fingerprint, || parse_file(path))?;
+        let parsed = self
+            .cache
+            .get_or_parse(path, fingerprint, || parse_file(path))?;
         progress.advance(fingerprint.len);
         Ok(session_from(path, parsed, fingerprint))
     }
 }
 
 fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Session {
-    let id = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+    let id = path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
     let files = session_files(path, &id);
-    let last_activity = parsed.span.last.unwrap_or_else(|| fingerprint.modified.into());
+    let last_activity = parsed
+        .span
+        .last
+        .unwrap_or_else(|| fingerprint.modified.into());
     let created = parsed.span.first.or_else(|| fs_util::created(path));
     Session {
         agent: "claude",
@@ -319,15 +348,25 @@ mod tests {
             "not json at all",
         ]
         .join("\n");
-        write_project(config.path(), "-work-app", &[(&format!("{ID}.jsonl"), &transcript)]);
+        write_project(
+            config.path(),
+            "-work-app",
+            &[(&format!("{ID}.jsonl"), &transcript)],
+        );
 
         let session = scan_one(config.path());
 
         assert_eq!(session.key(), format!("claude:{ID}"));
         assert_eq!(session.project_dir.as_deref(), Some("/work/app"));
         assert_eq!(session.title.as_deref(), Some("Login bug fix"));
-        assert_eq!(session.last_activity.to_rfc3339(), "2026-11-02T09:30:00+00:00");
-        assert_eq!(session.created.unwrap().to_rfc3339(), "2026-11-01T10:00:00+00:00");
+        assert_eq!(
+            session.last_activity.to_rfc3339(),
+            "2026-11-02T09:30:00+00:00"
+        );
+        assert_eq!(
+            session.created.unwrap().to_rfc3339(),
+            "2026-11-01T10:00:00+00:00"
+        );
     }
 
     #[test]
@@ -393,7 +432,12 @@ mod tests {
             ]
         );
         assert_eq!(session.size_bytes, 2 + 2 + 5);
-        assert!(result.sessions.iter().all(|s| !s.files.contains(&dir.join("memory"))));
+        assert!(
+            result
+                .sessions
+                .iter()
+                .all(|s| !s.files.contains(&dir.join("memory")))
+        );
     }
 
     #[test]
@@ -427,7 +471,10 @@ mod tests {
         let messages = adapter.transcript(&session).unwrap().head;
 
         let roles: Vec<Role> = messages.iter().map(|message| message.role).collect();
-        assert_eq!(roles, vec![Role::Context, Role::User, Role::Tool, Role::Assistant]);
+        assert_eq!(
+            roles,
+            vec![Role::Context, Role::User, Role::Tool, Role::Assistant]
+        );
         assert_eq!(messages[1].text, "What's in **src**?");
         assert!(messages[1].timestamp.is_some());
         let tool = messages[2].tool.as_ref().unwrap();

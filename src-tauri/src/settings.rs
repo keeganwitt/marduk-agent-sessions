@@ -58,7 +58,8 @@ impl SettingsStore {
 
 fn write_atomically(path: &Path, settings: &Settings) -> Result<(), String> {
     let dir = path.parent().ok_or("Settings path has no folder")?;
-    std::fs::create_dir_all(dir).map_err(|error| format!("Couldn't create {}: {error}", dir.display()))?;
+    std::fs::create_dir_all(dir)
+        .map_err(|error| format!("Couldn't create {}: {error}", dir.display()))?;
     let temporary = path.with_extension("json.tmp");
     let json = serde_json::to_string_pretty(settings).map_err(|error| error.to_string())?;
     std::fs::write(&temporary, json).map_err(|error| format!("Couldn't save settings: {error}"))?;
@@ -78,7 +79,9 @@ mod tests {
 
         store
             .update(|settings| {
-                settings.cli_paths.insert("codex".into(), PathBuf::from("/opt/codex"));
+                settings
+                    .cli_paths
+                    .insert("codex".into(), PathBuf::from("/opt/codex"));
             })
             .unwrap();
 
@@ -96,10 +99,16 @@ mod tests {
         let store = SettingsStore::load(path.clone());
         assert_eq!(store.get().theme, Theme::System);
 
-        store.update(|settings| settings.theme = Theme::Dark).unwrap();
+        store
+            .update(|settings| settings.theme = Theme::Dark)
+            .unwrap();
 
         assert_eq!(SettingsStore::load(path.clone()).get().theme, Theme::Dark);
-        assert!(std::fs::read_to_string(path).unwrap().contains(r#""theme": "dark""#));
+        assert!(
+            std::fs::read_to_string(path)
+                .unwrap()
+                .contains(r#""theme": "dark""#)
+        );
     }
 
     #[test]
@@ -118,7 +127,9 @@ mod tests {
         let store = SettingsStore::load(blocker.join("settings.json"));
 
         let result = store.update(|settings| {
-            settings.cli_paths.insert("codex".into(), PathBuf::from("/x"));
+            settings
+                .cli_paths
+                .insert("codex".into(), PathBuf::from("/x"));
         });
 
         assert!(result.is_err());

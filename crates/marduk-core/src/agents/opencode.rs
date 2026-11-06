@@ -106,8 +106,10 @@ fn millis_to_datetime(millis: i64) -> Option<DateTime<Utc>> {
 }
 
 fn open(db: &Path) -> rusqlite::Result<Connection> {
-    let connection =
-        Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+    let connection = Connection::open_with_flags(
+        db,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
     connection.busy_timeout(Duration::from_secs(2))?;
     Ok(connection)
 }
@@ -137,7 +139,9 @@ fn has_column(connection: &Connection, table: &str, column: &str) -> bool {
 
 /// OpenCode-family ids look like `ses_01J…`; anything else is refused before it reaches the CLI.
 fn is_safe_id(id: &str) -> bool {
-    !id.is_empty() && !id.starts_with('-') && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    !id.is_empty()
+        && !id.starts_with('-')
+        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 fn plural(count: i64, word: &str) -> String {
@@ -167,7 +171,13 @@ impl OpenCodeAdapter {
         let data_dir = env_dir("XDG_DATA_HOME")
             .unwrap_or_else(|| home_dir().join(".local").join("share"))
             .join(flavor.data_dir);
-        let explicit_db = env_dir(flavor.db_env).map(|db| if db.is_absolute() { db } else { data_dir.join(db) });
+        let explicit_db = env_dir(flavor.db_env).map(|db| {
+            if db.is_absolute() {
+                db
+            } else {
+                data_dir.join(db)
+            }
+        });
         Self {
             flavor,
             cli: Cli::detect(flavor.id, flavor.program, flavor.install_url, overrides),
@@ -183,14 +193,15 @@ impl OpenCodeAdapter {
             .flatten()
             .map(|entry| entry.path())
             .filter(|path| {
-                path.file_name().and_then(|name| name.to_str()).is_some_and(|name| {
-                    name.ends_with(".db")
-                        && self
-                            .flavor
-                            .db_prefixes
-                            .iter()
-                            .any(|prefix| name == format!("{prefix}.db") || name.starts_with(&format!("{prefix}-")))
-                })
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| {
+                        name.ends_with(".db")
+                            && self.flavor.db_prefixes.iter().any(|prefix| {
+                                name == format!("{prefix}.db")
+                                    || name.starts_with(&format!("{prefix}-"))
+                            })
+                    })
             })
             .collect();
         if let Some(db) = &self.explicit_db
@@ -210,7 +221,9 @@ impl OpenCodeAdapter {
                 return;
             }
         };
-        if let Err(error) = connection.query_row("select count(*) from sqlite_master", [], |row| row.get::<_, i64>(0)) {
+        if let Err(error) = connection.query_row("select count(*) from sqlite_master", [], |row| {
+            row.get::<_, i64>(0)
+        }) {
             result.record_error(format!("{}: {error}", db.display()));
             return;
         }
@@ -247,7 +260,11 @@ impl OpenCodeAdapter {
                             continue;
                         }
                         let (store, totals) = pick_store(&totals, &row.id);
-                        let first_prompt = if row.title.as_deref().is_none_or(|title| title.trim().is_empty()) {
+                        let first_prompt = if row
+                            .title
+                            .as_deref()
+                            .is_none_or(|title| title.trim().is_empty())
+                        {
                             first_user_text(&connection, store, &row.id)
                         } else {
                             None
@@ -262,7 +279,13 @@ impl OpenCodeAdapter {
         }
     }
 
-    fn session_from_row(&self, db: &Path, row: Row, totals: Totals, first_prompt: Option<String>) -> Session {
+    fn session_from_row(
+        &self,
+        db: &Path,
+        row: Row,
+        totals: Totals,
+        first_prompt: Option<String>,
+    ) -> Session {
         let fingerprint = fingerprint_of(row.updated_ms, totals);
         let title = [row.title, first_prompt]
             .into_iter()
@@ -297,8 +320,10 @@ impl OpenCodeAdapter {
             return Err(self.unsafe_id_reason());
         }
         let program = self.cli.path().ok_or_else(|| {
-            self.cli
-                .missing_reason(self.flavor.name, &format!("delete {} sessions", self.flavor.name))
+            self.cli.missing_reason(
+                self.flavor.name,
+                &format!("delete {} sessions", self.flavor.name),
+            )
         })?;
         Ok(AgentCommand {
             program,
@@ -337,8 +362,8 @@ impl OpenCodeAdapter {
         let mut args: Vec<&str> = self.flavor.export_args.to_vec();
         args.push(session_id);
         let output = super::cli::run_capture(cli, &args, EXPORT_TIMEOUT)?;
-        let export: Value =
-            serde_json::from_str(&output).map_err(|error| format!("Unexpected export output: {error}"))?;
+        let export: Value = serde_json::from_str(&output)
+            .map_err(|error| format!("Unexpected export output: {error}"))?;
         let messages = export["messages"]
             .as_array()
             .ok_or("The export had no messages list.")?;
@@ -407,7 +432,9 @@ fn all_totals(connection: &Connection, stores: &[Store]) -> rusqlite::Result<Sto
 /// Sessions OpenCode has migrated forward can have messages in both stores; the newer wins.
 fn pick_store(totals: &StoreTotals, session_id: &str) -> (Store, Totals) {
     for store in [Store::V2, Store::V1] {
-        if let Some(found) = totals.get(&store).and_then(|by_session| by_session.get(session_id))
+        if let Some(found) = totals
+            .get(&store)
+            .and_then(|by_session| by_session.get(session_id))
             && found.messages > 0
         {
             return (store, *found);
@@ -450,7 +477,11 @@ fn totals(connection: &Connection, store: Store) -> rusqlite::Result<HashMap<Str
             "select session_id, coalesce(sum(length(data)), 0), coalesce(max(time_updated), 0) from {parts} group by session_id"
         ))?;
         for row in statement.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
         })? {
             let (id, bytes, updated) = row?;
             let entry = totals.entry(id).or_default();
@@ -480,13 +511,18 @@ fn first_user_text(connection: &Connection, store: Store, session_id: &str) -> O
              and json_extract(p.data, '$.type') = 'text' order by m.time_created, m.id, p.id limit 1"
         }
     };
-    let data: String = connection.query_row(sql, [session_id], |row| row.get(0)).ok()?;
+    let data: String = connection
+        .query_row(sql, [session_id], |row| row.get(0))
+        .ok()?;
     let value: Value = serde_json::from_str(&data).ok()?;
     value["text"].as_str().map(str::to_string)
 }
 
 /// The session row's update time and its messages' totals, or `None` when the row is gone.
-fn current_state(connection: &Connection, session_id: &str) -> rusqlite::Result<Option<(Store, i64, Totals)>> {
+fn current_state(
+    connection: &Connection,
+    session_id: &str,
+) -> rusqlite::Result<Option<(Store, i64, Totals)>> {
     let mut updated = None;
     for table in SESSION_TABLES {
         if has_table(connection, table) {
@@ -520,7 +556,9 @@ fn current_state(connection: &Connection, session_id: &str) -> rusqlite::Result<
         }
         let part_updated: i64 = if has_table(connection, parts) {
             connection.query_row(
-                &format!("select coalesce(max(time_updated), 0) from {parts} where session_id = ?1"),
+                &format!(
+                    "select coalesce(max(time_updated), 0) from {parts} where session_id = ?1"
+                ),
                 [session_id],
                 |row| row.get(0),
             )?
@@ -568,7 +606,11 @@ impl AgentAdapter for OpenCodeAdapter {
     }
 
     fn estimate_scan_bytes(&self) -> u64 {
-        let databases: Vec<PathBuf> = self.databases().into_iter().filter(|db| db.is_file()).collect();
+        let databases: Vec<PathBuf> = self
+            .databases()
+            .into_iter()
+            .filter(|db| db.is_file())
+            .collect();
         super::total_size(&databases)
     }
 
@@ -617,7 +659,10 @@ impl AgentAdapter for OpenCodeAdapter {
         let connection = open(&session.primary_file).map_err(std::io::Error::other)?;
         match current_state(&connection, &session.id).map_err(std::io::Error::other)? {
             Some((_, updated, totals)) => Ok(fingerprint_of(updated, totals)),
-            None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "session row is gone")),
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "session row is gone",
+            )),
         }
     }
 
@@ -648,7 +693,11 @@ fn parse(data: &str) -> Value {
     serde_json::from_str(data).unwrap_or(Value::Null)
 }
 
-fn read_v2(connection: &Connection, session_id: &str, builder: &mut TranscriptBuilder) -> rusqlite::Result<()> {
+fn read_v2(
+    connection: &Connection,
+    session_id: &str,
+    builder: &mut TranscriptBuilder,
+) -> rusqlite::Result<()> {
     let mut parts: HashMap<String, Vec<Value>> = HashMap::new();
     if has_table(connection, "session_part") {
         let mut statement = connection.prepare(
@@ -714,7 +763,11 @@ fn append_v2_message(
                 builder.tool_result(Some(id), output, timestamp);
             }
         }
-        "compaction" => builder.text(Role::Context, data["summary"].as_str().unwrap_or_default(), timestamp),
+        "compaction" => builder.text(
+            Role::Context,
+            data["summary"].as_str().unwrap_or_default(),
+            timestamp,
+        ),
         "assistant" => {
             let inline = data["content"].as_array().cloned().unwrap_or_default();
             for block in parts.into_iter().chain(inline) {
@@ -727,9 +780,17 @@ fn append_v2_message(
 
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(60);
 
-fn append_v2_block(builder: &mut TranscriptBuilder, block: &Value, timestamp: Option<DateTime<Utc>>) {
+fn append_v2_block(
+    builder: &mut TranscriptBuilder,
+    block: &Value,
+    timestamp: Option<DateTime<Utc>>,
+) {
     match block["type"].as_str() {
-        Some("text") => builder.text(Role::Assistant, block["text"].as_str().unwrap_or_default(), timestamp),
+        Some("text") => builder.text(
+            Role::Assistant,
+            block["text"].as_str().unwrap_or_default(),
+            timestamp,
+        ),
         Some("tool") => {
             let id = block["id"].as_str();
             let state = &block["state"];
@@ -740,12 +801,16 @@ fn append_v2_block(builder: &mut TranscriptBuilder, block: &Value, timestamp: Op
                 timestamp,
             );
             match state["status"].as_str() {
-                Some("completed") => {
-                    builder.tool_result(id, &transcript::tool_output_text(&state["content"]), timestamp)
-                }
+                Some("completed") => builder.tool_result(
+                    id,
+                    &transcript::tool_output_text(&state["content"]),
+                    timestamp,
+                ),
                 Some("error") => builder.tool_result(
                     id,
-                    state["error"]["message"].as_str().unwrap_or("The tool failed."),
+                    state["error"]["message"]
+                        .as_str()
+                        .unwrap_or("The tool failed."),
                     timestamp,
                 ),
                 _ => {}
@@ -755,7 +820,11 @@ fn append_v2_block(builder: &mut TranscriptBuilder, block: &Value, timestamp: Op
     }
 }
 
-fn read_v1(connection: &Connection, session_id: &str, builder: &mut TranscriptBuilder) -> rusqlite::Result<()> {
+fn read_v1(
+    connection: &Connection,
+    session_id: &str,
+    builder: &mut TranscriptBuilder,
+) -> rusqlite::Result<()> {
     let mut statement = connection.prepare(
         "select m.id, m.data, m.time_created from message m where m.session_id = ?1 order by m.time_created, m.id",
     )?;
@@ -768,8 +837,8 @@ fn read_v1(connection: &Connection, session_id: &str, builder: &mut TranscriptBu
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut parts_statement =
-        connection.prepare("select data, time_created from part where message_id = ?1 order by id")?;
+    let mut parts_statement = connection
+        .prepare("select data, time_created from part where message_id = ?1 order by id")?;
     for (id, data, created) in messages {
         let mut info = parse(&data);
         if info["time"]["created"].is_null()
@@ -778,13 +847,17 @@ fn read_v1(connection: &Connection, session_id: &str, builder: &mut TranscriptBu
             fields.insert("time".into(), serde_json::json!({ "created": created }));
         }
         let parts = parts_statement
-            .query_map([&id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?
+            .query_map([&id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
             .collect::<rusqlite::Result<Vec<_>>>()?
             .into_iter()
             .map(|(data, part_created)| {
                 let mut part = parse(&data);
                 if let Value::Object(fields) = &mut part {
-                    fields.entry("time_created").or_insert(Value::from(part_created));
+                    fields
+                        .entry("time_created")
+                        .or_insert(Value::from(part_created));
                 }
                 part
             })
@@ -859,7 +932,13 @@ mod tests {
         (path, connection)
     }
 
-    fn insert_session(connection: &Connection, id: &str, parent: Option<&str>, title: Option<&str>, archived: bool) {
+    fn insert_session(
+        connection: &Connection,
+        id: &str,
+        parent: Option<&str>,
+        title: Option<&str>,
+        archived: bool,
+    ) {
         connection
             .execute(
                 "insert into session_v2 values (?1, ?2, '/work/app', ?3, 1762400000000, 1762400100000, ?4)",
@@ -868,7 +947,14 @@ mod tests {
             .unwrap();
     }
 
-    fn insert_message(connection: &Connection, session: &str, id: &str, seq: i64, kind: &str, data: &str) {
+    fn insert_message(
+        connection: &Connection,
+        session: &str,
+        id: &str,
+        seq: i64,
+        kind: &str,
+        data: &str,
+    ) {
         connection
             .execute(
                 "insert into session_message values (?1, ?2, ?3, ?4, 1762400000000 + ?4, 1762400000000 + ?4, ?5)",
@@ -887,13 +973,33 @@ mod tests {
         let (db, connection) = v2_db(dir.path());
         insert_session(&connection, "ses_a", None, Some("Refactor auth"), false);
         insert_session(&connection, "ses_b", None, None, true);
-        insert_message(&connection, "ses_b", "msg_1", 1, "user", r#"{"text":"Why is CI red?"}"#);
-        insert_message(&connection, "ses_b", "msg_2", 2, "assistant", r#"{"content":[]}"#);
+        insert_message(
+            &connection,
+            "ses_b",
+            "msg_1",
+            1,
+            "user",
+            r#"{"text":"Why is CI red?"}"#,
+        );
+        insert_message(
+            &connection,
+            "ses_b",
+            "msg_2",
+            2,
+            "assistant",
+            r#"{"content":[]}"#,
+        );
 
         let result = adapter(dir.path(), None).scan();
 
         assert!(result.complete, "{:?}", result.errors);
-        let by_id = |id: &str| result.sessions.iter().find(|session| session.id == id).unwrap();
+        let by_id = |id: &str| {
+            result
+                .sessions
+                .iter()
+                .find(|session| session.id == id)
+                .unwrap()
+        };
         assert_eq!(by_id("ses_a").title.as_deref(), Some("Refactor auth"));
         assert!(!by_id("ses_a").archived);
         let b = by_id("ses_b");
@@ -940,8 +1046,22 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (_, connection) = v2_db(dir.path());
         insert_session(&connection, "ses_a", None, Some("t"), false);
-        insert_message(&connection, "ses_a", "msg_1", 1, "system", r#"{"text":"env info"}"#);
-        insert_message(&connection, "ses_a", "msg_2", 2, "user", r#"{"text":"List files"}"#);
+        insert_message(
+            &connection,
+            "ses_a",
+            "msg_1",
+            1,
+            "system",
+            r#"{"text":"env info"}"#,
+        );
+        insert_message(
+            &connection,
+            "ses_a",
+            "msg_2",
+            2,
+            "user",
+            r#"{"text":"List files"}"#,
+        );
         insert_message(
             &connection,
             "ses_a",
@@ -968,8 +1088,14 @@ mod tests {
         let messages = opencode.transcript(&session).unwrap().head;
 
         let roles: Vec<Role> = messages.iter().map(|message| message.role).collect();
-        assert_eq!(roles, vec![Role::Context, Role::User, Role::Tool, Role::Assistant]);
-        assert_eq!(messages[2].tool.as_ref().unwrap().output.as_deref(), Some("a.txt"));
+        assert_eq!(
+            roles,
+            vec![Role::Context, Role::User, Role::Tool, Role::Assistant]
+        );
+        assert_eq!(
+            messages[2].tool.as_ref().unwrap().output.as_deref(),
+            Some("a.txt")
+        );
         assert_eq!(messages[3].text, "Done.");
     }
 
@@ -1001,14 +1127,22 @@ mod tests {
 
         assert_eq!(sessions.len(), 2);
         assert_eq!(
-            sessions.iter().find(|s| s.id == "ses_dup").unwrap().title.as_deref(),
+            sessions
+                .iter()
+                .find(|s| s.id == "ses_dup")
+                .unwrap()
+                .title
+                .as_deref(),
             Some("New copy")
         );
         let old = sessions.iter().find(|s| s.id == "ses_old").unwrap();
         assert!(!old.archived);
         let messages = opencode.transcript(old).unwrap().head;
         assert_eq!(messages[0].text, "hello");
-        assert_eq!(messages[1].tool.as_ref().unwrap().output.as_deref(), Some("file body"));
+        assert_eq!(
+            messages[1].tool.as_ref().unwrap().output.as_deref(),
+            Some("file body")
+        );
     }
 
     #[cfg(unix)]
@@ -1035,7 +1169,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (_, connection) = v2_db(dir.path());
         insert_session(&connection, "ses_new", None, Some("t"), false);
-        insert_message(&connection, "ses_new", "msg_1", 1, "from-the-future", r#"{"blob":1}"#);
+        insert_message(
+            &connection,
+            "ses_new",
+            "msg_1",
+            1,
+            "from-the-future",
+            r#"{"blob":1}"#,
+        );
         let cli = fake_cli(
             dir.path(),
             r#"{"info":{"id":"ses_new"},"messages":[
@@ -1063,14 +1204,26 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (_, connection) = v2_db(dir.path());
         insert_session(&connection, "ses_new", None, Some("t"), false);
-        insert_message(&connection, "ses_new", "msg_1", 1, "from-the-future", r#"{"blob":1}"#);
+        insert_message(
+            &connection,
+            "ses_new",
+            "msg_1",
+            1,
+            "from-the-future",
+            r#"{"blob":1}"#,
+        );
         let opencode = adapter(dir.path(), None);
         let session = opencode.scan().sessions.remove(0);
 
         let transcript = opencode.transcript(&session).unwrap();
 
         assert!(transcript.head.is_empty());
-        assert!(transcript.note.unwrap().contains("Install the OpenCode CLI"));
+        assert!(
+            transcript
+                .note
+                .unwrap()
+                .contains("Install the OpenCode CLI")
+        );
     }
 
     #[test]
@@ -1126,7 +1279,13 @@ mod tests {
         let result = adapter.scan();
 
         assert!(result.complete, "{:?}", result.errors);
-        let by_id = |id: &str| result.sessions.iter().find(|session| session.id == id).unwrap();
+        let by_id = |id: &str| {
+            result
+                .sessions
+                .iter()
+                .find(|session| session.id == id)
+                .unwrap()
+        };
         let old = by_id("ses_v1");
         assert_eq!(old.agent, "kilo");
         assert_eq!(old.key(), "kilo:ses_v1");
@@ -1134,11 +1293,20 @@ mod tests {
         let new = by_id("ses_v2");
         assert!(new.archived);
         assert_eq!(new.parent_id.as_deref(), Some("ses_v1"));
-        assert_eq!(adapter.transcript(old).unwrap().head[0].text, "old style prompt");
-        assert_eq!(adapter.transcript(new).unwrap().head[0].text, "new style prompt");
+        assert_eq!(
+            adapter.transcript(old).unwrap().head[0].text,
+            "old style prompt"
+        );
+        assert_eq!(
+            adapter.transcript(new).unwrap().head[0].text,
+            "new style prompt"
+        );
         assert_eq!(adapter.fingerprint(new).unwrap(), new.fingerprint);
 
-        let DeletePlan::AgentCommand { command, warning, .. } = adapter.delete_plan(old) else {
+        let DeletePlan::AgentCommand {
+            command, warning, ..
+        } = adapter.delete_plan(old)
+        else {
             panic!("expected an agent command");
         };
         assert_eq!(command.args, vec!["session", "delete", "ses_v1"]);
@@ -1153,7 +1321,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         for name in ["kilo.db", "kilo-dev.db", "opencode-beta.db"] {
             kilo_db(dir.path(), name)
-                .execute("insert into session values (?1, null, '/w', 't', 1, 2, null)", [name])
+                .execute(
+                    "insert into session values (?1, null, '/w', 't', 1, 2, null)",
+                    [name],
+                )
                 .unwrap();
         }
         std::fs::write(dir.path().join("kilo.db-wal"), "").unwrap();
@@ -1168,7 +1339,11 @@ mod tests {
 
         assert_eq!(
             ids,
-            HashSet::from(["kilo.db".into(), "kilo-dev.db".into(), "opencode-beta.db".into()])
+            HashSet::from([
+                "kilo.db".into(),
+                "kilo-dev.db".into(),
+                "opencode-beta.db".into()
+            ])
         );
     }
 
@@ -1176,7 +1351,10 @@ mod tests {
     fn kilo_without_cli_names_kilo_in_the_reason() {
         let dir = tempfile::tempdir().unwrap();
         kilo_db(dir.path(), "kilo.db")
-            .execute("insert into session values ('ses_a', null, '/w', 't', 1, 2, null)", [])
+            .execute(
+                "insert into session values ('ses_a', null, '/w', 't', 1, 2, null)",
+                [],
+            )
             .unwrap();
         let adapter = kilo(dir.path(), None);
         let session = adapter.scan().sessions.remove(0);
@@ -1236,7 +1414,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (_, connection) = v2_db(dir.path());
         insert_session(&connection, "ses_parent", None, Some("p"), false);
-        insert_session(&connection, "ses_child", Some("ses_parent"), Some("c"), false);
+        insert_session(
+            &connection,
+            "ses_child",
+            Some("ses_parent"),
+            Some("c"),
+            false,
+        );
         let opencode = adapter(dir.path(), Some("/bin/opencode"));
         let session = opencode
             .scan()
@@ -1277,7 +1461,14 @@ mod tests {
         let opencode = adapter(dir.path(), None);
         let session = opencode.scan().sessions.remove(0);
 
-        insert_message(&connection, "ses_a", "msg_9", 9, "user", r#"{"text":"more"}"#);
+        insert_message(
+            &connection,
+            "ses_a",
+            "msg_9",
+            9,
+            "user",
+            r#"{"text":"more"}"#,
+        );
 
         assert_ne!(opencode.fingerprint(&session).unwrap(), session.fingerprint);
     }
@@ -1295,7 +1486,10 @@ mod tests {
 
         session.id = "--help".into();
         let with_cli = adapter(dir.path(), Some("/bin/opencode"));
-        assert!(matches!(with_cli.delete_plan(&session), DeletePlan::ReadOnly { .. }));
+        assert!(matches!(
+            with_cli.delete_plan(&session),
+            DeletePlan::ReadOnly { .. }
+        ));
         assert!(with_cli.archive_command(&session).is_none());
     }
 }

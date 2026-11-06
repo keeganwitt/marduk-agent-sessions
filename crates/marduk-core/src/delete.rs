@@ -63,10 +63,19 @@ impl PlannedDelete {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeleteOutcome {
-    Trashed { files: Vec<PathBuf> },
-    DeletedByAgent { files: Vec<PathBuf>, command: String },
-    Refused { reason: String },
-    Failed { error: String },
+    Trashed {
+        files: Vec<PathBuf>,
+    },
+    DeletedByAgent {
+        files: Vec<PathBuf>,
+        command: String,
+    },
+    Refused {
+        reason: String,
+    },
+    Failed {
+        error: String,
+    },
 }
 
 /// Checks everything that must hold before a session may be deleted and returns how it
@@ -94,7 +103,10 @@ pub fn preflight(
         .into_iter()
         .filter(|path| path == &session.primary_file || path.exists())
         .collect();
-    if let Some(escaping) = existing.iter().find(|path| !fs_util::is_strictly_within(path, &roots)) {
+    if let Some(escaping) = existing
+        .iter()
+        .find(|path| !fs_util::is_strictly_within(path, &roots))
+    {
         return Err(format!(
             "Refusing to delete {} because it is outside {}'s session folders.",
             escaping.display(),
@@ -251,7 +263,11 @@ mod tests {
     impl DeleteBackend for FakeBackend {
         fn trash(&self, paths: &[PathBuf]) -> Result<(), String> {
             self.trashed.borrow_mut().push(paths.to_vec());
-            if self.fail { Err("no trash here".into()) } else { Ok(()) }
+            if self.fail {
+                Err("no trash here".into())
+            } else {
+                Ok(())
+            }
         }
 
         fn run(&self, command: &AgentCommand) -> Result<(), String> {
@@ -267,7 +283,8 @@ mod tests {
     }
 
     fn old_session(path: &Path) -> Session {
-        let hour_ago = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+        let hour_ago =
+            filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
         filetime::set_file_mtime(path, hour_ago).unwrap();
         Session {
             agent: "fake",
@@ -359,14 +376,21 @@ mod tests {
         let session = old_session(&file);
         let adapter = FakeAdapter {
             root,
-            plan: DeletePlan::ReadOnly { reason: "nope".into() },
+            plan: DeletePlan::ReadOnly {
+                reason: "nope".into(),
+            },
             archive: None,
         };
         let backend = FakeBackend::default();
 
         let outcome = execute(&adapter, &session, &backend, now(), WINDOW);
 
-        assert_eq!(outcome, DeleteOutcome::Refused { reason: "nope".into() });
+        assert_eq!(
+            outcome,
+            DeleteOutcome::Refused {
+                reason: "nope".into()
+            }
+        );
         assert!(backend.trashed.borrow().is_empty());
     }
 
@@ -504,7 +528,9 @@ mod tests {
 
         let outcome = execute(&adapter, &session, &FakeBackend::default(), now(), WINDOW);
 
-        assert!(matches!(outcome, DeleteOutcome::Failed { error } if error.contains("still exists")));
+        assert!(
+            matches!(outcome, DeleteOutcome::Failed { error } if error.contains("still exists"))
+        );
     }
 
     #[test]
@@ -523,7 +549,12 @@ mod tests {
 
         let outcome = execute(&adapter, &session, &backend, now(), WINDOW);
 
-        assert_eq!(outcome, DeleteOutcome::Failed { error: "exit 1".into() });
+        assert_eq!(
+            outcome,
+            DeleteOutcome::Failed {
+                error: "exit 1".into()
+            }
+        );
     }
 
     #[test]
@@ -571,8 +602,16 @@ mod tests {
             archive: Some(agent_command("archive")),
         };
         let backend = FakeBackend::default();
-        let outcome = toggle_archive(&supported, &session, &backend, now(), Duration::from_secs(7200));
-        assert!(matches!(outcome, ArchiveOutcome::Refused { reason } if reason.contains("still running")));
+        let outcome = toggle_archive(
+            &supported,
+            &session,
+            &backend,
+            now(),
+            Duration::from_secs(7200),
+        );
+        assert!(
+            matches!(outcome, ArchiveOutcome::Refused { reason } if reason.contains("still running"))
+        );
         assert!(backend.ran.borrow().is_empty());
     }
 
@@ -588,13 +627,17 @@ mod tests {
 
         let outcome = toggle_archive(&adapter, &session, &FakeBackend::default(), now(), WINDOW);
 
-        assert!(matches!(outcome, ArchiveOutcome::Failed { error } if error.contains("did not move")));
+        assert!(
+            matches!(outcome, ArchiveOutcome::Failed { error } if error.contains("did not move"))
+        );
     }
 
     #[cfg(unix)]
     #[test]
     fn system_backend_reports_nonzero_exit_with_stderr() {
-        let error = SystemBackend.run(&sh("echo bad thing >&2; exit 3")).unwrap_err();
+        let error = SystemBackend
+            .run(&sh("echo bad thing >&2; exit 3"))
+            .unwrap_err();
         assert!(error.contains("bad thing"), "{error}");
     }
 

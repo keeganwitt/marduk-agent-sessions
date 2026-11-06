@@ -71,7 +71,11 @@ pub fn attach_labels(
     labels: &marduk_core::labels::LabelStore,
     now: SystemTime,
 ) -> Result<(), String> {
-    let seen: std::collections::HashSet<String> = response.sessions.iter().map(|row| row.key.clone()).collect();
+    let seen: std::collections::HashSet<String> = response
+        .sessions
+        .iter()
+        .map(|row| row.key.clone())
+        .collect();
     let complete: std::collections::HashSet<&str> = response
         .agents
         .iter()
@@ -261,7 +265,11 @@ fn session_row(catalog: &Catalog, session: &Session, now: SystemTime) -> Session
 pub fn scan_response(catalog: &Catalog, scans: Vec<AgentScan>, now: SystemTime) -> ScanResponse {
     let mut sessions: Vec<SessionRow> = scans
         .iter()
-        .flat_map(|scan| scan.sessions.iter().map(|session| session_row(catalog, session, now)))
+        .flat_map(|scan| {
+            scan.sessions
+                .iter()
+                .map(|session| session_row(catalog, session, now))
+        })
         .collect();
     sessions.sort_by(|a, b| b.last_activity.cmp(&a.last_activity));
     mark_missing_parents(&mut sessions, &scans);
@@ -296,8 +304,8 @@ fn mark_missing_parents(sessions: &mut [SessionRow], scans: &[AgentScan]) {
         .collect();
     for session in sessions.iter_mut() {
         if let Some(parent) = &session.parent_id {
-            session.parent_missing =
-                complete.contains(session.agent) && !present.contains(&(session.agent, parent.clone()));
+            session.parent_missing = complete.contains(session.agent)
+                && !present.contains(&(session.agent, parent.clone()));
         }
     }
 }
@@ -340,7 +348,10 @@ pub fn preview_item(catalog: &Catalog, preview: Preview) -> PreviewItem {
     };
     PreviewItem {
         uid: preview.uid,
-        title: preview.session.as_ref().and_then(|session| session.title.clone()),
+        title: preview
+            .session
+            .as_ref()
+            .and_then(|session| session.title.clone()),
         agent_name: preview
             .session
             .as_ref()
@@ -364,16 +375,32 @@ pub fn delete_result(uid: String, outcome: DeleteOutcome) -> DeleteResult {
             files: paths(files),
             command,
         },
-        DeleteOutcome::Refused { reason } => DeleteResult::Refused { uid, message: reason },
-        DeleteOutcome::Failed { error } => DeleteResult::Failed { uid, message: error },
+        DeleteOutcome::Refused { reason } => DeleteResult::Refused {
+            uid,
+            message: reason,
+        },
+        DeleteOutcome::Failed { error } => DeleteResult::Failed {
+            uid,
+            message: error,
+        },
     }
 }
 
 pub fn archive_result(uid: String, outcome: ArchiveOutcome) -> ArchiveResult {
     match outcome {
-        ArchiveOutcome::Done { command, archived } => ArchiveResult::Done { uid, archived, command },
-        ArchiveOutcome::Refused { reason } => ArchiveResult::Refused { uid, message: reason },
-        ArchiveOutcome::Failed { error } => ArchiveResult::Failed { uid, message: error },
+        ArchiveOutcome::Done { command, archived } => ArchiveResult::Done {
+            uid,
+            archived,
+            command,
+        },
+        ArchiveOutcome::Refused { reason } => ArchiveResult::Refused {
+            uid,
+            message: reason,
+        },
+        ArchiveOutcome::Failed { error } => ArchiveResult::Failed {
+            uid,
+            message: error,
+        },
     }
 }
 
@@ -427,7 +454,9 @@ mod tests {
         let file = dir.join("t_a.jsonl");
         std::fs::write(&file, "12345").unwrap();
         let catalog = Catalog::new(
-            vec![Box::new(marduk_core::agents::pi::PiAdapter::new(root.path().to_path_buf()))],
+            vec![Box::new(marduk_core::agents::pi::PiAdapter::new(
+                root.path().to_path_buf(),
+            ))],
             marduk_core::RUNNING_WINDOW,
         );
         catalog.scan();
@@ -436,7 +465,10 @@ mod tests {
 
         let details = file_details(
             &catalog,
-            &[file.to_string_lossy().into_owned(), outside.to_string_lossy().into_owned()],
+            &[
+                file.to_string_lossy().into_owned(),
+                outside.to_string_lossy().into_owned(),
+            ],
         );
 
         assert_eq!(
@@ -456,7 +488,12 @@ mod tests {
         let work = labels.create("Work", "blue").unwrap();
         let now = SystemTime::now();
         labels
-            .apply(&["codex:a".to_string(), "codex:gone".to_string()], &[work.id], &[], now)
+            .apply(
+                &["codex:a".to_string(), "codex:gone".to_string()],
+                &[work.id],
+                &[],
+                now,
+            )
             .unwrap();
         let mut response = ScanResponse {
             agents: vec![AgentSummary {
@@ -493,7 +530,10 @@ mod tests {
             row("opencode", "other-agent-parent", Some("parent")),
         ];
 
-        mark_missing_parents(&mut sessions, &[scan("codex", true), scan("opencode", false)]);
+        mark_missing_parents(
+            &mut sessions,
+            &[scan("codex", true), scan("opencode", false)],
+        );
 
         let missing: Vec<&str> = sessions
             .iter()
@@ -505,9 +545,15 @@ mod tests {
 
     #[test]
     fn delete_result_serializes_with_status_tag() {
-        let json =
-            serde_json::to_value(delete_result("u".into(), DeleteOutcome::Refused { reason: "r".into() })).unwrap();
-        assert_eq!(json, json!({"status": "refused", "uid": "u", "message": "r"}));
+        let json = serde_json::to_value(delete_result(
+            "u".into(),
+            DeleteOutcome::Refused { reason: "r".into() },
+        ))
+        .unwrap();
+        assert_eq!(
+            json,
+            json!({"status": "refused", "uid": "u", "message": "r"})
+        );
     }
 
     #[test]
@@ -516,7 +562,10 @@ mod tests {
             files: vec![PathBuf::from("/a")],
         };
         let json = serde_json::to_value(delete_result("u".into(), outcome)).unwrap();
-        assert_eq!(json, json!({"status": "trashed", "uid": "u", "files": ["/a"]}));
+        assert_eq!(
+            json,
+            json!({"status": "trashed", "uid": "u", "files": ["/a"]})
+        );
     }
 
     #[test]

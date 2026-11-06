@@ -30,7 +30,10 @@ struct ProgressTracker<'a> {
 
 impl ScanProgress for ProgressTracker<'_> {
     fn advance(&self, bytes: u64) {
-        let done = self.done.fetch_add(bytes, Ordering::Relaxed).saturating_add(bytes);
+        let done = self
+            .done
+            .fetch_add(bytes, Ordering::Relaxed)
+            .saturating_add(bytes);
         let mut last = self.last_report.lock().unwrap();
         if last.elapsed() >= REPORT_INTERVAL {
             *last = Instant::now();
@@ -169,7 +172,8 @@ impl Catalog {
     }
 
     pub fn delete_plan(&self, session: &Session) -> Option<DeletePlan> {
-        self.adapter_for(session).map(|adapter| adapter.delete_plan(session))
+        self.adapter_for(session)
+            .map(|adapter| adapter.delete_plan(session))
     }
 
     pub fn can_archive(&self, session: &Session) -> bool {
@@ -186,11 +190,18 @@ impl Catalog {
             .collect();
         uids.iter()
             .map(|uid| match snapshot.get(uid) {
-                Some((_, session)) if deleted_with_selected_ancestor(&snapshot, session, &selected) => Preview {
-                    uid: uid.clone(),
-                    session: Some(session.clone()),
-                    result: Err("Deleted along with its parent session, which is also selected.".to_string()),
-                },
+                Some((_, session))
+                    if deleted_with_selected_ancestor(&snapshot, session, &selected) =>
+                {
+                    Preview {
+                        uid: uid.clone(),
+                        session: Some(session.clone()),
+                        result: Err(
+                            "Deleted along with its parent session, which is also selected."
+                                .to_string(),
+                        ),
+                    }
+                }
                 None => Preview {
                     uid: uid.clone(),
                     session: None,
@@ -198,12 +209,15 @@ impl Catalog {
                 },
                 Some((index, session)) => {
                     let adapter = self.adapters[*index].as_ref();
-                    let result = delete::preflight(adapter, session, now, self.running_window).map(|mut plan| {
-                        if plan.is_permanent() && plan.warning.is_none() {
-                            plan.warning = descendants_warning(&snapshot, session, adapter.display_name());
-                        }
-                        plan
-                    });
+                    let result = delete::preflight(adapter, session, now, self.running_window).map(
+                        |mut plan| {
+                            if plan.is_permanent() && plan.warning.is_none() {
+                                plan.warning =
+                                    descendants_warning(&snapshot, session, adapter.display_name());
+                            }
+                            plan
+                        },
+                    );
                     Preview {
                         uid: uid.clone(),
                         session: Some(session.clone()),
@@ -224,7 +238,9 @@ impl Catalog {
         uids.iter()
             .map(|uid| {
                 let outcome = match snapshot.get(uid) {
-                    None => DeleteOutcome::Refused { reason: not_found() },
+                    None => DeleteOutcome::Refused {
+                        reason: not_found(),
+                    },
                     Some((index, session)) => delete::execute(
                         self.adapters[*index].as_ref(),
                         session,
@@ -256,17 +272,30 @@ impl Catalog {
         if dir.is_dir() {
             Ok(dir)
         } else {
-            Err(format!("The project folder {} no longer exists.", dir.display()))
+            Err(format!(
+                "The project folder {} no longer exists.",
+                dir.display()
+            ))
         }
     }
 
     /// The path-independent `Session::key` of a scanned session.
     pub fn key_of(&self, uid: &str) -> Option<String> {
-        self.snapshot.lock().unwrap().get(uid).map(|(_, session)| session.key())
+        self.snapshot
+            .lock()
+            .unwrap()
+            .get(uid)
+            .map(|(_, session)| session.key())
     }
 
     pub fn transcript(&self, uid: &str) -> Result<crate::transcript::Transcript, String> {
-        let (index, session) = self.snapshot.lock().unwrap().get(uid).cloned().ok_or_else(not_found)?;
+        let (index, session) = self
+            .snapshot
+            .lock()
+            .unwrap()
+            .get(uid)
+            .cloned()
+            .ok_or_else(not_found)?;
         self.adapters[index]
             .transcript(&session)
             .map_err(|error| format!("Couldn't read {}: {error}", session.primary_file.display()))
@@ -275,11 +304,9 @@ impl Catalog {
     /// True when `path` is one of the files of a session in the current scan. Lets the UI
     /// reveal session files without being able to point at arbitrary paths.
     pub fn owns_path(&self, path: &std::path::Path) -> bool {
-        self.snapshot
-            .lock()
-            .unwrap()
-            .values()
-            .any(|(_, session)| session.primary_file == path || session.files.iter().any(|file| file == path))
+        self.snapshot.lock().unwrap().values().any(|(_, session)| {
+            session.primary_file == path || session.files.iter().any(|file| file == path)
+        })
     }
 
     /// Archives or unarchives each session with its agent's own command. Moved sessions
@@ -294,7 +321,9 @@ impl Catalog {
         uids.iter()
             .map(|uid| {
                 let outcome = match snapshot.get(uid) {
-                    None => ArchiveOutcome::Refused { reason: not_found() },
+                    None => ArchiveOutcome::Refused {
+                        reason: not_found(),
+                    },
                     Some((index, session)) => delete::toggle_archive(
                         self.adapters[*index].as_ref(),
                         session,
@@ -399,7 +428,8 @@ mod tests {
         fs::create_dir(&dir).unwrap();
         let file = dir.join("t_abc.jsonl");
         fs::write(&file, r#"{"type":"session","id":"abc"}"#).unwrap();
-        let old = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+        let old =
+            filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
         filetime::set_file_mtime(&file, old).unwrap();
         let catalog = Catalog::new(
             vec![Box::new(PiAdapter::new(root.path().to_path_buf()))],
@@ -465,7 +495,10 @@ mod tests {
         let scans = catalog.scan();
         let uid_of = |name: &str| uid(scans[0].sessions.iter().find(|s| s.id == name).unwrap());
 
-        assert_eq!(catalog.project_dir(&uid_of("t_a.jsonl")).unwrap(), project.path());
+        assert_eq!(
+            catalog.project_dir(&uid_of("t_a.jsonl")).unwrap(),
+            project.path()
+        );
         assert!(
             catalog
                 .project_dir(&uid_of("t_b.jsonl"))
@@ -491,10 +524,14 @@ mod tests {
             let path = day.join(format!("rollout-x-{}.jsonl", uuid(n)));
             fs::write(
                 &path,
-                format!(r#"{{"type":"session_meta","payload":{{"id":"{}"{extra}}}}}"#, uuid(n)),
+                format!(
+                    r#"{{"type":"session_meta","payload":{{"id":"{}"{extra}}}}}"#,
+                    uuid(n)
+                ),
             )
             .unwrap();
-            let old = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+            let old =
+                filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
             filetime::set_file_mtime(&path, old).unwrap();
         };
         let spawn = |parent: u8| {
@@ -508,7 +545,10 @@ mod tests {
         write(3, &spawn(2));
         write(
             4,
-            &format!(r#","parent_thread_id":"{}","thread_source":"guardian_review""#, uuid(1)),
+            &format!(
+                r#","parent_thread_id":"{}","thread_source":"guardian_review""#,
+                uuid(1)
+            ),
         );
         let catalog = Catalog::new(
             vec![Box::new(CodexAdapter::new(
@@ -540,10 +580,14 @@ mod tests {
             let path = day.join(format!("rollout-x-{}.jsonl", uuid(n)));
             fs::write(
                 &path,
-                format!(r#"{{"type":"session_meta","payload":{{"id":"{}"{extra}}}}}"#, uuid(n)),
+                format!(
+                    r#"{{"type":"session_meta","payload":{{"id":"{}"{extra}}}}}"#,
+                    uuid(n)
+                ),
             )
             .unwrap();
-            let old = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+            let old =
+                filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
             filetime::set_file_mtime(&path, old).unwrap();
         };
         let spawn = |parent: u8| {
@@ -588,7 +632,11 @@ mod tests {
         let dir = root.path().join("--p--");
         fs::create_dir(&dir).unwrap();
         for index in 0..5 {
-            fs::write(dir.join(format!("t_{index}.jsonl")), "x".repeat(1000 * (index + 1))).unwrap();
+            fs::write(
+                dir.join(format!("t_{index}.jsonl")),
+                "x".repeat(1000 * (index + 1)),
+            )
+            .unwrap();
         }
         let catalog = Catalog::new(
             vec![Box::new(PiAdapter::new(root.path().to_path_buf()))],
@@ -616,7 +664,9 @@ mod tests {
         let session = &scans[0].sessions[0];
         assert!(!catalog.can_archive(session));
         let outcome = catalog.toggle_archive(&[uid(session)], &NoopTrash, SystemTime::now());
-        assert!(matches!(&outcome[0].1, ArchiveOutcome::Refused { reason } if reason.contains("can't archive")));
+        assert!(
+            matches!(&outcome[0].1, ArchiveOutcome::Refused { reason } if reason.contains("can't archive"))
+        );
     }
 
     #[test]

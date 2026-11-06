@@ -105,7 +105,13 @@ impl TranscriptBuilder {
         });
     }
 
-    pub fn tool_call(&mut self, id: Option<&str>, name: &str, input: &str, timestamp: Option<DateTime<Utc>>) {
+    pub fn tool_call(
+        &mut self,
+        id: Option<&str>,
+        name: &str,
+        input: &str,
+        timestamp: Option<DateTime<Utc>>,
+    ) {
         let text = self.limit(input, MAX_TOOL_CHARS);
         let index = self.append(Message {
             role: Role::Tool,
@@ -123,7 +129,12 @@ impl TranscriptBuilder {
 
     /// Attaches `output` to the call with this id, or records it on its own when the call
     /// is unknown or was skipped.
-    pub fn tool_result(&mut self, id: Option<&str>, output: &str, timestamp: Option<DateTime<Utc>>) {
+    pub fn tool_result(
+        &mut self,
+        id: Option<&str>,
+        output: &str,
+        timestamp: Option<DateTime<Utc>>,
+    ) {
         let output = self.limit(output, MAX_TOOL_CHARS);
         let index = id.and_then(|id| self.calls.remove(id));
         if let Some(call) = index.and_then(|index| self.message_mut(index))
@@ -226,7 +237,10 @@ mod tests {
         assert_eq!(transcript.tail.len(), TAIL_MESSAGES);
         assert_eq!(transcript.omitted, 7);
         assert_eq!(transcript.head[0].text, "0");
-        assert_eq!(transcript.tail.last().unwrap().text, (total - 1).to_string());
+        assert_eq!(
+            transcript.tail.last().unwrap().text,
+            (total - 1).to_string()
+        );
     }
 
     #[test]
@@ -254,14 +268,26 @@ mod tests {
         builder.tool_result(Some("t"), &"x".repeat(MAX_TOOL_CHARS + 10), None);
         let transcript = builder.finish();
         assert!(transcript.shortened);
-        let output = transcript.head[0].tool.as_ref().unwrap().output.as_ref().unwrap();
+        let output = transcript.head[0]
+            .tool
+            .as_ref()
+            .unwrap()
+            .output
+            .as_ref()
+            .unwrap();
         assert_eq!(output.chars().count(), MAX_TOOL_CHARS + 2);
     }
 
     #[test]
     fn tool_text_helpers() {
         assert_eq!(tool_input_text(&json!("ls -la")), "ls -la");
-        assert_eq!(tool_input_text(&json!({"cmd": "ls"})), "{\n  \"cmd\": \"ls\"\n}");
-        assert_eq!(tool_output_text(&json!([{"type": "text", "text": "out"}])), "out");
+        assert_eq!(
+            tool_input_text(&json!({"cmd": "ls"})),
+            "{\n  \"cmd\": \"ls\"\n}"
+        );
+        assert_eq!(
+            tool_output_text(&json!([{"type": "text", "text": "out"}])),
+            "out"
+        );
     }
 }
