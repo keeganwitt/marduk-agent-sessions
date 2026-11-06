@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use super::cli::{Cli, CliOverrides};
 use super::{env_dir, home_dir};
-use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanResult};
+use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanProgress, ScanResult};
 use crate::jsonl;
 use crate::session::{Fingerprint, Session};
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
@@ -555,15 +555,21 @@ impl AgentAdapter for OpenCodeAdapter {
         vec![self.data_dir.clone()]
     }
 
-    fn scan(&self) -> ScanResult {
+    fn scan_with(&self, progress: &dyn ScanProgress) -> ScanResult {
         self.cli.refresh();
         let mut result = ScanResult::empty_complete();
         for db in self.databases() {
             if db.is_file() {
                 self.scan_database(&db, &mut result);
+                progress.advance(db.metadata().map(|meta| meta.len()).unwrap_or(0));
             }
         }
         result
+    }
+
+    fn estimate_scan_bytes(&self) -> u64 {
+        let databases: Vec<PathBuf> = self.databases().into_iter().filter(|db| db.is_file()).collect();
+        super::total_size(&databases)
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {

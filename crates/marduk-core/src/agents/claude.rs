@@ -5,21 +5,26 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
-use super::{env_dir, home_dir};
+use super::{env_dir, home_dir, jsonl_two_levels, total_size};
+use crate::adapter::ScanProgress;
 use crate::adapter::{AgentAdapter, DeletePlan, ScanResult};
+use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl;
+use crate::session::Fingerprint;
 use crate::session::Session;
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
 pub struct ClaudeAdapter {
     projects_dir: PathBuf,
+    cache: ParseCache<Fingerprint, Parsed>,
 }
 
 impl ClaudeAdapter {
     pub fn new(config_dir: PathBuf) -> Self {
         Self {
             projects_dir: config_dir.join("projects"),
+            cache: ParseCache::default(),
         }
     }
 
@@ -41,39 +46,21 @@ impl AgentAdapter for ClaudeAdapter {
         vec![self.projects_dir.clone()]
     }
 
-    fn scan(&self) -> ScanResult {
+    fn scan_with(&self, progress: &dyn ScanProgress) -> ScanResult {
         let mut result = ScanResult::empty_complete();
-        let projects = match fs::read_dir(&self.projects_dir) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return result,
-            Err(error) => {
-                result.record_error(format!("{}: {error}", self.projects_dir.display()));
-                return result;
-            }
-        };
-        for project in projects.flatten() {
-            let project_path = project.path();
-            if !project_path.is_dir() {
-                continue;
-            }
-            let entries = match fs::read_dir(&project_path) {
-                Ok(entries) => entries,
-                Err(error) => {
-                    result.record_error(format!("{}: {error}", project_path.display()));
-                    continue;
-                }
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "jsonl") && path.is_file() {
-                    match read_session(&path) {
-                        Ok(session) => result.sessions.push(session),
-                        Err(error) => result.record_error(format!("{}: {error}", path.display())),
-                    }
-                }
+        let files = jsonl_two_levels(&self.projects_dir, &mut result);
+        for path in &files {
+            match self.read_session(path, progress) {
+                Ok(session) => result.sessions.push(session),
+                Err(error) => result.record_error(format!("{}: {error}", path.display())),
             }
         }
+        self.cache.retain(&files.into_iter().collect());
         result
+    }
+
+    fn estimate_scan_bytes(&self) -> u64 {
+        total_size(&jsonl_two_levels(&self.projects_dir, &mut ScanResult::default()))
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {
@@ -168,7 +155,7 @@ struct Record<'a> {
     message: Option<&'a RawValue>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Parsed {
     cwd: Option<String>,
     custom_title: Option<String>,
@@ -220,16 +207,27 @@ fn user_prompt_text(message: &RawValue) -> Option<String> {
     }
 }
 
-fn read_session(path: &Path) -> std::io::Result<Session> {
+fn parse_file(path: &Path) -> std::io::Result<Parsed> {
     let mut parsed = Parsed::default();
     jsonl::for_each_line(path, |line| parse_line(&mut parsed, line))?;
+    Ok(parsed)
+}
 
-    let fingerprint = fs_util::fingerprint(path)?;
+impl ClaudeAdapter {
+    fn read_session(&self, path: &Path, progress: &dyn ScanProgress) -> std::io::Result<Session> {
+        let fingerprint = fs_util::fingerprint(path)?;
+        let parsed = self.cache.get_or_parse(path, fingerprint, || parse_file(path))?;
+        progress.advance(fingerprint.len);
+        Ok(session_from(path, parsed, fingerprint))
+    }
+}
+
+fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Session {
     let id = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
     let files = session_files(path, &id);
     let last_activity = parsed.span.last.unwrap_or_else(|| fingerprint.modified.into());
     let created = parsed.span.first.or_else(|| fs_util::created(path));
-    Ok(Session {
+    Session {
         agent: "claude",
         size_bytes: files.iter().map(|file| fs_util::path_size(file)).sum(),
         project_dir: parsed.cwd.clone(),
@@ -243,7 +241,7 @@ fn read_session(path: &Path) -> std::io::Result<Session> {
         fingerprint,
         parent_id: None,
         deleted_with_parent: false,
-    })
+    }
 }
 
 /// The transcript plus its sidecars: `<id>.*` files and the `<id>/` folder holding

@@ -8,10 +8,13 @@ use serde_json::Value;
 use serde_json::value::RawValue;
 
 use super::cli::{Cli, CliOverrides};
-use super::{env_dir, home_dir};
+use super::{env_dir, home_dir, total_size};
+use crate::adapter::ScanProgress;
 use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanResult};
+use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl;
+use crate::session::Fingerprint;
 use crate::session::Session;
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
@@ -20,6 +23,7 @@ use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 pub struct CodexAdapter {
     home: PathBuf,
     cli: Cli,
+    cache: ParseCache<Fingerprint, Parsed>,
 }
 
 const PROGRAM: &str = "codex";
@@ -30,6 +34,7 @@ impl CodexAdapter {
         Self {
             home,
             cli: Cli::fixed(PROGRAM, INSTALL_URL, cli),
+            cache: ParseCache::default(),
         }
     }
 
@@ -37,7 +42,33 @@ impl CodexAdapter {
         Self {
             home: env_dir("CODEX_HOME").unwrap_or_else(|| home_dir().join(".codex")),
             cli: Cli::detect("codex", PROGRAM, INSTALL_URL, overrides),
+            cache: ParseCache::default(),
         }
+    }
+
+    /// Every rollout with whether it's archived, plus how many compressed ones were skipped.
+    fn rollouts(&self, result: &mut ScanResult) -> (Vec<(PathBuf, bool)>, usize) {
+        let mut compressed = 0usize;
+        let mut rollouts = Vec::new();
+        for (root, archived) in [(self.sessions_dir(), false), (self.archive_dir(), true)] {
+            let mut files = Vec::new();
+            collect_rollouts(&root, &mut files, &mut compressed, result);
+            rollouts.extend(files.into_iter().map(|path| (path, archived)));
+        }
+        (rollouts, compressed)
+    }
+
+    fn read_session(
+        &self,
+        path: &Path,
+        archived: bool,
+        titles: &HashMap<String, String>,
+        progress: &dyn ScanProgress,
+    ) -> std::io::Result<Session> {
+        let fingerprint = fs_util::fingerprint(path)?;
+        let parsed = self.cache.get_or_parse(path, fingerprint, || parse_file(path))?;
+        progress.advance(fingerprint.len);
+        Ok(session_from(path, archived, titles, parsed, fingerprint))
     }
 
     fn sessions_dir(&self) -> PathBuf {
@@ -75,27 +106,29 @@ impl AgentAdapter for CodexAdapter {
         vec![self.sessions_dir(), self.archive_dir()]
     }
 
-    fn scan(&self) -> ScanResult {
+    fn scan_with(&self, progress: &dyn ScanProgress) -> ScanResult {
         self.cli.refresh();
         let mut result = ScanResult::empty_complete();
         let titles = read_thread_names(&self.home.join("session_index.jsonl"));
-        let mut compressed = 0usize;
-        for (root, archived) in [(self.sessions_dir(), false), (self.archive_dir(), true)] {
-            let mut files = Vec::new();
-            collect_rollouts(&root, &mut files, &mut compressed, &mut result);
-            for path in files {
-                match read_session(&path, archived, &titles) {
-                    Ok(session) => result.sessions.push(session),
-                    Err(error) => result.record_error(format!("{}: {error}", path.display())),
-                }
+        let (rollouts, compressed) = self.rollouts(&mut result);
+        for (path, archived) in &rollouts {
+            match self.read_session(path, *archived, &titles, progress) {
+                Ok(session) => result.sessions.push(session),
+                Err(error) => result.record_error(format!("{}: {error}", path.display())),
             }
         }
+        self.cache.retain(&rollouts.into_iter().map(|(path, _)| path).collect());
         if compressed > 0 {
             result.record_error(format!(
                 "{compressed} compressed rollouts (.jsonl.zst) were skipped; Marduk can't read them yet."
             ));
         }
         result
+    }
+
+    fn estimate_scan_bytes(&self) -> u64 {
+        let (rollouts, _) = self.rollouts(&mut ScanResult::default());
+        total_size(&rollouts.into_iter().map(|(path, _)| path).collect::<Vec<_>>())
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {
@@ -171,7 +204,7 @@ struct Record<'a> {
     payload: Option<&'a RawValue>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Parsed {
     id: Option<String>,
     parent_id: Option<String>,
@@ -322,17 +355,26 @@ fn id_from_file_name(path: &Path) -> String {
     }
 }
 
-fn read_session(path: &Path, archived: bool, titles: &HashMap<String, String>) -> std::io::Result<Session> {
+fn parse_file(path: &Path) -> std::io::Result<Parsed> {
     let mut parsed = Parsed::default();
     jsonl::for_each_line(path, |line| parse_line(&mut parsed, line))?;
-    let fingerprint = fs_util::fingerprint(path)?;
+    Ok(parsed)
+}
+
+fn session_from(
+    path: &Path,
+    archived: bool,
+    titles: &HashMap<String, String>,
+    parsed: Parsed,
+    fingerprint: Fingerprint,
+) -> Session {
     let id = parsed.id.unwrap_or_else(|| id_from_file_name(path));
     let indexed_name = titles.get(&id).filter(|name| !is_injected(name)).cloned();
     let title = [indexed_name, parsed.first_prompt]
         .into_iter()
         .flatten()
         .find_map(|text| jsonl::to_title(&text));
-    Ok(Session {
+    Session {
         agent: "codex",
         id,
         project_dir: parsed.cwd,
@@ -346,11 +388,13 @@ fn read_session(path: &Path, archived: bool, titles: &HashMap<String, String>) -
         fingerprint,
         parent_id: parsed.parent_id,
         deleted_with_parent: parsed.spawned,
-    })
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, SystemTime};
+
     use super::*;
 
     const ID: &str = "01a1b209-2d68-7e51-bd0c-2954bbab717e";
@@ -573,6 +617,34 @@ mod tests {
         let codex = adapter(home.path(), None);
         let session = codex.scan().sessions.remove(0);
         assert!(codex.transcript(&session).unwrap().note.is_none());
+    }
+
+    #[test]
+    fn rescans_reuse_unchanged_files_and_reread_changed_ones() {
+        let home = tempfile::tempdir().unwrap();
+        let path = home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl"));
+        let prompt = |text: &str| {
+            format!(
+                "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{ID}\"}}}}\n{{\"type\":\"event_msg\",\"payload\":{{\"type\":\"user_message\",\"message\":\"{text}\"}}}}"
+            )
+        };
+        write(&path, &prompt("first prompt"));
+        let stamp = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+        filetime::set_file_mtime(&path, stamp).unwrap();
+        let codex = adapter(home.path(), None);
+        let title = |codex: &CodexAdapter| codex.scan().sessions.remove(0).title;
+        assert_eq!(title(&codex).as_deref(), Some("first prompt"));
+
+        write(&path, &prompt("other prompt"));
+        filetime::set_file_mtime(&path, stamp).unwrap();
+        assert_eq!(
+            title(&codex).as_deref(),
+            Some("first prompt"),
+            "same size and mtime: the cached parse is reused"
+        );
+
+        write(&path, &prompt("a longer, changed prompt"));
+        assert_eq!(title(&codex).as_deref(), Some("a longer, changed prompt"));
     }
 
     #[test]

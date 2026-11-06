@@ -9,7 +9,13 @@ use marduk_core::catalog::Catalog;
 fn main() {
     let catalog = Catalog::new(marduk_core::default_adapters(Default::default()), RUNNING_WINDOW);
     let now = SystemTime::now();
-    for scan in catalog.scan() {
+    let started = std::time::Instant::now();
+    let scans = catalog.scan();
+    let first = started.elapsed();
+    let started = std::time::Instant::now();
+    catalog.scan();
+    println!("first scan {first:?}, rescan {:?}", started.elapsed());
+    for scan in scans {
         let bytes: u64 = scan.sessions.iter().map(|session| session.size_bytes).sum();
         let subagents = scan
             .sessions

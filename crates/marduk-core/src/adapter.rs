@@ -8,7 +8,16 @@ pub trait AgentAdapter: Send + Sync {
     fn display_name(&self) -> &'static str;
     /// Directories this agent's sessions live under. Deletes are confined to these.
     fn roots(&self) -> Vec<PathBuf>;
-    fn scan(&self) -> ScanResult;
+    /// Scans, reporting the bytes of each transcript as it's read.
+    fn scan_with(&self, progress: &dyn ScanProgress) -> ScanResult;
+    fn scan(&self) -> ScanResult {
+        self.scan_with(&NoProgress)
+    }
+    /// Bytes `scan_with` will report in total, found cheaply (listing files, not reading
+    /// them), so progress can be shown against a known total.
+    fn estimate_scan_bytes(&self) -> u64 {
+        0
+    }
     fn delete_plan(&self, session: &Session) -> DeletePlan;
     fn transcript(&self, session: &Session) -> std::io::Result<Transcript>;
     /// What "unchanged since the scan" and "still running" are judged by. File-based agents
@@ -45,6 +54,16 @@ impl AgentCommand {
             .collect::<Vec<_>>()
             .join(" ")
     }
+}
+
+pub trait ScanProgress: Sync {
+    fn advance(&self, bytes: u64);
+}
+
+pub struct NoProgress;
+
+impl ScanProgress for NoProgress {
+    fn advance(&self, _bytes: u64) {}
 }
 
 #[derive(Debug, Default)]

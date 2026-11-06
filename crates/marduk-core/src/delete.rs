@@ -226,7 +226,7 @@ mod tests {
         fn roots(&self) -> Vec<PathBuf> {
             vec![self.root.clone()]
         }
-        fn scan(&self) -> ScanResult {
+        fn scan_with(&self, _progress: &dyn crate::adapter::ScanProgress) -> ScanResult {
             ScanResult::empty_complete()
         }
         fn delete_plan(&self, _session: &Session) -> DeletePlan {

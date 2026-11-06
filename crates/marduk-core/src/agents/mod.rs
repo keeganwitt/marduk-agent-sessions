@@ -7,6 +7,45 @@ pub mod pi;
 
 use std::path::{Path, PathBuf};
 
+/// `<root>/<folder>/*.jsonl`, the layout Claude Code and Pi both use. A missing root is an
+/// agent that isn't installed; other read errors make the scan incomplete.
+pub(crate) fn jsonl_two_levels(root: &Path, result: &mut crate::adapter::ScanResult) -> Vec<PathBuf> {
+    let folders = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(error) => {
+            result.record_error(format!("{}: {error}", root.display()));
+            return Vec::new();
+        }
+    };
+    let mut files = Vec::new();
+    for folder in folders.flatten() {
+        let folder = folder.path();
+        if !folder.is_dir() {
+            continue;
+        }
+        match std::fs::read_dir(&folder) {
+            Ok(entries) => files.extend(
+                entries
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl") && path.is_file()),
+            ),
+            Err(error) => result.record_error(format!("{}: {error}", folder.display())),
+        }
+    }
+    files
+}
+
+/// Total size of `files`, for progress estimates.
+pub(crate) fn total_size(files: &[PathBuf]) -> u64 {
+    files
+        .iter()
+        .filter_map(|file| file.metadata().ok())
+        .map(|meta| meta.len())
+        .sum()
+}
+
 pub(crate) fn home_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
 }

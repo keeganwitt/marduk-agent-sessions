@@ -4,10 +4,13 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use super::{env_dir, home_dir};
+use super::{env_dir, home_dir, total_size};
+use crate::adapter::ScanProgress;
 use crate::adapter::{AgentAdapter, DeletePlan, ScanResult};
+use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl::{self, Span};
+use crate::session::Fingerprint;
 use crate::session::Session;
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
@@ -20,11 +23,38 @@ const INDEX_WARNING: &str =
 /// `events.jsonl` event log and a flat `workspace.yaml` with the name, summary and folders.
 pub struct CopilotAdapter {
     sessions_dir: PathBuf,
+    cache: ParseCache<Fingerprint, Parsed>,
 }
 
 impl CopilotAdapter {
     pub fn new(sessions_dir: PathBuf) -> Self {
-        Self { sessions_dir }
+        Self {
+            sessions_dir,
+            cache: ParseCache::default(),
+        }
+    }
+
+    /// Session folders that have an event log; failed starts can leave folders without one.
+    fn session_folders(&self, result: &mut ScanResult) -> Vec<PathBuf> {
+        match fs::read_dir(&self.sessions_dir) {
+            Ok(entries) => entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|dir| dir.is_dir() && dir.join("events.jsonl").is_file())
+                .collect(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(error) => {
+                result.record_error(format!("{}: {error}", self.sessions_dir.display()));
+                Vec::new()
+            }
+        }
+    }
+
+    fn read_session(&self, dir: &Path, events: &Path, progress: &dyn ScanProgress) -> std::io::Result<Session> {
+        let fingerprint = fs_util::fingerprint(events)?;
+        let parsed = self.cache.get_or_parse(events, fingerprint, || parse_events(events))?;
+        progress.advance(fingerprint.len);
+        Ok(session_from(dir, events, parsed, fingerprint))
     }
 
     pub fn from_env() -> Self {
@@ -46,28 +76,24 @@ impl AgentAdapter for CopilotAdapter {
         vec![self.sessions_dir.clone()]
     }
 
-    fn scan(&self) -> ScanResult {
+    fn scan_with(&self, progress: &dyn ScanProgress) -> ScanResult {
         let mut result = ScanResult::empty_complete();
-        let entries = match fs::read_dir(&self.sessions_dir) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return result,
-            Err(error) => {
-                result.record_error(format!("{}: {error}", self.sessions_dir.display()));
-                return result;
-            }
-        };
-        for entry in entries.flatten() {
-            let dir = entry.path();
+        let folders = self.session_folders(&mut result);
+        for dir in &folders {
             let events = dir.join("events.jsonl");
-            if !dir.is_dir() || !events.is_file() {
-                continue;
-            }
-            match read_session(&dir, &events) {
+            match self.read_session(dir, &events, progress) {
                 Ok(session) => result.sessions.push(session),
                 Err(error) => result.record_error(format!("{}: {error}", events.display())),
             }
         }
+        self.cache
+            .retain(&folders.iter().map(|dir| dir.join("events.jsonl")).collect());
         result
+    }
+
+    fn estimate_scan_bytes(&self) -> u64 {
+        let folders = self.session_folders(&mut ScanResult::default());
+        total_size(&folders.iter().map(|dir| dir.join("events.jsonl")).collect::<Vec<_>>())
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {
@@ -152,7 +178,7 @@ fn parse_workspace(text: &str) -> Workspace {
     workspace
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Parsed {
     session_id: Option<String>,
     start_cwd: Option<String>,
@@ -187,16 +213,19 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
     }
 }
 
-fn read_session(dir: &Path, events: &Path) -> std::io::Result<Session> {
+fn parse_events(events: &Path) -> std::io::Result<Parsed> {
     let mut parsed = Parsed::default();
     jsonl::for_each_line(events, |line| parse_line(&mut parsed, line))?;
+    Ok(parsed)
+}
+
+fn session_from(dir: &Path, events: &Path, mut parsed: Parsed, fingerprint: Fingerprint) -> Session {
     let workspace = fs::read_to_string(dir.join("workspace.yaml"))
         .map(|text| parse_workspace(&text))
         .unwrap_or_default();
     parsed
         .span
         .observe(workspace.updated_at.as_deref().and_then(jsonl::parse_timestamp));
-    let fingerprint = fs_util::fingerprint(events)?;
     let id = parsed
         .session_id
         .or(workspace.id)
@@ -211,7 +240,7 @@ fn read_session(dir: &Path, events: &Path) -> std::io::Result<Session> {
         .and_then(jsonl::parse_timestamp)
         .or(parsed.span.first)
         .or_else(|| fs_util::created(events));
-    Ok(Session {
+    Session {
         agent: "copilot",
         id,
         project_dir: workspace.cwd.or(workspace.git_root).or(parsed.start_cwd),
@@ -225,7 +254,7 @@ fn read_session(dir: &Path, events: &Path) -> std::io::Result<Session> {
         fingerprint,
         parent_id: None,
         deleted_with_parent: false,
-    })
+    }
 }
 
 /// Tool results are a string, a `{ content, detailedContent }` object, or content blocks.

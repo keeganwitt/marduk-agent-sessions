@@ -1,5 +1,6 @@
 pub mod adapter;
 pub mod agents;
+pub mod cache;
 pub mod catalog;
 pub mod delete;
 pub mod fs_util;
@@ -7,7 +8,7 @@ mod jsonl;
 pub mod session;
 pub mod transcript;
 
-pub use adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanResult};
+pub use adapter::{AgentAdapter, AgentCommand, DeletePlan, NoProgress, ScanProgress, ScanResult};
 pub use agents::cli::{CliInfo, CliOverrides};
 pub use delete::{ArchiveOutcome, DeleteBackend, DeleteOutcome, PlannedDelete, SystemBackend};
 pub use session::{Fingerprint, Session};
