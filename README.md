@@ -9,7 +9,7 @@ It scans the transcripts that coding agents keep on disk and shows them in one l
 | Agent | Location | Delete | Archive |
 |---|---|---|---|
 | Claude Code | `~/.claude/projects` (or `$CLAUDE_CONFIG_DIR/projects`) | Moves the transcript, its `<id>.*` sidecar files and its `<id>/` folder (subagents, tool results) to the Trash | — |
-| Codex | `~/.codex/sessions` and `~/.codex/archived_sessions` (or `$CODEX_HOME`) | **Permanent**, through `codex delete --force <id>`; needs the Codex CLI | `codex archive` / `codex unarchive` |
+| Codex | `~/.codex/sessions` and `~/.codex/archived_sessions` (or `$CODEX_HOME`) | **Permanent**, through `codex delete --force <id>`, which also deletes the subagent sessions it spawned (not its Guardian reviews); needs the Codex CLI | `codex archive` / `codex unarchive` |
 | GitHub Copilot CLI | `~/.copilot/session-state/<id>/` (or `$COPILOT_HOME/session-state`) | Moves the session folder to the Trash; Copilot's own delete is only an in-session slash command. Run `/chronicle reindex` in Copilot afterwards to update its search index | — (Copilot CLI has no archive) |
 | OpenCode | `~/.local/share/opencode/opencode*.db` (or `$XDG_DATA_HOME/opencode`, `$OPENCODE_DB`) | **Permanent**, through `opencode session delete <id>`, which also deletes the session's child sessions; needs the OpenCode CLI | Shows OpenCode's archived state; OpenCode has no archive command |
 | Kilo | `~/.local/share/kilo/kilo*.db` (or `$XDG_DATA_HOME/kilo`, `$KILO_DB`) | **Permanent**, through `kilo session delete <id>`, which also deletes child sessions; needs the Kilo CLI | Shows Kilo's archived state; Kilo has no archive command |

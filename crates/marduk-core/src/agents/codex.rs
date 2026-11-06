@@ -175,6 +175,8 @@ struct Record<'a> {
 struct Parsed {
     id: Option<String>,
     parent_id: Option<String>,
+    /// Spawned subagents are deleted with their parent; guardian reviews are not.
+    spawned: bool,
     cwd: Option<String>,
     first_prompt: Option<String>,
     span: jsonl::Span,
@@ -202,6 +204,7 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
                 parsed.id = meta["id"].as_str().map(str::to_string).or(parsed.id.take());
                 parsed.cwd = meta["cwd"].as_str().map(str::to_string).or(parsed.cwd.take());
                 parsed.parent_id = parent_thread(&meta).or(parsed.parent_id.take());
+                parsed.spawned |= meta["source"]["subagent"]["thread_spawn"].is_object();
                 parsed
                     .span
                     .observe(meta["timestamp"].as_str().and_then(jsonl::parse_timestamp));
@@ -342,6 +345,7 @@ fn read_session(path: &Path, archived: bool, titles: &HashMap<String, String>) -
         files: vec![path.to_path_buf()],
         fingerprint,
         parent_id: parsed.parent_id,
+        deleted_with_parent: parsed.spawned,
     })
 }
 
@@ -524,6 +528,9 @@ mod tests {
 
         assert_eq!(parent_of(guardian).as_deref(), Some("parent-1"));
         assert_eq!(parent_of(spawned).as_deref(), Some("parent-2"));
+        let cascades = |id: &str| sessions.iter().find(|s| s.id == id).unwrap().deleted_with_parent;
+        assert!(!cascades(guardian), "codex delete leaves guardian reviews behind");
+        assert!(cascades(spawned));
         assert_eq!(parent_of(ID), None);
     }
 

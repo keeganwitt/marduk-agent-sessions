@@ -120,11 +120,20 @@ impl Catalog {
                     session: None,
                     result: Err(not_found()),
                 },
-                Some((index, session)) => Preview {
-                    uid: uid.clone(),
-                    session: Some(session.clone()),
-                    result: delete::preflight(self.adapters[*index].as_ref(), session, now, self.running_window),
-                },
+                Some((index, session)) => {
+                    let adapter = self.adapters[*index].as_ref();
+                    let result = delete::preflight(adapter, session, now, self.running_window).map(|mut plan| {
+                        if plan.is_permanent() && plan.warning.is_none() {
+                            plan.warning = descendants_warning(&snapshot, session, adapter.display_name());
+                        }
+                        plan
+                    });
+                    Preview {
+                        uid: uid.clone(),
+                        session: Some(session.clone()),
+                        result,
+                    }
+                }
             })
             .collect()
     }
@@ -220,6 +229,36 @@ impl Catalog {
             })
             .collect()
     }
+}
+
+/// Sessions the agent's delete of `session` will also remove, counted from the scan
+/// (children, grandchildren, …) for agents whose adapter doesn't say so itself.
+fn descendants_warning(
+    snapshot: &HashMap<String, (usize, Session)>,
+    session: &Session,
+    agent_name: &str,
+) -> Option<String> {
+    let mut pending = vec![session.id.clone()];
+    let mut seen = std::collections::HashSet::from([session.id.clone()]);
+    let mut count = 0usize;
+    while let Some(parent) = pending.pop() {
+        for (_, child) in snapshot.values() {
+            if child.agent == session.agent
+                && child.deleted_with_parent
+                && child.parent_id.as_deref() == Some(parent.as_str())
+                && seen.insert(child.id.clone())
+            {
+                count += 1;
+                pending.push(child.id.clone());
+            }
+        }
+    }
+    (count > 0).then(|| {
+        format!(
+            "{agent_name} also deletes {count} subagent {} that this session started.",
+            if count == 1 { "session" } else { "sessions" }
+        )
+    })
 }
 
 fn not_found() -> String {
@@ -327,6 +366,55 @@ mod tests {
                 .project_dir("pi:/nope")
                 .unwrap_err()
                 .contains("not in the current scan")
+        );
+    }
+
+    #[test]
+    fn codex_delete_preview_counts_spawned_descendants_but_not_guardians() {
+        use crate::agents::codex::CodexAdapter;
+        let home = tempfile::tempdir().unwrap();
+        let day = home.path().join("sessions/2026/11/06");
+        fs::create_dir_all(&day).unwrap();
+        let uuid = |n: u8| format!("01a1b21a-26bc-7700-ae31-919e0387ce{n:02}");
+        let write = |n: u8, extra: &str| {
+            let path = day.join(format!("rollout-x-{}.jsonl", uuid(n)));
+            fs::write(
+                &path,
+                format!(r#"{{"type":"session_meta","payload":{{"id":"{}"{extra}}}}}"#, uuid(n)),
+            )
+            .unwrap();
+            let old = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+            filetime::set_file_mtime(&path, old).unwrap();
+        };
+        let spawn = |parent: u8| {
+            format!(
+                r#","source":{{"subagent":{{"thread_spawn":{{"parent_thread_id":"{}"}}}}}}"#,
+                uuid(parent)
+            )
+        };
+        write(1, "");
+        write(2, &spawn(1));
+        write(3, &spawn(2));
+        write(
+            4,
+            &format!(r#","parent_thread_id":"{}","thread_source":"guardian_review""#, uuid(1)),
+        );
+        let catalog = Catalog::new(
+            vec![Box::new(CodexAdapter::new(
+                home.path().to_path_buf(),
+                Some("/bin/codex".into()),
+            ))],
+            Duration::from_secs(60),
+        );
+        let scans = catalog.scan();
+        let parent = scans[0].sessions.iter().find(|s| s.id == uuid(1)).unwrap();
+
+        let preview = catalog.preview(&[uid(parent)], SystemTime::now());
+
+        let plan = preview[0].result.as_ref().unwrap();
+        assert_eq!(
+            plan.warning.as_deref(),
+            Some("Codex also deletes 2 subagent sessions that this session started.")
         );
     }
 

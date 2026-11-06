@@ -38,6 +38,8 @@ pub struct Session {
     pub fingerprint: Fingerprint,
     /// The session this one was spawned from, for agents that record subagent sessions.
     pub parent_id: Option<String>,
+    /// True when the agent's own delete of the parent also deletes this session.
+    pub deleted_with_parent: bool,
 }
 
 impl Session {

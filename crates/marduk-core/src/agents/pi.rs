@@ -238,6 +238,7 @@ fn read_session(path: &Path) -> std::io::Result<Session> {
         files: vec![path.to_path_buf()],
         fingerprint,
         parent_id: None,
+        deleted_with_parent: false,
     })
 }
 

@@ -242,6 +242,7 @@ fn read_session(path: &Path) -> std::io::Result<Session> {
         files,
         fingerprint,
         parent_id: None,
+        deleted_with_parent: false,
     })
 }
 

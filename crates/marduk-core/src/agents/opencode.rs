@@ -280,6 +280,7 @@ impl OpenCodeAdapter {
             primary_file: db.to_path_buf(),
             files: Vec::new(),
             fingerprint,
+            deleted_with_parent: row.parent_id.is_some(),
             parent_id: row.parent_id,
         }
     }

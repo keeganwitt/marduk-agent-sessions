@@ -282,6 +282,7 @@ mod tests {
             files: vec![path.to_path_buf()],
             fingerprint: fs_util::fingerprint(path).unwrap(),
             parent_id: None,
+            deleted_with_parent: false,
         }
     }
 
