@@ -112,11 +112,10 @@ pub(crate) fn is_executable(path: &Path) -> bool {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
     #[test]
     fn finds_executables_in_order_and_skips_non_executables() {
         use std::os::unix::fs::PermissionsExt;
