@@ -47,4 +47,6 @@ CI and releases run on GitHub Actions (`.github/workflows`). Binaries are unsign
 
 ## Checks before committing
 
-`pnpm typecheck && pnpm test && cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
+Formatting uses each tool's defaults (rustfmt, Prettier); `pnpm format` fixes TypeScript and CSS formatting.
+
+`pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`

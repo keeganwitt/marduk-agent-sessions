@@ -1,4 +1,9 @@
-import { ALL_AGENTS, type ArchiveFilter, type LabelFilter, type SessionFilter } from "../lib/filter";
+import {
+  ALL_AGENTS,
+  type ArchiveFilter,
+  type LabelFilter,
+  type SessionFilter,
+} from "../lib/filter";
 import type { AgentSummary, Label } from "../lib/types";
 
 interface Props {
@@ -23,7 +28,12 @@ export function Filters({ agents, labels, filter, onChange }: Props) {
     <div className="filters" role="search">
       <label>
         Agent
-        <select value={filter.agent} onChange={(event) => onChange({ ...filter, agent: event.target.value })}>
+        <select
+          value={filter.agent}
+          onChange={(event) =>
+            onChange({ ...filter, agent: event.target.value })
+          }
+        >
           <option value={ALL_AGENTS}>All agents</option>
           {agents.map((agent) => (
             <option key={agent.id} value={agent.id}>
@@ -36,7 +46,12 @@ export function Filters({ agents, labels, filter, onChange }: Props) {
         Status
         <select
           value={filter.archive}
-          onChange={(event) => onChange({ ...filter, archive: event.target.value as ArchiveFilter })}
+          onChange={(event) =>
+            onChange({
+              ...filter,
+              archive: event.target.value as ArchiveFilter,
+            })
+          }
         >
           <option value="all">Active and archived</option>
           <option value="active">Active</option>
@@ -47,7 +62,9 @@ export function Filters({ agents, labels, filter, onChange }: Props) {
         Label
         <select
           value={String(filter.label)}
-          onChange={(event) => onChange({ ...filter, label: parseLabelFilter(event.target.value) })}
+          onChange={(event) =>
+            onChange({ ...filter, label: parseLabelFilter(event.target.value) })
+          }
         >
           <option value="any">Any label</option>
           <option value="none">No label</option>
@@ -65,7 +82,12 @@ export function Filters({ agents, labels, filter, onChange }: Props) {
           min={0}
           inputMode="numeric"
           value={filter.olderThanDays ?? ""}
-          onChange={(event) => onChange({ ...filter, olderThanDays: parseOptionalNumber(event.target.value) })}
+          onChange={(event) =>
+            onChange({
+              ...filter,
+              olderThanDays: parseOptionalNumber(event.target.value),
+            })
+          }
         />
       </label>
       <label>
@@ -75,7 +97,12 @@ export function Filters({ agents, labels, filter, onChange }: Props) {
           min={0}
           step="any"
           value={filter.minSizeMb ?? ""}
-          onChange={(event) => onChange({ ...filter, minSizeMb: parseOptionalNumber(event.target.value) })}
+          onChange={(event) =>
+            onChange({
+              ...filter,
+              minSizeMb: parseOptionalNumber(event.target.value),
+            })
+          }
         />
       </label>
       <label className="grow">
@@ -84,7 +111,9 @@ export function Filters({ agents, labels, filter, onChange }: Props) {
           type="search"
           placeholder="Title or project folder"
           value={filter.query}
-          onChange={(event) => onChange({ ...filter, query: event.target.value })}
+          onChange={(event) =>
+            onChange({ ...filter, query: event.target.value })
+          }
         />
       </label>
     </div>

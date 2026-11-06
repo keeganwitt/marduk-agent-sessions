@@ -26,21 +26,33 @@ export const EMPTY_FILTER: SessionFilter = {
   query: "",
 };
 
-export function sessionMatcher(filter: SessionFilter, now: Date): (session: SessionRow) => boolean {
+export function sessionMatcher(
+  filter: SessionFilter,
+  now: Date,
+): (session: SessionRow) => boolean {
   const query = filter.query.trim().toLowerCase();
-  const minBytes = filter.minSizeMb === null ? null : filter.minSizeMb * 1024 * 1024;
+  const minBytes =
+    filter.minSizeMb === null ? null : filter.minSizeMb * 1024 * 1024;
   return (session) =>
-      (filter.agent === ALL_AGENTS || session.agent === filter.agent) &&
-      (filter.archive === "all" || session.archived === (filter.archive === "archived")) &&
-      (filter.label === "any" ||
-        (filter.label === "none" ? session.labelIds.length === 0 : session.labelIds.includes(filter.label))) &&
-      (filter.olderThanDays === null || ageInDays(session.lastActivity, now) >= filter.olderThanDays) &&
-      (minBytes === null || session.sizeBytes >= minBytes) &&
-      (query === "" ||
-        (session.title ?? "").toLowerCase().includes(query) ||
-        (session.projectDir ?? "").toLowerCase().includes(query));
+    (filter.agent === ALL_AGENTS || session.agent === filter.agent) &&
+    (filter.archive === "all" ||
+      session.archived === (filter.archive === "archived")) &&
+    (filter.label === "any" ||
+      (filter.label === "none"
+        ? session.labelIds.length === 0
+        : session.labelIds.includes(filter.label))) &&
+    (filter.olderThanDays === null ||
+      ageInDays(session.lastActivity, now) >= filter.olderThanDays) &&
+    (minBytes === null || session.sizeBytes >= minBytes) &&
+    (query === "" ||
+      (session.title ?? "").toLowerCase().includes(query) ||
+      (session.projectDir ?? "").toLowerCase().includes(query));
 }
 
-export function filterSessions(sessions: SessionRow[], filter: SessionFilter, now: Date): SessionRow[] {
+export function filterSessions(
+  sessions: SessionRow[],
+  filter: SessionFilter,
+  now: Date,
+): SessionRow[] {
   return sessions.filter(sessionMatcher(filter, now));
 }

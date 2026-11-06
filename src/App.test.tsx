@@ -34,18 +34,30 @@ function rowTitles(): string[] {
   return screen
     .getAllByRole("row")
     .slice(1)
-    .map((row) => (within(row).getAllByRole("cell")[1].textContent ?? "").trim());
+    .map((row) =>
+      (within(row).getAllByRole("cell")[1].textContent ?? "").trim(),
+    );
 }
 
 function scanOf(...sessions: SessionRow[]): ScanResponse {
   return {
-    agents: [{ id: "claude", name: "Claude Code", complete: true, errors: [], sessionCount: sessions.length }],
+    agents: [
+      {
+        id: "claude",
+        name: "Claude Code",
+        complete: true,
+        errors: [],
+        sessionCount: sessions.length,
+      },
+    ],
     sessions,
     homeDir: "/Users/me",
   };
 }
 
-function previewOf(overrides: Partial<PreviewItem> & { uid: string }): PreviewItem {
+function previewOf(
+  overrides: Partial<PreviewItem> & { uid: string },
+): PreviewItem {
   return {
     title: overrides.uid,
     agentName: "Claude Code",
@@ -72,41 +84,68 @@ describe("App", () => {
     vi.mocked(ipc.listLabels).mockResolvedValue([work]);
     vi.mocked(ipc.applyLabels).mockResolvedValue();
     scanSessions.mockResolvedValue(
-      scanOf(makeSession({ uid: "a", title: "Alpha" }), makeSession({ uid: "b", title: "Beta", labelIds: [1] })),
+      scanOf(
+        makeSession({ uid: "a", title: "Alpha" }),
+        makeSession({ uid: "b", title: "Beta", labelIds: [1] }),
+      ),
     );
 
     render(<App />);
-    expect(await screen.findByRole("button", { name: "Labels ▾" })).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: "Select all sessions shown" }));
+    expect(
+      await screen.findByRole("button", { name: "Labels ▾" }),
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select all sessions shown" }),
+    );
     await user.click(screen.getByRole("button", { name: "Labels ▾" }));
 
     const menu = screen.getByRole("dialog", { name: "Labels" });
-    const workBox = within(menu).getByRole("checkbox", { name: "Work" }) as HTMLInputElement;
+    const workBox = within(menu).getByRole("checkbox", {
+      name: "Work",
+    }) as HTMLInputElement;
     expect(workBox.indeterminate).toBe(true);
     await user.click(workBox);
     await user.click(within(menu).getByRole("button", { name: "Apply" }));
 
     expect(ipc.applyLabels).toHaveBeenCalledWith(["a", "b"], [1], []);
-    expect(screen.getAllByText("Work", { selector: ".label-chip" })).toHaveLength(2);
+    expect(
+      screen.getAllByText("Work", { selector: ".label-chip" }),
+    ).toHaveLength(2);
 
     await user.selectOptions(screen.getByLabelText("Label"), "none");
-    expect(screen.getByText("No sessions match these filters.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No sessions match these filters."),
+    ).toBeInTheDocument();
   });
 
   it("creates a label from the menu and checks it", async () => {
     const user = userEvent.setup();
-    vi.mocked(ipc.createLabel).mockResolvedValue({ id: 9, name: "Keep", color: "red", count: 0 });
+    vi.mocked(ipc.createLabel).mockResolvedValue({
+      id: 9,
+      name: "Keep",
+      color: "red",
+      count: 0,
+    });
     vi.mocked(ipc.applyLabels).mockResolvedValue();
-    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "a", title: "Alpha" })));
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "a", title: "Alpha" })),
+    );
 
     render(<App />);
-    await user.click(await screen.findByRole("checkbox", { name: "Select Alpha" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Alpha" }),
+    );
     await user.click(screen.getByRole("button", { name: "Labels ▾" }));
-    await user.type(screen.getByPlaceholderText("Find or create a label"), "Keep");
+    await user.type(
+      screen.getByPlaceholderText("Find or create a label"),
+      "Keep",
+    );
     await user.click(screen.getByRole("button", { name: "Create “Keep”" }));
 
     expect(ipc.createLabel).toHaveBeenCalledWith("Keep", expect.any(String));
-    const keep = screen.getByRole("checkbox", { name: "Keep" }) as HTMLInputElement;
+    const keep = screen.getByRole("checkbox", {
+      name: "Keep",
+    }) as HTMLInputElement;
     expect(keep.checked).toBe(true);
     await user.click(screen.getByRole("button", { name: "Apply" }));
     expect(ipc.applyLabels).toHaveBeenCalledWith(["a"], [9], []);
@@ -118,45 +157,74 @@ describe("App", () => {
 
     render(<App />);
 
-    await vi.waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
+    await vi.waitFor(() =>
+      expect(document.documentElement.dataset.theme).toBe("light"),
+    );
   });
 
   it("previews and trashes selected sessions, then removes them from the list", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
-      scanOf(makeSession({ uid: "u1", title: "Old work" }), makeSession({ uid: "u2", title: "Other work" })),
+      scanOf(
+        makeSession({ uid: "u1", title: "Old work" }),
+        makeSession({ uid: "u2", title: "Other work" }),
+      ),
     );
-    previewDelete.mockResolvedValue([previewOf({ uid: "u1", title: "Old work", files: ["/p/u1.jsonl", "/p/u1"] })]);
-    deleteSessions.mockResolvedValue([{ status: "trashed", uid: "u1", files: ["/p/u1.jsonl", "/p/u1"] }]);
+    previewDelete.mockResolvedValue([
+      previewOf({
+        uid: "u1",
+        title: "Old work",
+        files: ["/p/u1.jsonl", "/p/u1"],
+      }),
+    ]);
+    deleteSessions.mockResolvedValue([
+      { status: "trashed", uid: "u1", files: ["/p/u1.jsonl", "/p/u1"] },
+    ]);
 
     render(<App />);
-    await user.click(await screen.findByRole("checkbox", { name: "Select Old work" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Old work" }),
+    );
     await user.click(screen.getByRole("button", { name: /Delete 1/ }));
 
     const dialog = await screen.findByRole("dialog");
     expect(previewDelete).toHaveBeenCalledWith(["u1"]);
-    expect(within(dialog).getByText(/Move 1 session to the Trash\?/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/Move 1 session to the Trash\?/),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText("u1.jsonl")).toBeInTheDocument();
     expect(within(dialog).getByText("/p")).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: "Move to Trash" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Move to Trash" }),
+    );
 
     expect(deleteSessions).toHaveBeenCalledWith(["u1"]);
-    expect(await screen.findByText(/Moved 1 session to the Trash/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Moved 1 session to the Trash/),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Old work")).not.toBeInTheDocument();
     expect(screen.getByText("Other work")).toBeInTheDocument();
   });
 
   it("reveals a file from the confirmation dialog", async () => {
     const user = userEvent.setup();
-    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "u1", title: "Old work" })));
-    previewDelete.mockResolvedValue([previewOf({ uid: "u1", files: ["/p/u1.jsonl", "/p/u1"] })]);
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "u1", title: "Old work" })),
+    );
+    previewDelete.mockResolvedValue([
+      previewOf({ uid: "u1", files: ["/p/u1.jsonl", "/p/u1"] }),
+    ]);
     revealSessionFile.mockResolvedValue();
 
     render(<App />);
-    await user.click(await screen.findByRole("checkbox", { name: "Select Old work" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Old work" }),
+    );
     await user.click(screen.getByRole("button", { name: /Delete 1/ }));
     const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getAllByRole("button", { name: "Show in folder" })[1]);
+    await user.click(
+      within(dialog).getAllByRole("button", { name: "Show in folder" })[1],
+    );
 
     expect(revealSessionFile).toHaveBeenCalledWith("/p/u1");
     expect(deleteSessions).not.toHaveBeenCalled();
@@ -165,34 +233,70 @@ describe("App", () => {
   it("warns clearly when a delete is permanent", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
-      scanOf(makeSession({ uid: "c1", title: "Codex thread", agent: "codex", permanentDelete: true })),
+      scanOf(
+        makeSession({
+          uid: "c1",
+          title: "Codex thread",
+          agent: "codex",
+          permanentDelete: true,
+        }),
+      ),
     );
     previewDelete.mockResolvedValue([
-      previewOf({ uid: "c1", title: "Codex thread", permanent: true, command: "codex delete --force c1" }),
+      previewOf({
+        uid: "c1",
+        title: "Codex thread",
+        permanent: true,
+        command: "codex delete --force c1",
+      }),
     ]);
     deleteSessions.mockResolvedValue([
-      { status: "deleted", uid: "c1", files: ["/p/c1.jsonl"], command: "codex delete --force c1" },
+      {
+        status: "deleted",
+        uid: "c1",
+        files: ["/p/c1.jsonl"],
+        command: "codex delete --force c1",
+      },
     ]);
 
     render(<App />);
-    await user.click(await screen.findByRole("checkbox", { name: "Select Codex thread" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Codex thread" }),
+    );
     await user.click(screen.getByRole("button", { name: /Delete 1/ }));
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/Delete 1 session\?/)).toBeInTheDocument();
-    expect(within(dialog).getByRole("alert")).toHaveTextContent(/permanently deleted/);
-    expect(within(dialog).getByText("codex delete --force c1")).toBeInTheDocument();
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      /permanently deleted/,
+    );
+    expect(
+      within(dialog).getByText("codex delete --force c1"),
+    ).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
-    expect(await screen.findByText(/Permanently deleted 1 session/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Permanently deleted 1 session/),
+    ).toBeInTheDocument();
   });
 
   it("shows OpenCode's child-session warning and rescans after an agent delete", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
       scanOf(
-        makeSession({ uid: "o1", id: "ses_parent", title: "Parent", agent: "opencode", permanentDelete: true }),
-        makeSession({ uid: "o2", title: "Child", agent: "opencode", parentId: "ses_parent" }),
+        makeSession({
+          uid: "o1",
+          id: "ses_parent",
+          title: "Parent",
+          agent: "opencode",
+          permanentDelete: true,
+        }),
+        makeSession({
+          uid: "o2",
+          title: "Child",
+          agent: "opencode",
+          parentId: "ses_parent",
+        }),
       ),
     );
     previewDelete.mockResolvedValue([
@@ -205,34 +309,59 @@ describe("App", () => {
         warning: "OpenCode also deletes this session's 1 child session.",
       }),
     ]);
-    deleteSessions.mockResolvedValue([{ status: "deleted", uid: "o1", files: [], command: "opencode session delete ses_parent" }]);
+    deleteSessions.mockResolvedValue([
+      {
+        status: "deleted",
+        uid: "o1",
+        files: [],
+        command: "opencode session delete ses_parent",
+      },
+    ]);
 
     render(<App />);
     expect(await screen.findByText("Parent")).toBeInTheDocument();
     expect(screen.queryByText("Child")).not.toBeInTheDocument();
     expect(screen.getByText("1 subagent")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Show 1 subagent session of Parent" }));
-    expect(screen.getByText("Child").closest("td")).toHaveStyle({ paddingLeft: "28px" });
+    await user.click(
+      screen.getByRole("button", { name: "Show 1 subagent session of Parent" }),
+    );
+    expect(screen.getByText("Child").closest("td")).toHaveStyle({
+      paddingLeft: "28px",
+    });
     expect(screen.queryByText("Subagent")).not.toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "Select Parent" }));
     await user.click(screen.getByRole("button", { name: /Delete 1/ }));
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/also deletes this session's 1 child session/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/also deletes this session's 1 child session/),
+    ).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
-    expect(await screen.findByText(/Permanently deleted 1 session/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Permanently deleted 1 session/),
+    ).toBeInTheDocument();
     expect(scanSessions).toHaveBeenCalledTimes(2);
   });
 
   it("explains database-backed sessions in the files view", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
-      scanOf(makeSession({ uid: "o1", title: "DB session", agentName: "OpenCode", files: [], database: "/data/opencode.db" })),
+      scanOf(
+        makeSession({
+          uid: "o1",
+          title: "DB session",
+          agentName: "OpenCode",
+          files: [],
+          database: "/data/opencode.db",
+        }),
+      ),
     );
 
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Show files for DB session" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Show files for DB session" }),
+    );
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/one shared database/)).toBeInTheDocument();
@@ -244,31 +373,60 @@ describe("App", () => {
     scanSessions.mockResolvedValue(
       scanOf(
         makeSession({ uid: "r", title: "Live", running: true }),
-        makeSession({ uid: "ro", title: "Locked", readOnlyReason: "Needs the agent's CLI" }),
+        makeSession({
+          uid: "ro",
+          title: "Locked",
+          readOnlyReason: "Needs the agent's CLI",
+        }),
       ),
     );
 
     render(<App />);
 
-    expect(await screen.findByRole("checkbox", { name: "Select Live" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "Select Locked" })).toBeDisabled();
+    expect(
+      await screen.findByRole("checkbox", { name: "Select Live" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("checkbox", { name: "Select Locked" }),
+    ).toBeDisabled();
     expect(screen.getByText("Running")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Select all sessions shown" })).toBeDisabled();
+    expect(
+      screen.getByRole("checkbox", { name: "Select all sessions shown" }),
+    ).toBeDisabled();
   });
 
   it("archives and unarchives through the agent, then rescans", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
       scanOf(
-        makeSession({ uid: "a", title: "Active", agent: "codex", canArchive: true }),
-        makeSession({ uid: "z", title: "Stored", agent: "codex", canArchive: true, archived: true }),
+        makeSession({
+          uid: "a",
+          title: "Active",
+          agent: "codex",
+          canArchive: true,
+        }),
+        makeSession({
+          uid: "z",
+          title: "Stored",
+          agent: "codex",
+          canArchive: true,
+          archived: true,
+        }),
       ),
     );
-    toggleArchive.mockResolvedValue([{ status: "done", uid: "a", archived: true, command: "codex archive a" }]);
+    toggleArchive.mockResolvedValue([
+      { status: "done", uid: "a", archived: true, command: "codex archive a" },
+    ]);
 
     render(<App />);
-    await user.click(await screen.findByRole("checkbox", { name: "Select all sessions shown" }));
-    expect(screen.getByRole("button", { name: "Unarchive 1" })).toBeInTheDocument();
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: "Select all sessions shown",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Unarchive 1" }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Archive 1" }));
 
     expect(toggleArchive).toHaveBeenCalledWith(["a"]);
@@ -278,21 +436,43 @@ describe("App", () => {
 
   it("shows sessions the backend refused and only confirms the rest", async () => {
     const user = userEvent.setup();
-    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "a", title: "A" }), makeSession({ uid: "b", title: "B" })));
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "a", title: "A" }),
+        makeSession({ uid: "b", title: "B" }),
+      ),
+    );
     previewDelete.mockResolvedValue([
       previewOf({ uid: "a", title: "A" }),
-      previewOf({ uid: "b", title: "B", files: [], refusedReason: "The session changed since it was scanned." }),
+      previewOf({
+        uid: "b",
+        title: "B",
+        files: [],
+        refusedReason: "The session changed since it was scanned.",
+      }),
     ]);
-    deleteSessions.mockResolvedValue([{ status: "trashed", uid: "a", files: ["/a"] }]);
+    deleteSessions.mockResolvedValue([
+      { status: "trashed", uid: "a", files: ["/a"] },
+    ]);
 
     render(<App />);
-    await user.click(await screen.findByRole("checkbox", { name: "Select all sessions shown" }));
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: "Select all sessions shown",
+      }),
+    );
     await user.click(screen.getByRole("button", { name: /Delete 2/ }));
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/Move 1 session to the Trash/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/changed since it was scanned/)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: "Move to Trash" }));
+    expect(
+      within(dialog).getByText(/Move 1 session to the Trash/),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/changed since it was scanned/),
+    ).toBeInTheDocument();
+    await user.click(
+      within(dialog).getByRole("button", { name: "Move to Trash" }),
+    );
 
     expect(deleteSessions).toHaveBeenCalledWith(["a"]);
   });
@@ -308,21 +488,31 @@ describe("App", () => {
     );
 
     render(<App />);
-    const sessionHeader = await screen.findByRole("button", { name: /^Session/ });
+    const sessionHeader = await screen.findByRole("button", {
+      name: /^Session/,
+    });
     expect(rowTitles()).toEqual(["Beta", "alpha", "Gamma"]);
-    expect(screen.getByRole("columnheader", { name: /Last activity/ })).toHaveAttribute("aria-sort", "descending");
+    expect(
+      screen.getByRole("columnheader", { name: /Last activity/ }),
+    ).toHaveAttribute("aria-sort", "descending");
 
     await user.click(sessionHeader);
     expect(rowTitles()).toEqual(["alpha", "Beta", "Gamma"]);
-    expect(screen.getByRole("columnheader", { name: /Session/ })).toHaveAttribute("aria-sort", "ascending");
+    expect(
+      screen.getByRole("columnheader", { name: /Session/ }),
+    ).toHaveAttribute("aria-sort", "ascending");
 
     await user.click(sessionHeader);
     expect(rowTitles()).toEqual(["Gamma", "Beta", "alpha"]);
 
     await user.click(sessionHeader);
     expect(rowTitles()).toEqual(["Beta", "alpha", "Gamma"]);
-    expect(screen.getByRole("columnheader", { name: /Session/ })).toHaveAttribute("aria-sort", "none");
-    expect(screen.getByRole("columnheader", { name: /Last activity/ })).toHaveAttribute("aria-sort", "descending");
+    expect(
+      screen.getByRole("columnheader", { name: /Session/ }),
+    ).toHaveAttribute("aria-sort", "none");
+    expect(
+      screen.getByRole("columnheader", { name: /Last activity/ }),
+    ).toHaveAttribute("aria-sort", "descending");
 
     await user.click(screen.getByRole("button", { name: /^Size/ }));
     expect(rowTitles()).toEqual(["alpha", "Gamma", "Beta"]);
@@ -331,7 +521,13 @@ describe("App", () => {
   it("shows a session's files without starting a delete", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
-      scanOf(makeSession({ uid: "u1", title: "Old work", files: ["/p/u1.jsonl", "/p/u1"] })),
+      scanOf(
+        makeSession({
+          uid: "u1",
+          title: "Old work",
+          files: ["/p/u1.jsonl", "/p/u1"],
+        }),
+      ),
     );
     revealSessionFile.mockResolvedValue();
     vi.mocked(ipc.fileDetails).mockResolvedValue([
@@ -340,13 +536,20 @@ describe("App", () => {
     ]);
 
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Show files for Old work" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Show files for Old work" }),
+    );
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("u1.jsonl")).toBeInTheDocument();
     expect(await within(dialog).findByText("1.5 KB")).toBeInTheDocument();
     expect(within(dialog).getByText("u1/")).toBeInTheDocument();
-    expect(within(dialog).getByText("u1.jsonl").closest("li")).toHaveAttribute("title", "/p/u1.jsonl");
-    await user.click(within(dialog).getAllByRole("button", { name: "Show in folder" })[0]);
+    expect(within(dialog).getByText("u1.jsonl").closest("li")).toHaveAttribute(
+      "title",
+      "/p/u1.jsonl",
+    );
+    await user.click(
+      within(dialog).getAllByRole("button", { name: "Show in folder" })[0],
+    );
     expect(revealSessionFile).toHaveBeenCalledWith("/p/u1.jsonl");
 
     await user.keyboard("{Escape}");
@@ -356,9 +559,18 @@ describe("App", () => {
 
   it("opens a session's transcript from its title", async () => {
     const user = userEvent.setup();
-    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "u1", title: "Mystery session" })));
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "u1", title: "Mystery session" })),
+    );
     loadTranscript.mockResolvedValue({
-      head: [{ role: "user", text: "Explain the flaky test", timestamp: null, tool: null }],
+      head: [
+        {
+          role: "user",
+          text: "Explain the flaky test",
+          timestamp: null,
+          tool: null,
+        },
+      ],
       omitted: 0,
       tail: [],
       shortened: false,
@@ -366,41 +578,71 @@ describe("App", () => {
     });
 
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Mystery session" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Mystery session" }),
+    );
 
     expect(loadTranscript).toHaveBeenCalledWith("u1");
-    expect(await screen.findByText("Explain the flaky test")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Explain the flaky test"),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Close transcript" }));
-    expect(screen.queryByText("Explain the flaky test")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Explain the flaky test"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows project folders relative to home", async () => {
-    scanSessions.mockResolvedValue(scanOf(makeSession({ projectDir: "/Users/me/Documents/Projects/team/api" })));
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ projectDir: "/Users/me/Documents/Projects/team/api" }),
+      ),
+    );
 
     render(<App />);
 
-    const button = await screen.findByRole("button", { name: "Open project folder /Users/me/Documents/Projects/team/api" });
+    const button = await screen.findByRole("button", {
+      name: "Open project folder /Users/me/Documents/Projects/team/api",
+    });
     expect(button).toHaveTextContent("~/…/team/api");
   });
 
   it("opens the project folder from the table", async () => {
     const user = userEvent.setup();
-    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "u1", projectDir: "/work/app" })));
-    openProjectDir.mockRejectedValue("The project folder /work/app no longer exists.");
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "u1", projectDir: "/work/app" })),
+    );
+    openProjectDir.mockRejectedValue(
+      "The project folder /work/app no longer exists.",
+    );
 
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Open project folder /work/app" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Open project folder /work/app",
+      }),
+    );
 
     expect(openProjectDir).toHaveBeenCalledWith("u1");
-    expect(await screen.findByRole("alert")).toHaveTextContent("no longer exists");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "no longer exists",
+    );
   });
 
   it("filters to old sessions", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
       scanOf(
-        makeSession({ uid: "old", title: "Ancient", lastActivity: "2020-01-01T00:00:00Z" }),
-        makeSession({ uid: "new", title: "Fresh", lastActivity: new Date().toISOString() }),
+        makeSession({
+          uid: "old",
+          title: "Ancient",
+          lastActivity: "2020-01-01T00:00:00Z",
+        }),
+        makeSession({
+          uid: "new",
+          title: "Fresh",
+          lastActivity: new Date().toISOString(),
+        }),
       ),
     );
 
@@ -413,23 +655,53 @@ describe("App", () => {
 
   it("warns when an agent's scan was incomplete and shows scan errors", async () => {
     scanSessions.mockResolvedValue({
-      agents: [{ id: "pi", name: "Pi", complete: false, errors: ["/x: permission denied"], sessionCount: 0 }],
+      agents: [
+        {
+          id: "pi",
+          name: "Pi",
+          complete: false,
+          errors: ["/x: permission denied"],
+          sessionCount: 0,
+        },
+      ],
       sessions: [],
       homeDir: "/Users/me",
     });
 
     render(<App />);
 
-    expect(await screen.findByText(/Some Pi sessions couldn't be read: \/x: permission denied/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        /Some Pi sessions couldn't be read: \/x: permission denied/,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("nests subagents under their parent and shows orphans at the top level", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
       scanOf(
-        makeSession({ uid: "p", id: "p", agent: "codex", title: "Main thread" }),
-        makeSession({ uid: "g", id: "g", agent: "codex", title: "Guardian review", parentId: "p" }),
-        makeSession({ uid: "o", id: "o", agent: "codex", title: "Lost review", parentId: "gone", parentMissing: true }),
+        makeSession({
+          uid: "p",
+          id: "p",
+          agent: "codex",
+          title: "Main thread",
+        }),
+        makeSession({
+          uid: "g",
+          id: "g",
+          agent: "codex",
+          title: "Guardian review",
+          parentId: "p",
+        }),
+        makeSession({
+          uid: "o",
+          id: "o",
+          agent: "codex",
+          title: "Lost review",
+          parentId: "gone",
+          parentMissing: true,
+        }),
       ),
     );
 
@@ -440,23 +712,46 @@ describe("App", () => {
     expect(screen.getByText("Lost review")).toBeInTheDocument();
     expect(screen.getByText("Parent deleted")).toBeInTheDocument();
 
-    const expander = screen.getByRole("button", { name: "Show 1 subagent session of Main thread" });
+    const expander = screen.getByRole("button", {
+      name: "Show 1 subagent session of Main thread",
+    });
     await user.click(expander);
     expect(screen.getByText("Guardian review")).toBeInTheDocument();
     expect(expander).toHaveAttribute("aria-expanded", "true");
 
-    await user.click(screen.getByRole("checkbox", { name: "Select all sessions shown" }));
-    expect(screen.getByRole("button", { name: /Delete 3/ })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Hide 1 subagent session of Main thread" }));
-    expect(screen.getByRole("button", { name: /Delete 2/ })).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select all sessions shown" }),
+    );
+    expect(
+      screen.getByRole("button", { name: /Delete 3/ }),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Hide 1 subagent session of Main thread",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: /Delete 2/ }),
+    ).toBeInTheDocument();
   });
 
   it("shows a parent, dimmed and opened, when only its subagent matches the search", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
       scanOf(
-        makeSession({ uid: "p", id: "p", title: "Main thread", projectDir: "/a" }),
-        makeSession({ uid: "c", id: "c", title: "Needle review", parentId: "p", projectDir: "/a" }),
+        makeSession({
+          uid: "p",
+          id: "p",
+          title: "Main thread",
+          projectDir: "/a",
+        }),
+        makeSession({
+          uid: "c",
+          id: "c",
+          title: "Needle review",
+          parentId: "p",
+          projectDir: "/a",
+        }),
       ),
     );
 
@@ -464,7 +759,9 @@ describe("App", () => {
     await user.type(await screen.findByLabelText("Search"), "needle");
 
     expect(screen.getByText("Needle review")).toBeInTheDocument();
-    expect(screen.getByText("Main thread").closest("tr")).toHaveClass("context-row");
+    expect(screen.getByText("Main thread").closest("tr")).toHaveClass(
+      "context-row",
+    );
     expect(screen.getByText(/1 of 2 sessions/)).toBeInTheDocument();
   });
 
@@ -481,17 +778,26 @@ describe("App", () => {
     );
 
     render(<App />);
-    await user.click(await screen.findByRole("checkbox", { name: "Select Two" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Two" }),
+    );
     await user.keyboard("{Shift>}");
     await user.click(screen.getByRole("checkbox", { name: "Select Four" }));
     await user.keyboard("{/Shift}");
 
     const checked = () =>
       ["One", "Two", "Three", "Four", "Five"].filter(
-        (name) => (screen.getByRole("checkbox", { name: `Select ${name}` }) as HTMLInputElement).checked,
+        (name) =>
+          (
+            screen.getByRole("checkbox", {
+              name: `Select ${name}`,
+            }) as HTMLInputElement
+          ).checked,
       );
     expect(checked()).toEqual(["Two", "Four"]);
-    expect(screen.getByRole("button", { name: /Delete 2/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Delete 2/ }),
+    ).toBeInTheDocument();
 
     await user.keyboard("{Shift>}");
     await user.click(screen.getByRole("checkbox", { name: "Select One" }));
@@ -507,30 +813,42 @@ describe("App", () => {
   it("hides and shows columns from the Columns menu and remembers the choice", async () => {
     const user = userEvent.setup();
     localStorage.clear();
-    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "a", title: "Alpha", agentName: "Codex" })));
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "a", title: "Alpha", agentName: "Codex" })),
+    );
 
     const { unmount } = render(<App />);
-    expect(await screen.findByRole("columnheader", { name: /Agent/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("columnheader", { name: /Agent/ }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Columns ▾" }));
     await user.click(screen.getByRole("checkbox", { name: "Agent" }));
 
-    expect(screen.queryByRole("columnheader", { name: /Agent/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: /Agent/ }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Codex")).not.toBeInTheDocument();
     unmount();
 
     render(<App />);
     await screen.findByText("Alpha");
-    expect(screen.queryByRole("columnheader", { name: /Agent/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: /Agent/ }),
+    ).not.toBeInTheDocument();
     localStorage.clear();
   });
 
   it("resizes columns by dragging or with the arrow keys, and resets on double-click", async () => {
     const user = userEvent.setup();
     localStorage.clear();
-    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "a", title: "Alpha" })));
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "a", title: "Alpha" })),
+    );
 
     render(<App />);
-    const handle = await screen.findByRole("separator", { name: "Resize Project column" });
+    const handle = await screen.findByRole("separator", {
+      name: "Resize Project column",
+    });
     const width = () => Number(handle.getAttribute("aria-valuenow"));
     const initial = width();
 
@@ -542,7 +860,9 @@ describe("App", () => {
     fireEvent.pointerMove(window, { clientX: 150 });
     fireEvent.pointerUp(window);
     expect(width()).toBe(initial + 82);
-    expect(JSON.parse(localStorage.getItem("marduk.columns")!).widths.project).toBe(initial + 82);
+    expect(
+      JSON.parse(localStorage.getItem("marduk.columns")!).widths.project,
+    ).toBe(initial + 82);
 
     await user.dblClick(handle);
     expect(width()).toBe(initial);
@@ -552,7 +872,9 @@ describe("App", () => {
   it("shows a centered spinner while scanning, over the table on rescans", async () => {
     const user = userEvent.setup();
     let finish: (value: ScanResponse) => void = () => {};
-    scanSessions.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    scanSessions.mockReturnValueOnce(
+      new Promise((resolve) => (finish = resolve)),
+    );
 
     render(<App />);
 
@@ -561,7 +883,9 @@ describe("App", () => {
     expect(await screen.findByText("Loaded")).toBeInTheDocument();
     expect(screen.queryByText("Scanning sessions…")).not.toBeInTheDocument();
 
-    scanSessions.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    scanSessions.mockReturnValueOnce(
+      new Promise((resolve) => (finish = resolve)),
+    );
     await user.click(screen.getByRole("button", { name: "Rescan" }));
     expect(screen.getByText("Scanning sessions…")).toBeInTheDocument();
     expect(screen.getByText("Loaded")).toBeInTheDocument();
@@ -571,7 +895,11 @@ describe("App", () => {
   });
 
   it("shows a progress bar with the agent being scanned once progress arrives", async () => {
-    let report: (progress: { done: number; total: number; agent: string }) => void = () => {};
+    let report: (progress: {
+      done: number;
+      total: number;
+      agent: string;
+    }) => void = () => {};
     let finish: (value: ScanResponse) => void = () => {};
     scanSessions.mockImplementationOnce((onProgress) => {
       report = onProgress!;
@@ -583,7 +911,9 @@ describe("App", () => {
 
     act(() => report({ done: 50, total: 200, agent: "Codex" }));
 
-    expect(screen.getByRole("progressbar", { name: "Scan progress" })).toHaveAttribute("value", "25");
+    expect(
+      screen.getByRole("progressbar", { name: "Scan progress" }),
+    ).toHaveAttribute("value", "25");
     expect(screen.getByText(/Scanning Codex… 25%/)).toBeInTheDocument();
     finish(scanOf(makeSession({ uid: "u1", title: "Loaded" })));
     expect(await screen.findByText("Loaded")).toBeInTheDocument();

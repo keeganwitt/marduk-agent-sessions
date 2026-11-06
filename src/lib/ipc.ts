@@ -1,8 +1,20 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { Theme } from "./theme";
-import type { ArchiveResult, CliStatus, DeleteResult, FileDetail, Label, PreviewItem, ScanProgress, ScanResponse, Transcript } from "./types";
+import type {
+  ArchiveResult,
+  CliStatus,
+  DeleteResult,
+  FileDetail,
+  Label,
+  PreviewItem,
+  ScanProgress,
+  ScanResponse,
+  Transcript,
+} from "./types";
 
-export function scanSessions(onProgress: (progress: ScanProgress) => void = () => {}): Promise<ScanResponse> {
+export function scanSessions(
+  onProgress: (progress: ScanProgress) => void = () => {},
+): Promise<ScanResponse> {
   const channel = new Channel<ScanProgress>();
   channel.onmessage = onProgress;
   return invoke("scan_sessions", { onProgress: channel });
@@ -36,7 +48,10 @@ export function cliStatuses(): Promise<CliStatus[]> {
   return invoke("cli_statuses");
 }
 
-export function setCliPath(agent: string, path: string | null): Promise<CliStatus[]> {
+export function setCliPath(
+  agent: string,
+  path: string | null,
+): Promise<CliStatus[]> {
   return invoke("set_cli_path", { agent, path });
 }
 
@@ -56,7 +71,11 @@ export function createLabel(name: string, color: string): Promise<Label> {
   return invoke("create_label", { name, color });
 }
 
-export function updateLabel(id: number, name: string, color: string): Promise<void> {
+export function updateLabel(
+  id: number,
+  name: string,
+  color: string,
+): Promise<void> {
   return invoke("update_label", { id, name, color });
 }
 
@@ -64,7 +83,11 @@ export function deleteLabel(id: number): Promise<void> {
   return invoke("delete_label", { id });
 }
 
-export function applyLabels(uids: string[], add: number[], remove: number[]): Promise<void> {
+export function applyLabels(
+  uids: string[],
+  add: number[],
+  remove: number[],
+): Promise<void> {
   return invoke("apply_labels", { uids, add, remove });
 }
 

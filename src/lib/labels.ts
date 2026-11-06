@@ -2,7 +2,10 @@ import type { Label } from "./types";
 
 /** Must match `labels::COLORS` in marduk-core. Fills are solid so labels never look like the
  * tinted status badges; text colors are chosen for contrast on each fill. */
-export const LABEL_COLORS: Record<string, { fill: string; text: string; name: string }> = {
+export const LABEL_COLORS: Record<
+  string,
+  { fill: string; text: string; name: string }
+> = {
   gray: { fill: "#5f6368", text: "#ffffff", name: "Gray" },
   red: { fill: "#d93025", text: "#ffffff", name: "Red" },
   orange: { fill: "#e8710a", text: "#ffffff", name: "Orange" },
@@ -16,7 +19,10 @@ export const LABEL_COLORS: Record<string, { fill: string; text: string; name: st
 
 export const COLOR_NAMES = Object.keys(LABEL_COLORS);
 
-export function labelStyle(color: string): { background: string; color: string } {
+export function labelStyle(color: string): {
+  background: string;
+  color: string;
+} {
   const palette = LABEL_COLORS[color] ?? LABEL_COLORS.gray;
   return { background: palette.fill, color: palette.text };
 }
@@ -29,8 +35,13 @@ export function nextColor(labels: Label[]): string {
 export type LabelState = "all" | "some" | "none";
 
 /** Whether all, some or none of `sessions` have the label, for the tri-state menu checkboxes. */
-export function labelState(labelId: number, sessions: { labelIds: number[] }[]): LabelState {
-  const count = sessions.filter((session) => session.labelIds.includes(labelId)).length;
+export function labelState(
+  labelId: number,
+  sessions: { labelIds: number[] }[],
+): LabelState {
+  const count = sessions.filter((session) =>
+    session.labelIds.includes(labelId),
+  ).length;
   if (count === 0) return "none";
   return count === sessions.length ? "all" : "some";
 }

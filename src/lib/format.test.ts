@@ -37,8 +37,16 @@ describe("shortenPath", () => {
     ["/Users/me/work/app", "/Users/me", "~/work/app"],
     ["/Users/me", "/Users/me", "~"],
     ["/Users/me/a/b/c", "/Users/me", "~/a/b/c"],
-    ["/Users/me/Documents/Projects/sec-eng/service-account-manager-rest", "/Users/me", "~/…/sec-eng/service-account-manager-rest"],
-    ["/Users/me/Documents/Codex/2026-11-06/did-x20", "/Users/me/", "~/…/2026-11-06/did-x20"],
+    [
+      "/Users/me/Documents/Projects/sec-eng/service-account-manager-rest",
+      "/Users/me",
+      "~/…/sec-eng/service-account-manager-rest",
+    ],
+    [
+      "/Users/me/Documents/Codex/2026-11-06/did-x20",
+      "/Users/me/",
+      "~/…/2026-11-06/did-x20",
+    ],
     ["/Users/meow/x", "/Users/me", "/Users/meow/x"],
     ["/opt/a/b/c/d", "/Users/me", "/…/c/d"],
     ["/opt/a/b", "/Users/me", "/opt/a/b"],

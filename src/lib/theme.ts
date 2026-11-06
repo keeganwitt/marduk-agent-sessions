@@ -7,7 +7,9 @@ export const THEMES: readonly Theme[] = ["system", "light", "dark"];
 const CACHE_KEY = "marduk.theme";
 
 export function isTheme(value: unknown): value is Theme {
-  return typeof value === "string" && (THEMES as readonly string[]).includes(value);
+  return (
+    typeof value === "string" && (THEMES as readonly string[]).includes(value)
+  );
 }
 
 /** The last applied theme, so it can be set before the first render without a flash. */

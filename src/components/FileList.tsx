@@ -13,12 +13,26 @@ interface Props {
 function FileIcon({ folder }: { folder: boolean }) {
   return folder ? (
     <svg className="file-icon" viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M1.5 3.5h4.2l1.5 1.5h7.3v8h-13z" fill="currentColor" opacity="0.85" />
+      <path
+        d="M1.5 3.5h4.2l1.5 1.5h7.3v8h-13z"
+        fill="currentColor"
+        opacity="0.85"
+      />
     </svg>
   ) : (
     <svg className="file-icon" viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3.5 1.5h6l3 3v10h-9z" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M9.5 1.5v3h3" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M3.5 1.5h6l3 3v10h-9z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M9.5 1.5v3h3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
     </svg>
   );
 }
@@ -29,17 +43,20 @@ function FileIcon({ folder }: { folder: boolean }) {
  */
 export function FileList({ paths, homeDir, onReveal }: Props) {
   const [details, setDetails] = useState<Map<string, FileDetail>>(new Map());
+  const pathsKey = paths.join("\n");
 
   useEffect(() => {
     let cancelled = false;
-    fileDetails(paths).then(
-      (found) => !cancelled && setDetails(new Map(found.map((detail) => [detail.path, detail]))),
+    fileDetails(pathsKey === "" ? [] : pathsKey.split("\n")).then(
+      (found) =>
+        !cancelled &&
+        setDetails(new Map(found.map((detail) => [detail.path, detail]))),
       () => {},
     );
     return () => {
       cancelled = true;
     };
-  }, [paths.join("\n")]);
+  }, [pathsKey]);
 
   if (paths.length === 0) return null;
   const folder = sharedFolder(paths);
@@ -63,10 +80,22 @@ export function FileList({ paths, homeDir, onReveal }: Props) {
                   {name}
                   {detail?.isDir && "/"}
                 </span>
-                {folder === null && <span className="file-dir">{shortenPath(dir, homeDir)}</span>}
+                {folder === null && (
+                  <span className="file-dir">{shortenPath(dir, homeDir)}</span>
+                )}
               </span>
-              <span className="file-size">{detail ? (detail.exists ? formatBytes(detail.sizeBytes) : "missing") : ""}</span>
-              <button type="button" className="link" onClick={() => onReveal(path)}>
+              <span className="file-size">
+                {detail
+                  ? detail.exists
+                    ? formatBytes(detail.sizeBytes)
+                    : "missing"
+                  : ""}
+              </span>
+              <button
+                type="button"
+                className="link"
+                onClick={() => onReveal(path)}
+              >
                 Show in folder
               </button>
             </li>

@@ -14,7 +14,14 @@ function plural(count: number, word: string): string {
   return `${count} ${count === 1 ? word : `${word}s`}`;
 }
 
-export function DeleteDialog({ items, busy, onConfirm, onCancel, onReveal, homeDir }: Props) {
+export function DeleteDialog({
+  items,
+  busy,
+  onConfirm,
+  onCancel,
+  onReveal,
+  homeDir,
+}: Props) {
   const ready = items.filter((item) => item.refusedReason === null);
   const refused = items.filter((item) => item.refusedReason !== null);
   const toTrash = ready.filter((item) => !item.permanent);
@@ -26,15 +33,24 @@ export function DeleteDialog({ items, busy, onConfirm, onCancel, onReveal, homeD
 
   return (
     <div className="overlay">
-      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+      <div
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-title"
+      >
         <h2 id="delete-title">{title}</h2>
         {toTrash.length > 0 && (
-          <p>{plural(toTrash.length, "session")} will be moved to the system Trash. You can restore them from there.</p>
+          <p>
+            {plural(toTrash.length, "session")} will be moved to the system
+            Trash. You can restore them from there.
+          </p>
         )}
         {permanent.length > 0 && (
           <p className="permanent-warning" role="alert">
-            {plural(permanent.length, "session")} will be <strong>permanently deleted</strong> by the agent's own
-            command and can't be restored.
+            {plural(permanent.length, "session")} will be{" "}
+            <strong>permanently deleted</strong> by the agent's own command and
+            can't be restored.
           </p>
         )}
         {ready.length > 0 && (
@@ -43,12 +59,22 @@ export function DeleteDialog({ items, busy, onConfirm, onCancel, onReveal, homeD
               <li key={item.uid}>
                 <div className="preview-title">
                   <strong>{item.title ?? item.uid}</strong>
-                  {item.agentName && <span className="muted"> · {item.agentName}</span>}
-                  {item.permanent && <span className="badge danger">Permanent</span>}
+                  {item.agentName && (
+                    <span className="muted"> · {item.agentName}</span>
+                  )}
+                  {item.permanent && (
+                    <span className="badge danger">Permanent</span>
+                  )}
                 </div>
-                {item.command && <code className="command">{item.command}</code>}
+                {item.command && (
+                  <code className="command">{item.command}</code>
+                )}
                 {item.warning && <p className="item-warning">{item.warning}</p>}
-                <FileList paths={item.files} homeDir={homeDir} onReveal={onReveal} />
+                <FileList
+                  paths={item.files}
+                  homeDir={homeDir}
+                  onReveal={onReveal}
+                />
               </li>
             ))}
           </ul>
@@ -59,7 +85,8 @@ export function DeleteDialog({ items, busy, onConfirm, onCancel, onReveal, homeD
             <ul>
               {refused.map((item) => (
                 <li key={item.uid}>
-                  <strong>{item.title ?? item.uid}</strong>: {item.refusedReason}
+                  <strong>{item.title ?? item.uid}</strong>:{" "}
+                  {item.refusedReason}
                 </li>
               ))}
             </ul>
@@ -75,7 +102,11 @@ export function DeleteDialog({ items, busy, onConfirm, onCancel, onReveal, homeD
             onClick={() => onConfirm(ready.map((item) => item.uid))}
             disabled={busy || ready.length === 0}
           >
-            {busy ? "Working…" : permanent.length > 0 ? "Delete" : "Move to Trash"}
+            {busy
+              ? "Working…"
+              : permanent.length > 0
+                ? "Delete"
+                : "Move to Trash"}
           </button>
         </div>
       </div>

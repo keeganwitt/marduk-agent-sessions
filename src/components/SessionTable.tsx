@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import {
   COLUMNS,
   columnWidth,
@@ -34,21 +40,36 @@ interface Props {
   onColumnsChange: Dispatch<SetStateAction<ColumnPrefs>>;
 }
 
-function StatusBadges({ session, nested }: { session: SessionRow; nested: boolean }) {
+function StatusBadges({
+  session,
+  nested,
+}: {
+  session: SessionRow;
+  nested: boolean;
+}) {
   return (
     <>
       {session.running && (
-        <span className="badge running" title="Written to in the last few minutes, so it can't be changed.">
+        <span
+          className="badge running"
+          title="Written to in the last few minutes, so it can't be changed."
+        >
           Running
         </span>
       )}
       {session.parentId && session.parentMissing && (
-        <span className="badge warn" title={`Started by session ${session.parentId}, which no longer exists`}>
+        <span
+          className="badge warn"
+          title={`Started by session ${session.parentId}, which no longer exists`}
+        >
           Parent deleted
         </span>
       )}
       {session.parentId && !session.parentMissing && !nested && (
-        <span className="badge muted" title={`Started by session ${session.parentId}`}>
+        <span
+          className="badge muted"
+          title={`Started by session ${session.parentId}`}
+        >
           Subagent
         </span>
       )}
@@ -77,7 +98,11 @@ function SortableHeader({
 }) {
   const direction = sort?.key === sortKey ? sort.direction : null;
   return (
-    <button type="button" className={numeric ? "sort num" : "sort"} onClick={() => onSort(sortKey)}>
+    <button
+      type="button"
+      className={numeric ? "sort num" : "sort"}
+      onClick={() => onSort(sortKey)}
+    >
       {label}
       <span className="sort-indicator" aria-hidden="true">
         {direction === "asc" ? "▲" : direction === "desc" ? "▼" : ""}
@@ -86,7 +111,10 @@ function SortableHeader({
   );
 }
 
-function ariaSortFor(sort: SortState | null, key: SortKey | null): "ascending" | "descending" | "none" | undefined {
+function ariaSortFor(
+  sort: SortState | null,
+  key: SortKey | null,
+): "ascending" | "descending" | "none" | undefined {
   if (key === null) return undefined;
   if (sort?.key !== key) return "none";
   return sort.direction === "asc" ? "ascending" : "descending";
@@ -120,7 +148,8 @@ function ResizeHandle({
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
       if (!drag.current) return;
-      const next = drag.current.startWidth + event.clientX - drag.current.startX;
+      const next =
+        drag.current.startWidth + event.clientX - drag.current.startX;
       onColumnsChange((prefs) => resize(prefs, column.id, next));
     };
     const onUp = () => {
@@ -150,9 +179,16 @@ function ResizeHandle({
         drag.current = { startX: event.clientX, startWidth: width };
         document.body.classList.add("resizing-column");
       }}
-      onDoubleClick={() => onColumnsChange((prefs) => resize(prefs, column.id, null))}
+      onDoubleClick={() =>
+        onColumnsChange((prefs) => resize(prefs, column.id, null))
+      }
       onKeyDown={(event) => {
-        const step = event.key === "ArrowRight" ? KEYBOARD_STEP : event.key === "ArrowLeft" ? -KEYBOARD_STEP : 0;
+        const step =
+          event.key === "ArrowRight"
+            ? KEYBOARD_STEP
+            : event.key === "ArrowLeft"
+              ? -KEYBOARD_STEP
+              : 0;
         if (step === 0) return;
         event.preventDefault();
         onColumnsChange((prefs) => resize(prefs, column.id, width + step));
@@ -161,7 +197,13 @@ function ResizeHandle({
   );
 }
 
-export function ColumnsMenu({ columns, onColumnsChange }: { columns: ColumnPrefs; onColumnsChange: Dispatch<SetStateAction<ColumnPrefs>> }) {
+export function ColumnsMenu({
+  columns,
+  onColumnsChange,
+}: {
+  columns: ColumnPrefs;
+  onColumnsChange: Dispatch<SetStateAction<ColumnPrefs>>;
+}) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
 
@@ -183,7 +225,12 @@ export function ColumnsMenu({ columns, onColumnsChange }: { columns: ColumnPrefs
 
   return (
     <div className="menu-anchor columns-anchor" ref={anchor}>
-      <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
         Columns ▾
       </button>
       {open && (
@@ -193,7 +240,11 @@ export function ColumnsMenu({ columns, onColumnsChange }: { columns: ColumnPrefs
               <input
                 type="checkbox"
                 checked={!columns.hidden.includes(column.id)}
-                onChange={(event) => onColumnsChange((prefs) => setHidden(prefs, column.id, !event.target.checked))}
+                onChange={(event) =>
+                  onColumnsChange((prefs) =>
+                    setHidden(prefs, column.id, !event.target.checked),
+                  )
+                }
               />
               {column.label}
             </label>
@@ -238,10 +289,17 @@ export function SessionTable(props: Props) {
     columns,
     onColumnsChange,
   } = props;
-  const selectable = rows.map((row) => row.session).filter(isSelectable).map((session) => session.uid);
-  const allSelected = selectable.length > 0 && selectable.every((uid) => selected.has(uid));
+  const selectable = rows
+    .map((row) => row.session)
+    .filter(isSelectable)
+    .map((session) => session.uid);
+  const allSelected =
+    selectable.length > 0 && selectable.every((uid) => selected.has(uid));
   const shown = visibleColumns(columns);
-  const tableWidth = CHECK_WIDTH + ACTIONS_WIDTH + shown.reduce((total, column) => total + columnWidth(columns, column), 0);
+  const tableWidth =
+    CHECK_WIDTH +
+    ACTIONS_WIDTH +
+    shown.reduce((total, column) => total + columnWidth(columns, column), 0);
 
   if (rows.length === 0) {
     return <p className="empty">No sessions match these filters.</p>;
@@ -253,7 +311,11 @@ export function SessionTable(props: Props) {
     switch (column.id) {
       case "session":
         return (
-          <td key={column.id} className="title" style={{ paddingLeft: 10 + depth * 18 }}>
+          <td
+            key={column.id}
+            className="title"
+            style={{ paddingLeft: 10 + depth * 18 }}
+          >
             {childCount > 0 ? (
               <button
                 type="button"
@@ -294,7 +356,12 @@ export function SessionTable(props: Props) {
           <td
             key={column.id}
             className="labels"
-            title={session.labelIds.map((id) => labelsById.get(id)?.name).filter(Boolean).join(", ") || undefined}
+            title={
+              session.labelIds
+                .map((id) => labelsById.get(id)?.name)
+                .filter(Boolean)
+                .join(", ") || undefined
+            }
           >
             <LabelChips ids={session.labelIds} labelsById={labelsById} />
           </td>
@@ -326,7 +393,9 @@ export function SessionTable(props: Props) {
       case "created":
         return <DateCell key={column.id} value={session.created} now={now} />;
       case "lastActivity":
-        return <DateCell key={column.id} value={session.lastActivity} now={now} />;
+        return (
+          <DateCell key={column.id} value={session.lastActivity} now={now} />
+        );
       case "size":
         return (
           <td key={column.id} className="num">
@@ -341,7 +410,10 @@ export function SessionTable(props: Props) {
       <colgroup>
         <col style={{ width: CHECK_WIDTH }} />
         {shown.map((column) => (
-          <col key={column.id} style={{ width: columnWidth(columns, column) }} />
+          <col
+            key={column.id}
+            style={{ width: columnWidth(columns, column) }}
+          />
         ))}
         <col style={{ width: ACTIONS_WIDTH }} />
       </colgroup>
@@ -366,11 +438,21 @@ export function SessionTable(props: Props) {
                 aria-label={sortKey ? undefined : column.label}
               >
                 {sortKey ? (
-                  <SortableHeader label={column.label} sortKey={sortKey} sort={sort} onSort={onSort} numeric={column.numeric} />
+                  <SortableHeader
+                    label={column.label}
+                    sortKey={sortKey}
+                    sort={sort}
+                    onSort={onSort}
+                    numeric={column.numeric}
+                  />
                 ) : (
                   <span className="header-label">{column.label}</span>
                 )}
-                <ResizeHandle column={column} width={columnWidth(columns, column)} onColumnsChange={onColumnsChange} />
+                <ResizeHandle
+                  column={column}
+                  width={columnWidth(columns, column)}
+                  onColumnsChange={onColumnsChange}
+                />
               </th>
             );
           })}
@@ -383,7 +465,12 @@ export function SessionTable(props: Props) {
         {rows.map((row) => {
           const { session, matched } = row;
           const label = session.title ?? session.id;
-          const classes = [selected.has(session.uid) && "selected", !matched && "context-row"].filter(Boolean).join(" ");
+          const classes = [
+            selected.has(session.uid) && "selected",
+            !matched && "context-row",
+          ]
+            .filter(Boolean)
+            .join(" ");
           return (
             <tr key={session.uid} className={classes || undefined}>
               <td className="check">
@@ -394,13 +481,21 @@ export function SessionTable(props: Props) {
                   disabled={!isSelectable(session)}
                   onChange={(event) => {
                     const native = event.nativeEvent;
-                    onToggle(session.uid, "shiftKey" in native && Boolean(native.shiftKey));
+                    onToggle(
+                      session.uid,
+                      "shiftKey" in native && Boolean(native.shiftKey),
+                    );
                   }}
                 />
               </td>
               {shown.map((column) => cell(column, row))}
               <td className="actions-col">
-                <button type="button" className="link" aria-label={`Show files for ${label}`} onClick={() => onShowFiles(session)}>
+                <button
+                  type="button"
+                  className="link"
+                  aria-label={`Show files for ${label}`}
+                  onClick={() => onShowFiles(session)}
+                >
                   Files
                 </button>
               </td>

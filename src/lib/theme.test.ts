@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTheme, cachedTheme, isTheme } from "./theme";
 
 const setTheme = vi.fn(() => Promise.resolve());
-vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ setTheme }) }));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ setTheme }),
+}));
 
 describe("theme", () => {
   beforeEach(() => {

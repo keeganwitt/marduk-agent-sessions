@@ -14,12 +14,24 @@ interface Props {
  * Gmail-style label menu for the selected sessions: each label's checkbox starts checked,
  * unchecked or partly checked, and only labels the user changes are applied.
  */
-export function LabelMenu({ labels, selected, onApply, onCreate, onClose }: Props) {
+export function LabelMenu({
+  labels,
+  selected,
+  onApply,
+  onCreate,
+  onClose,
+}: Props) {
   const initial = useMemo(
-    () => new Map(labels.map((label) => [label.id, labelState(label.id, selected)])),
+    () =>
+      new Map(
+        labels.map((label) => [label.id, labelState(label.id, selected)]),
+      ),
     [labels, selected],
   );
-  const [states, setStates] = useState<Map<number, LabelState>>(initial);
+  /** Only the labels the user changed; everything else keeps its initial state. */
+  const [changes, setChanges] = useState<Map<number, LabelState>>(new Map());
+  const stateOf = (id: number): LabelState =>
+    changes.get(id) ?? initial.get(id) ?? "none";
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null);
 
@@ -32,33 +44,37 @@ export function LabelMenu({ labels, selected, onApply, onCreate, onClose }: Prop
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  useEffect(() => {
-    setStates((current) => {
-      const next = new Map(initial);
-      for (const [id, state] of current) if (next.has(id)) next.set(id, state);
-      return next;
-    });
-  }, [initial]);
-
   const trimmed = query.trim();
-  const shown = labels.filter((label) => label.name.toLowerCase().includes(trimmed.toLowerCase()));
-  const exists = labels.some((label) => label.name.toLowerCase() === trimmed.toLowerCase());
-  const changed = labels.filter((label) => states.get(label.id) !== initial.get(label.id));
+  const shown = labels.filter((label) =>
+    label.name.toLowerCase().includes(trimmed.toLowerCase()),
+  );
+  const exists = labels.some(
+    (label) => label.name.toLowerCase() === trimmed.toLowerCase(),
+  );
+  const changed = labels.filter(
+    (label) => stateOf(label.id) !== (initial.get(label.id) ?? "none"),
+  );
 
   const toggle = (id: number) =>
-    setStates((current) => new Map(current).set(id, current.get(id) === "all" ? "none" : "all"));
+    setChanges((current) =>
+      new Map(current).set(id, stateOf(id) === "all" ? "none" : "all"),
+    );
 
   const create = async () => {
     const label = await onCreate(trimmed);
     if (label) {
-      setStates((current) => new Map(current).set(label.id, "all"));
+      setChanges((current) => new Map(current).set(label.id, "all"));
       setQuery("");
     }
   };
 
   const apply = () => {
-    const add = changed.filter((label) => states.get(label.id) === "all").map((label) => label.id);
-    const remove = changed.filter((label) => states.get(label.id) === "none").map((label) => label.id);
+    const add = changed
+      .filter((label) => stateOf(label.id) === "all")
+      .map((label) => label.id);
+    const remove = changed
+      .filter((label) => stateOf(label.id) === "none")
+      .map((label) => label.id);
     onApply(add, remove);
   };
 
@@ -76,7 +92,7 @@ export function LabelMenu({ labels, selected, onApply, onCreate, onClose }: Prop
       />
       <ul>
         {shown.map((label) => {
-          const state = states.get(label.id) ?? "none";
+          const state = stateOf(label.id);
           return (
             <li key={label.id}>
               <label>
@@ -88,16 +104,26 @@ export function LabelMenu({ labels, selected, onApply, onCreate, onClose }: Prop
                   }}
                   onChange={() => toggle(label.id)}
                 />
-                <span className="swatch" style={labelStyle(label.color)} aria-hidden="true" />
+                <span
+                  className="swatch"
+                  style={labelStyle(label.color)}
+                  aria-hidden="true"
+                />
                 {label.name}
               </label>
             </li>
           );
         })}
-        {shown.length === 0 && !trimmed && <li className="muted">No labels yet. Type a name to create one.</li>}
+        {shown.length === 0 && !trimmed && (
+          <li className="muted">No labels yet. Type a name to create one.</li>
+        )}
       </ul>
       {trimmed && !exists && (
-        <button type="button" className="link create" onClick={() => void create()}>
+        <button
+          type="button"
+          className="link create"
+          onClick={() => void create()}
+        >
           Create “{trimmed}”
         </button>
       )}

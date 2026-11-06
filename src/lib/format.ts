@@ -13,7 +13,10 @@ export function formatBytes(bytes: number): string {
 }
 
 export function ageInDays(isoTimestamp: string, now: Date): number {
-  return Math.max(0, (now.getTime() - new Date(isoTimestamp).getTime()) / DAY_MS);
+  return Math.max(
+    0,
+    (now.getTime() - new Date(isoTimestamp).getTime()) / DAY_MS,
+  );
 }
 
 export function formatAge(isoTimestamp: string, now: Date): string {
@@ -33,9 +36,14 @@ export function formatAge(isoTimestamp: string, now: Date): string {
  */
 export function shortenPath(path: string, homeDir: string): string {
   const home = homeDir.replace(/[\\/]+$/, "");
-  const inHome = home !== "" && (path === home || path.startsWith(`${home}/`) || path.startsWith(`${home}\\`));
+  const inHome =
+    home !== "" &&
+    (path === home ||
+      path.startsWith(`${home}/`) ||
+      path.startsWith(`${home}\\`));
   const display = inHome ? `~${path.slice(home.length)}` : path;
-  const separator = display.includes("\\") && !display.includes("/") ? "\\" : "/";
+  const separator =
+    display.includes("\\") && !display.includes("/") ? "\\" : "/";
   const parts = display.split(/[\\/]/).filter(Boolean);
   const root = inHome ? "~" : /^[A-Za-z]:/.test(display) ? parts[0] : "";
   const rest = root === "" ? parts : parts.slice(1);

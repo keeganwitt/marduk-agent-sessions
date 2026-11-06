@@ -6,14 +6,14 @@ It scans the transcripts that coding agents keep on disk and shows them in one l
 
 ## Supported agents
 
-| Agent | Location | Delete | Archive |
-|---|---|---|---|
-| Claude Code | `~/.claude/projects` (or `$CLAUDE_CONFIG_DIR/projects`) | Moves the transcript, its `<id>.*` sidecar files and its `<id>/` folder (subagents, tool results) to the Trash | — |
-| Codex | `~/.codex/sessions` and `~/.codex/archived_sessions` (or `$CODEX_HOME`) | **Permanent**, through `codex delete --force <id>`, which also deletes the subagent sessions it spawned (not its Guardian reviews); needs the Codex CLI | `codex archive` / `codex unarchive` |
-| GitHub Copilot CLI | `~/.copilot/session-state/<id>/` (or `$COPILOT_HOME/session-state`) | Moves the session folder to the Trash; Copilot's own delete is only an in-session slash command. Run `/chronicle reindex` in Copilot afterwards to update its search index | — (Copilot CLI has no archive) |
-| OpenCode | `~/.local/share/opencode/opencode*.db` (or `$XDG_DATA_HOME/opencode`, `$OPENCODE_DB`) | **Permanent**, through `opencode session delete <id>`, which also deletes the session's child sessions; needs the OpenCode CLI | Shows OpenCode's archived state; OpenCode has no archive command |
-| Kilo | `~/.local/share/kilo/kilo*.db` (or `$XDG_DATA_HOME/kilo`, `$KILO_DB`) | **Permanent**, through `kilo session delete <id>`, which also deletes child sessions; needs the Kilo CLI | Shows Kilo's archived state; Kilo has no archive command |
-| Pi | `~/.pi/agent/sessions` (or `$PI_CODING_AGENT_DIR/sessions`) | Moves the transcript to the Trash | — |
+| Agent              | Location                                                                              | Delete                                                                                                                                                                     | Archive                                                          |
+| ------------------ | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Claude Code        | `~/.claude/projects` (or `$CLAUDE_CONFIG_DIR/projects`)                               | Moves the transcript, its `<id>.*` sidecar files and its `<id>/` folder (subagents, tool results) to the Trash                                                             | —                                                                |
+| Codex              | `~/.codex/sessions` and `~/.codex/archived_sessions` (or `$CODEX_HOME`)               | **Permanent**, through `codex delete --force <id>`, which also deletes the subagent sessions it spawned (not its Guardian reviews); needs the Codex CLI                    | `codex archive` / `codex unarchive`                              |
+| GitHub Copilot CLI | `~/.copilot/session-state/<id>/` (or `$COPILOT_HOME/session-state`)                   | Moves the session folder to the Trash; Copilot's own delete is only an in-session slash command. Run `/chronicle reindex` in Copilot afterwards to update its search index | — (Copilot CLI has no archive)                                   |
+| OpenCode           | `~/.local/share/opencode/opencode*.db` (or `$XDG_DATA_HOME/opencode`, `$OPENCODE_DB`) | **Permanent**, through `opencode session delete <id>`, which also deletes the session's child sessions; needs the OpenCode CLI                                             | Shows OpenCode's archived state; OpenCode has no archive command |
+| Kilo               | `~/.local/share/kilo/kilo*.db` (or `$XDG_DATA_HOME/kilo`, `$KILO_DB`)                 | **Permanent**, through `kilo session delete <id>`, which also deletes child sessions; needs the Kilo CLI                                                                   | Shows Kilo's archived state; Kilo has no archive command         |
+| Pi                 | `~/.pi/agent/sessions` (or `$PI_CODING_AGENT_DIR/sessions`)                           | Moves the transcript to the Trash                                                                                                                                          | —                                                                |
 
 OpenCode and Kilo (an OpenCode fork) keep every session in one SQLite database. Marduk opens it read-only, reads both OpenCode's current (`session_v2`) and older (`session`) tables, and never writes to it. If a session's messages are stored in a shape Marduk doesn't recognize (a newer OpenCode, say), the transcript is read through the agent's export command (`opencode session export`, `kilo export`) instead.
 
@@ -21,11 +21,11 @@ When an agent has its own delete or archive command, Marduk uses it, so the agen
 
 ## Subagent sessions
 
-Sessions an agent started on its own (Codex Guardian reviews and spawned subagents, OpenCode and Kilo child sessions) are nested under the session that started them. Expand a parent to see them. A subagent whose parent was deleted is shown at the top level with a *Parent deleted* badge. Claude Code's subagents live inside the parent session's own folder, so they're part of the parent rather than separate rows.
+Sessions an agent started on its own (Codex Guardian reviews and spawned subagents, OpenCode and Kilo child sessions) are nested under the session that started them. Expand a parent to see them. A subagent whose parent was deleted is shown at the top level with a _Parent deleted_ badge. Claude Code's subagents live inside the parent session's own folder, so they're part of the parent rather than separate rows.
 
 ## Labels
 
-Select sessions and use **Labels ▾** to add or remove labels, or create a new one by typing its name. Filter by label from the *Label* dropdown, and rename, recolor or delete labels in **Settings**. Labels are stored by Marduk (in `labels.db` in its app data folder), keyed by agent and session id, so they survive an agent archiving or moving a session. Deleting a session in Marduk removes its labels; labels of sessions deleted some other way are removed after they've been missing from complete scans for 7 days.
+Select sessions and use **Labels ▾** to add or remove labels, or create a new one by typing its name. Filter by label from the _Label_ dropdown, and rename, recolor or delete labels in **Settings**. Labels are stored by Marduk (in `labels.db` in its app data folder), keyed by agent and session id, so they survive an agent archiving or moving a session. Deleting a session in Marduk removes its labels; labels of sessions deleted some other way are removed after they've been missing from complete scans for 7 days.
 
 ## Reading transcripts
 
@@ -33,8 +33,8 @@ Click a session's title to read it in a side panel. Messages are rendered as Mar
 
 ## Safety rules
 
-- **Trash, unless the agent deletes natively.** Sessions without a native delete command go to the system Trash (Recycle Bin on Windows). If that fails, Marduk reports the error rather than deleting permanently. Native deletes that can't be undone (Codex) are labeled *Permanent* in the confirmation dialog, which also shows the exact command.
-- **Running sessions are never changed.** A session whose transcript changed in the last 5 minutes is marked *Running* and can't be deleted or archived.
+- **Trash, unless the agent deletes natively.** Sessions without a native delete command go to the system Trash (Recycle Bin on Windows). If that fails, Marduk reports the error rather than deleting permanently. Native deletes that can't be undone (Codex) are labeled _Permanent_ in the confirmation dialog, which also shows the exact command.
+- **Running sessions are never changed.** A session whose transcript changed in the last 5 minutes is marked _Running_ and can't be deleted or archived.
 - **Changed since scan is refused.** If a transcript's size or modification time changed after the scan, Marduk refuses to delete it and asks you to rescan.
 - **Confined to agent folders.** Every path is resolved (following `..` and symlinks) and must sit inside the agent's session folder.
 - **Agent databases are never written to.** For agents that keep sessions in a database, Marduk will only delete through the agent's own CLI.

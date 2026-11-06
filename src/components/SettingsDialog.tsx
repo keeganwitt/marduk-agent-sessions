@@ -13,9 +13,18 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-const THEME_LABELS: Record<Theme, string> = { system: "System", light: "Light", dark: "Dark" };
+const THEME_LABELS: Record<Theme, string> = {
+  system: "System",
+  light: "Light",
+  dark: "Dark",
+};
 
-function CliRow({ status, busy, onChoose, onReset }: {
+function CliRow({
+  status,
+  busy,
+  onChoose,
+  onReset,
+}: {
   status: CliStatus;
   busy: boolean;
   onChoose: () => void;
@@ -25,7 +34,13 @@ function CliRow({ status, busy, onChoose, onReset }: {
     <li className="cli-row">
       <div className="cli-heading">
         <strong>{status.agentName}</strong> <code>{status.program}</code>
-        {status.overridden ? <span className="badge">Custom location</span> : status.path && <span className="badge muted">Found automatically</span>}
+        {status.overridden ? (
+          <span className="badge">Custom location</span>
+        ) : (
+          status.path && (
+            <span className="badge muted">Found automatically</span>
+          )
+        )}
       </div>
       {status.path ? (
         <div className="cli-detail">
@@ -34,11 +49,14 @@ function CliRow({ status, busy, onChoose, onReset }: {
         </div>
       ) : (
         <div className="cli-detail missing">
-          Not found. {status.agentName} sessions are read-only until it's installed or located.{" "}
+          Not found. {status.agentName} sessions are read-only until it's
+          installed or located.{" "}
           <a href={status.installUrl}>How to install {status.program}</a>
         </div>
       )}
-      {status.problem && <div className="cli-detail problem">{status.problem}</div>}
+      {status.problem && (
+        <div className="cli-detail problem">{status.problem}</div>
+      )}
       <div className="cli-actions">
         <button type="button" disabled={busy} onClick={onChoose}>
           Choose…
@@ -61,7 +79,9 @@ export function SettingsDialog({ onClose }: Props) {
   const [theme, setTheme] = useState<Theme>(cachedTheme);
 
   useEffect(() => {
-    cliStatuses().then(setStatuses, (caught: unknown) => setError(errorMessage(caught)));
+    cliStatuses().then(setStatuses, (caught: unknown) =>
+      setError(errorMessage(caught)),
+    );
   }, []);
 
   const close = useCallback(() => onClose(changed), [onClose, changed]);
@@ -94,18 +114,30 @@ export function SettingsDialog({ onClose }: Props) {
   };
 
   const choose = async (status: CliStatus) => {
-    const picked = await open({ multiple: false, directory: false, title: `Choose the ${status.program} CLI` });
+    const picked = await open({
+      multiple: false,
+      directory: false,
+      title: `Choose the ${status.program} CLI`,
+    });
     if (typeof picked === "string") await save(status.agent, picked);
   };
 
   return (
     <div className="overlay">
-      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+      >
         <h2 id="settings-title">Settings</h2>
         <h3>Appearance</h3>
         <div className="segmented" role="radiogroup" aria-label="Theme">
           {THEMES.map((option) => (
-            <label key={option} className={option === theme ? "active" : undefined}>
+            <label
+              key={option}
+              className={option === theme ? "active" : undefined}
+            >
               <input
                 type="radio"
                 name="theme"
@@ -121,8 +153,9 @@ export function SettingsDialog({ onClose }: Props) {
         <LabelManager onChanged={() => setChanged(true)} onError={setError} />
         <h3>Agent CLIs</h3>
         <p className="muted">
-          Some agents can only be changed through their own command-line tool. Marduk finds them automatically; choose
-          a location here if yours is installed somewhere else.
+          Some agents can only be changed through their own command-line tool.
+          Marduk finds them automatically; choose a location here if yours is
+          installed somewhere else.
         </p>
         {error && (
           <div className="banner error" role="alert">

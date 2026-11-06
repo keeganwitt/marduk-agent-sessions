@@ -18,9 +18,23 @@ import {
   deleteSessions,
   getTheme,
   listLabels,
-  openProjectDir, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
-import { loadColumnPrefs, saveColumnPrefs, type ColumnPrefs } from "./lib/columns";
-import { DEFAULT_SORT, nextSort, type SortKey, type SortState } from "./lib/sort";
+  openProjectDir,
+  previewDelete,
+  revealSessionFile,
+  scanSessions,
+  toggleArchive,
+} from "./lib/ipc";
+import {
+  loadColumnPrefs,
+  saveColumnPrefs,
+  type ColumnPrefs,
+} from "./lib/columns";
+import {
+  DEFAULT_SORT,
+  nextSort,
+  type SortKey,
+  type SortState,
+} from "./lib/sort";
 import {
   isArchivable,
   isDeletable,
@@ -49,34 +63,57 @@ function plural(count: number, word: string): string {
 }
 
 function deleteNotice(results: DeleteResult[]): Notice {
-  const trashed = results.filter((result) => result.status === "trashed").length;
-  const deleted = results.filter((result) => result.status === "deleted").length;
+  const trashed = results.filter(
+    (result) => result.status === "trashed",
+  ).length;
+  const deleted = results.filter(
+    (result) => result.status === "deleted",
+  ).length;
   const problems = results.flatMap((result) =>
-    result.status === "refused" || result.status === "failed" ? [result.message] : [],
+    result.status === "refused" || result.status === "failed"
+      ? [result.message]
+      : [],
   );
   const parts = [
     trashed > 0 && `Moved ${plural(trashed, "session")} to the Trash.`,
     deleted > 0 && `Permanently deleted ${plural(deleted, "session")}.`,
-    problems.length > 0 && `${plural(problems.length, "session")} couldn't be deleted.`,
+    problems.length > 0 &&
+      `${plural(problems.length, "session")} couldn't be deleted.`,
   ].filter(Boolean);
   return { text: parts.join(" ") || "Nothing was deleted.", problems };
 }
 
 function archiveNotice(results: ArchiveResult[]): Notice {
-  const archived = results.filter((result) => result.status === "done" && result.archived).length;
-  const restored = results.filter((result) => result.status === "done" && !result.archived).length;
-  const problems = results.flatMap((result) => (result.status === "done" ? [] : [result.message]));
+  const archived = results.filter(
+    (result) => result.status === "done" && result.archived,
+  ).length;
+  const restored = results.filter(
+    (result) => result.status === "done" && !result.archived,
+  ).length;
+  const problems = results.flatMap((result) =>
+    result.status === "done" ? [] : [result.message],
+  );
   const parts = [
     archived > 0 && `Archived ${plural(archived, "session")}.`,
     restored > 0 && `Unarchived ${plural(restored, "session")}.`,
-    problems.length > 0 && `${plural(problems.length, "session")} couldn't be changed.`,
+    problems.length > 0 &&
+      `${plural(problems.length, "session")} couldn't be changed.`,
   ].filter(Boolean);
   return { text: parts.join(" ") || "Nothing was changed.", problems };
 }
 
-function NoticeBanner({ notice, onDismiss }: { notice: Notice; onDismiss: () => void }) {
+function NoticeBanner({
+  notice,
+  onDismiss,
+}: {
+  notice: Notice;
+  onDismiss: () => void;
+}) {
   return (
-    <div className={notice.problems.length > 0 ? "banner warn" : "banner"} role="status">
+    <div
+      className={notice.problems.length > 0 ? "banner warn" : "banner"}
+      role="status"
+    >
       <span>{notice.text}</span>
       {notice.problems.length > 0 && (
         <ul>
@@ -101,13 +138,25 @@ function BusyIndicator({
   progress: ScanProgress | null;
   overlay?: boolean;
 }) {
-  const percent = progress && progress.total > 0 ? Math.min(100, Math.floor((progress.done / progress.total) * 100)) : null;
+  const percent =
+    progress && progress.total > 0
+      ? Math.min(100, Math.floor((progress.done / progress.total) * 100))
+      : null;
   return (
-    <div className={overlay ? "busy overlay-busy" : "busy"} role="status" aria-live="polite">
+    <div
+      className={overlay ? "busy overlay-busy" : "busy"}
+      role="status"
+      aria-live="polite"
+    >
       {percent === null ? (
         <span className="spinner" aria-hidden="true" />
       ) : (
-        <progress className="scan-progress" max={100} value={percent} aria-label="Scan progress" />
+        <progress
+          className="scan-progress"
+          max={100}
+          value={percent}
+          aria-label="Scan progress"
+        />
       )}
       <span>
         {progress?.agent ? `Scanning ${progress.agent}…` : label}
@@ -139,7 +188,10 @@ export default function App() {
   const [columns, setColumns] = useState<ColumnPrefs>(loadColumnPrefs);
 
   useEffect(() => saveColumnPrefs(columns), [columns]);
-  const labelsById = useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
+  const labelsById = useMemo(
+    () => new Map(labels.map((label) => [label.id, label])),
+    [labels],
+  );
 
   const refreshLabels = useCallback(async () => {
     try {
@@ -149,26 +201,36 @@ export default function App() {
     }
   }, []);
 
+  /** Shows a scan's result. The "Scanning" state must already be showing, as it is on startup. */
+  const finishScan = useCallback(
+    (request: Promise<ScanResponse>) =>
+      request
+        .then(
+          async (result) => {
+            setScan(result);
+            setScannedAt(new Date());
+            setSelected(new Set());
+            await refreshLabels();
+          },
+          (caught: unknown) => setError(errorMessage(caught)),
+        )
+        .finally(() => {
+          setActivity(null);
+          setProgress(null);
+        }),
+    [refreshLabels],
+  );
+
   const rescan = useCallback(async () => {
     setActivity("Scanning sessions…");
     setError(null);
-    try {
-      setProgress(null);
-      setScan(await scanSessions(setProgress));
-      setScannedAt(new Date());
-      setSelected(new Set());
-      await refreshLabels();
-    } catch (caught) {
-      setError(errorMessage(caught));
-    } finally {
-      setActivity(null);
-      setProgress(null);
-    }
-  }, [refreshLabels]);
+    setProgress(null);
+    await finishScan(scanSessions(setProgress));
+  }, [finishScan]);
 
   useEffect(() => {
-    void rescan();
-  }, [rescan]);
+    void finishScan(scanSessions(setProgress));
+  }, [finishScan]);
 
   useEffect(() => {
     getTheme().then(
@@ -177,20 +239,39 @@ export default function App() {
     );
   }, []);
 
-  const matcher = useMemo(() => sessionMatcher(filter, scannedAt), [filter, scannedAt]);
-  const matching = useMemo(() => (scan ? scan.sessions.filter(matcher) : []), [scan, matcher]);
+  const matcher = useMemo(
+    () => sessionMatcher(filter, scannedAt),
+    [filter, scannedAt],
+  );
+  const matching = useMemo(
+    () => (scan ? scan.sessions.filter(matcher) : []),
+    [scan, matcher],
+  );
   const rows = useMemo(
     () => (scan ? buildTree(scan.sessions, matcher, sort, expanded) : []),
     [scan, matcher, sort, expanded],
   );
   const visible = rows.map((row) => row.session);
-  const selectedVisible = visible.filter((session) => selected.has(session.uid));
+  const selectedVisible = visible.filter((session) =>
+    selected.has(session.uid),
+  );
   const toDelete = selectedVisible.filter(isDeletable);
-  const toArchive = selectedVisible.filter((session) => isArchivable(session) && !session.archived);
-  const toUnarchive = selectedVisible.filter((session) => isArchivable(session) && session.archived);
-  const deleteBytes = toDelete.reduce((total, session) => total + session.sizeBytes, 0);
-  const matchingBytes = matching.reduce((total, session) => total + session.sizeBytes, 0);
-  const incompleteAgents = scan?.agents.filter((agent) => !agent.complete) ?? [];
+  const toArchive = selectedVisible.filter(
+    (session) => isArchivable(session) && !session.archived,
+  );
+  const toUnarchive = selectedVisible.filter(
+    (session) => isArchivable(session) && session.archived,
+  );
+  const deleteBytes = toDelete.reduce(
+    (total, session) => total + session.sizeBytes,
+    0,
+  );
+  const matchingBytes = matching.reduce(
+    (total, session) => total + session.sizeBytes,
+    0,
+  );
+  const incompleteAgents =
+    scan?.agents.filter((agent) => !agent.complete) ?? [];
 
   const toggleExpanded = (uid: string) =>
     setExpanded((current) => {
@@ -211,7 +292,9 @@ export default function App() {
           uid,
         )
       : [uid];
-    const selectable = new Set(visible.filter(isSelectable).map((session) => session.uid));
+    const selectable = new Set(
+      visible.filter(isSelectable).map((session) => session.uid),
+    );
     selectionAnchor.current = uid;
     setSelected((current) => {
       const next = new Set(current);
@@ -248,10 +331,21 @@ export default function App() {
     try {
       const outcome = await deleteSessions(uids);
       const removed = new Set(
-        outcome.filter((result) => result.status === "trashed" || result.status === "deleted").map((r) => r.uid),
+        outcome
+          .filter(
+            (result) =>
+              result.status === "trashed" || result.status === "deleted",
+          )
+          .map((r) => r.uid),
       );
-      setScan((current) =>
-        current && { ...current, sessions: current.sessions.filter((session) => !removed.has(session.uid)) },
+      setScan(
+        (current) =>
+          current && {
+            ...current,
+            sessions: current.sessions.filter(
+              (session) => !removed.has(session.uid),
+            ),
+          },
       );
       setSelected(new Set());
       setNotice(deleteNotice(outcome));
@@ -290,7 +384,9 @@ export default function App() {
               uids.has(session.uid)
                 ? {
                     ...session,
-                    labelIds: [...new Set([...session.labelIds, ...add])].filter((id) => !remove.includes(id)),
+                    labelIds: [
+                      ...new Set([...session.labelIds, ...add]),
+                    ].filter((id) => !remove.includes(id)),
                   }
                 : session,
             ),
@@ -305,7 +401,9 @@ export default function App() {
   const newLabel = async (name: string): Promise<Label | null> => {
     try {
       const label = await createLabel(name, nextColor(labels));
-      setLabels((current) => [...current, label].sort((a, b) => a.name.localeCompare(b.name)));
+      setLabels((current) =>
+        [...current, label].sort((a, b) => a.name.localeCompare(b.name)),
+      );
       return label;
     } catch (caught) {
       setError(errorMessage(caught));
@@ -338,7 +436,9 @@ export default function App() {
       <header className="toolbar">
         <h1 className="visually-hidden">Marduk</h1>
         <span className="summary">
-          {scan ? `${matching.length} of ${scan.sessions.length} sessions · ${formatBytes(matchingBytes)}` : ""}
+          {scan
+            ? `${matching.length} of ${scan.sessions.length} sessions · ${formatBytes(matchingBytes)}`
+            : ""}
         </span>
         <button type="button" onClick={() => setSettingsOpen(true)}>
           Settings
@@ -367,17 +467,32 @@ export default function App() {
           Rescan
         </button>
         {toArchive.length > 0 && (
-          <button type="button" disabled={busy} onClick={() => void runArchive(toArchive.map((s) => s.uid))}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void runArchive(toArchive.map((s) => s.uid))}
+          >
             Archive {toArchive.length}
           </button>
         )}
         {toUnarchive.length > 0 && (
-          <button type="button" disabled={busy} onClick={() => void runArchive(toUnarchive.map((s) => s.uid))}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void runArchive(toUnarchive.map((s) => s.uid))}
+          >
             Unarchive {toUnarchive.length}
           </button>
         )}
-        <button type="button" className="danger" disabled={toDelete.length === 0 || busy} onClick={() => void openPreview()}>
-          {toDelete.length === 0 ? "Delete…" : `Delete ${toDelete.length} (${formatBytes(deleteBytes)})…`}
+        <button
+          type="button"
+          className="danger"
+          disabled={toDelete.length === 0 || busy}
+          onClick={() => void openPreview()}
+        >
+          {toDelete.length === 0
+            ? "Delete…"
+            : `Delete ${toDelete.length} (${formatBytes(deleteBytes)})…`}
         </button>
       </header>
 
@@ -388,40 +503,54 @@ export default function App() {
       )}
       {incompleteAgents.map((agent) => (
         <div key={agent.id} className="banner warn" role="status">
-          Some {agent.name} sessions couldn't be read: {agent.errors.slice(0, 3).join("; ")}
+          Some {agent.name} sessions couldn't be read:{" "}
+          {agent.errors.slice(0, 3).join("; ")}
           {agent.errors.length > 3 && ` (and ${agent.errors.length - 3} more)`}
         </div>
       ))}
-      {notice && <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />}
+      {notice && (
+        <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />
+      )}
 
       {scan && (
         <div className="filter-bar">
-          <Filters agents={scan.agents} labels={labels} filter={filter} onChange={setFilter} />
+          <Filters
+            agents={scan.agents}
+            labels={labels}
+            filter={filter}
+            onChange={setFilter}
+          />
           <ColumnsMenu columns={columns} onColumnsChange={setColumns} />
         </div>
       )}
-      {!scan && activity && <BusyIndicator label={activity} progress={progress} />}
+      {!scan && activity && (
+        <BusyIndicator label={activity} progress={progress} />
+      )}
       {scan && (
         <div className="table-area" aria-busy={busy}>
-          {activity && <BusyIndicator label={activity} progress={progress} overlay />}
+          {activity && (
+            <BusyIndicator label={activity} progress={progress} overlay />
+          )}
           <div className="table-wrap">
-          <SessionTable
-            rows={rows}
-            columns={columns}
-            onColumnsChange={setColumns}
-            labelsById={labelsById}
-            onToggleExpand={toggleExpanded}
-            homeDir={scan.homeDir}
-            selected={selected}
-            now={scannedAt}
-            sort={sort}
-            onSort={(key: SortKey) => setSort((current) => nextSort(current, key))}
-            onToggle={toggle}
-            onSetMany={setMany}
-            onOpenProject={(session) => void openProject(session)}
-            onShowFiles={setFilesFor}
-            onOpenTranscript={setTranscriptFor}
-          />
+            <SessionTable
+              rows={rows}
+              columns={columns}
+              onColumnsChange={setColumns}
+              labelsById={labelsById}
+              onToggleExpand={toggleExpanded}
+              homeDir={scan.homeDir}
+              selected={selected}
+              now={scannedAt}
+              sort={sort}
+              onSort={(key: SortKey) =>
+                setSort((current) => nextSort(current, key))
+              }
+              onToggle={toggle}
+              onSetMany={setMany}
+              onOpenProject={(session) => void openProject(session)}
+              onShowFiles={setFilesFor}
+              onOpenTranscript={setTranscriptFor}
+            />
           </div>
         </div>
       )}
@@ -436,7 +565,12 @@ export default function App() {
       )}
       {transcriptFor && (
         <TranscriptPanel
-          session={scan?.sessions.find((session) => session.uid === transcriptFor.uid) ?? transcriptFor}
+          key={transcriptFor.uid}
+          session={
+            scan?.sessions.find(
+              (session) => session.uid === transcriptFor.uid,
+            ) ?? transcriptFor
+          }
           labelsById={labelsById}
           onClose={closeTranscript}
         />

@@ -48,7 +48,9 @@ describe("SettingsDialog", () => {
     const onClose = vi.fn();
     cliStatuses.mockResolvedValue([]);
     const listLabels = vi.mocked(ipc.listLabels);
-    listLabels.mockResolvedValue([{ id: 1, name: "Work", color: "blue", count: 3 }]);
+    listLabels.mockResolvedValue([
+      { id: 1, name: "Work", color: "blue", count: 3 },
+    ]);
     vi.mocked(ipc.updateLabel).mockResolvedValue();
     vi.mocked(ipc.deleteLabel).mockResolvedValue();
 
@@ -63,7 +65,9 @@ describe("SettingsDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "Delete label Work" }));
     expect(ipc.deleteLabel).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Delete from 3 sessions" }));
+    await user.click(
+      screen.getByRole("button", { name: "Delete from 3 sessions" }),
+    );
     expect(ipc.deleteLabel).toHaveBeenCalledWith(1);
 
     await user.click(screen.getByRole("button", { name: "Done" }));
@@ -86,19 +90,28 @@ describe("SettingsDialog", () => {
 
   it("shows found and missing CLIs with an install link for the missing one", async () => {
     cliStatuses.mockResolvedValue([
-      status({ path: "/Users/me/.local/bin/codex", version: "codex-cli 0.166.0" }),
-      status({ agent: "opencode", agentName: "OpenCode", program: "opencode", installUrl: "https://opencode.ai/docs/" }),
+      status({
+        path: "/Users/me/.local/bin/codex",
+        version: "codex-cli 0.166.0",
+      }),
+      status({
+        agent: "opencode",
+        agentName: "OpenCode",
+        program: "opencode",
+        installUrl: "https://opencode.ai/docs/",
+      }),
     ]);
 
     render(<SettingsDialog onClose={() => {}} />);
 
-    expect(await screen.findByText("/Users/me/.local/bin/codex")).toBeInTheDocument();
+    expect(
+      await screen.findByText("/Users/me/.local/bin/codex"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/codex-cli 0\.166\.0/)).toBeInTheDocument();
     expect(screen.getByText("Found automatically")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "How to install opencode" })).toHaveAttribute(
-      "href",
-      "https://opencode.ai/docs/",
-    );
+    expect(
+      screen.getByRole("link", { name: "How to install opencode" }),
+    ).toHaveAttribute("href", "https://opencode.ai/docs/");
   });
 
   it("saves a chosen path and reports the change on close", async () => {
@@ -106,7 +119,13 @@ describe("SettingsDialog", () => {
     const onClose = vi.fn();
     cliStatuses.mockResolvedValue([status({})]);
     openDialog.mockResolvedValue("/opt/codex/bin/codex");
-    setCliPath.mockResolvedValue([status({ path: "/opt/codex/bin/codex", overridden: true, version: "codex-cli 1.0" })]);
+    setCliPath.mockResolvedValue([
+      status({
+        path: "/opt/codex/bin/codex",
+        overridden: true,
+        version: "codex-cli 1.0",
+      }),
+    ]);
 
     render(<SettingsDialog onClose={onClose} />);
     await user.click(await screen.findByRole("button", { name: "Choose…" }));
@@ -119,15 +138,21 @@ describe("SettingsDialog", () => {
 
   it("resets a custom location and shows save errors", async () => {
     const user = userEvent.setup();
-    cliStatuses.mockResolvedValue([status({ path: "/opt/codex", overridden: true })]);
+    cliStatuses.mockResolvedValue([
+      status({ path: "/opt/codex", overridden: true }),
+    ]);
     setCliPath.mockRejectedValue("/opt/codex isn't an executable file.");
 
     render(<SettingsDialog onClose={() => {}} />);
     const row = (await screen.findByText("Custom location")).closest("li")!;
-    await user.click(within(row).getByRole("button", { name: "Use automatic" }));
+    await user.click(
+      within(row).getByRole("button", { name: "Use automatic" }),
+    );
 
     expect(setCliPath).toHaveBeenCalledWith("codex", null);
-    expect(await screen.findByRole("alert")).toHaveTextContent("isn't an executable file");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "isn't an executable file",
+    );
   });
 
   it("does nothing when the file picker is cancelled", async () => {

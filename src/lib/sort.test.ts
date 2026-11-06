@@ -25,15 +25,35 @@ describe("nextSort", () => {
   });
 
   it("switching columns starts the new column fresh", () => {
-    expect(nextSort({ key: "title", direction: "desc" }, "agent")).toEqual({ key: "agent", direction: "asc" });
+    expect(nextSort({ key: "title", direction: "desc" }, "agent")).toEqual({
+      key: "agent",
+      direction: "asc",
+    });
   });
 });
 
 describe("sortSessions", () => {
-  const a = makeSession({ uid: "a", title: "item 10", sizeBytes: 5, created: "2026-01-02T00:00:00Z" });
-  const b = makeSession({ uid: "b", title: "Item 9", sizeBytes: 50, created: null });
-  const c = makeSession({ uid: "c", title: null, id: "zzz", sizeBytes: 1, created: "2026-01-01T00:00:00Z" });
-  const uids = (sort: Parameters<typeof sortSessions>[1]) => sortSessions([a, b, c], sort).map((s) => s.uid);
+  const a = makeSession({
+    uid: "a",
+    title: "item 10",
+    sizeBytes: 5,
+    created: "2026-01-02T00:00:00Z",
+  });
+  const b = makeSession({
+    uid: "b",
+    title: "Item 9",
+    sizeBytes: 50,
+    created: null,
+  });
+  const c = makeSession({
+    uid: "c",
+    title: null,
+    id: "zzz",
+    sizeBytes: 1,
+    created: "2026-01-01T00:00:00Z",
+  });
+  const uids = (sort: Parameters<typeof sortSessions>[1]) =>
+    sortSessions([a, b, c], sort).map((s) => s.uid);
 
   it("leaves the original order when unsorted", () => {
     expect(uids(null)).toEqual(["a", "b", "c"]);
@@ -50,6 +70,10 @@ describe("sortSessions", () => {
 
   it("puts missing values last in both directions", () => {
     expect(uids({ key: "created", direction: "asc" })).toEqual(["c", "a", "b"]);
-    expect(uids({ key: "created", direction: "desc" })).toEqual(["a", "c", "b"]);
+    expect(uids({ key: "created", direction: "desc" })).toEqual([
+      "a",
+      "c",
+      "b",
+    ]);
   });
 });

@@ -38,7 +38,11 @@ export function buildTree(
   // A parent chain that loops back on itself would otherwise hide every session in the loop.
   const inCycle = (session: SessionRow): boolean => {
     const seen = new Set<SessionRow>([session]);
-    for (let current = parentOf(session); current; current = parentOf(current)) {
+    for (
+      let current = parentOf(session);
+      current;
+      current = parentOf(current)
+    ) {
       if (seen.has(current)) return true;
       seen.add(current);
     }
@@ -47,7 +51,10 @@ export function buildTree(
   const children = new Map<string, SessionRow[]>();
   const roots: SessionRow[] = [];
   for (const session of sessions) {
-    const parentKey = session.parentId === null ? null : nodeKey(session.agent, session.parentId);
+    const parentKey =
+      session.parentId === null
+        ? null
+        : nodeKey(session.agent, session.parentId);
     const parent = parentOf(session);
     if (!parent || parent === session || inCycle(session)) {
       roots.push(session);
@@ -59,32 +66,49 @@ export function buildTree(
   }
 
   const matchCache = new Map<SessionRow, boolean>();
-  const subtreeMatches = (session: SessionRow, path: Set<SessionRow>): boolean => {
+  const subtreeMatches = (
+    session: SessionRow,
+    path: Set<SessionRow>,
+  ): boolean => {
     const cached = matchCache.get(session);
     if (cached !== undefined) return cached;
     if (path.has(session)) return false;
     path.add(session);
     const result =
       matches(session) ||
-      (children.get(nodeKey(session.agent, session.id)) ?? []).some((child) => subtreeMatches(child, path));
+      (children.get(nodeKey(session.agent, session.id)) ?? []).some((child) =>
+        subtreeMatches(child, path),
+      );
     path.delete(session);
     matchCache.set(session, result);
     return result;
   };
 
   const rows: TreeRow[] = [];
-  const visit = (siblings: SessionRow[], depth: number, path: Set<SessionRow>) => {
+  const visit = (
+    siblings: SessionRow[],
+    depth: number,
+    path: Set<SessionRow>,
+  ) => {
     const shown = sortSessions(
-      siblings.filter((session) => !path.has(session) && subtreeMatches(session, new Set())),
+      siblings.filter(
+        (session) => !path.has(session) && subtreeMatches(session, new Set()),
+      ),
       sort,
     );
     for (const session of shown) {
       const own = matches(session);
-      const kids = (children.get(nodeKey(session.agent, session.id)) ?? []).filter(
-        (child) => !path.has(child) && subtreeMatches(child, new Set()),
-      );
+      const kids = (
+        children.get(nodeKey(session.agent, session.id)) ?? []
+      ).filter((child) => !path.has(child) && subtreeMatches(child, new Set()));
       const open = kids.length > 0 && (expanded.has(session.uid) || !own);
-      rows.push({ session, depth, childCount: kids.length, expanded: open, matched: own });
+      rows.push({
+        session,
+        depth,
+        childCount: kids.length,
+        expanded: open,
+        matched: own,
+      });
       if (open) {
         path.add(session);
         visit(kids, depth + 1, path);

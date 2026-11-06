@@ -10,18 +10,25 @@ describe("externalUrl", () => {
     expect(externalUrl(href)).toBe(expected);
   });
 
-  it.each(["javascript:alert(1)", "file:///etc/passwd", "tauri://localhost", "#section", "relative/path", "", null])(
-    "rejects %s",
-    (href) => {
-      expect(externalUrl(href)).toBeNull();
-    },
-  );
+  it.each([
+    "javascript:alert(1)",
+    "file:///etc/passwd",
+    "tauri://localhost",
+    "#section",
+    "relative/path",
+    "",
+    null,
+  ])("rejects %s", (href) => {
+    expect(externalUrl(href)).toBeNull();
+  });
 });
 
 describe("installExternalLinkHandler", () => {
   function clickLink(href: string, inner = false) {
     document.body.innerHTML = `<a href="${href}"><span>label</span></a>`;
-    const target = inner ? document.querySelector("span")! : document.querySelector("a")!;
+    const target = inner
+      ? document.querySelector("span")!
+      : document.querySelector("a")!;
     const event = new MouseEvent("click", { bubbles: true, cancelable: true });
     target.dispatchEvent(event);
     return event;

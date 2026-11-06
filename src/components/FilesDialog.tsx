@@ -20,7 +20,12 @@ export function FilesDialog({ session, homeDir, onReveal, onClose }: Props) {
 
   return (
     <div className="overlay">
-      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="files-title">
+      <div
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="files-title"
+      >
         <h2 id="files-title">{session.title ?? session.id}</h2>
         <p className="muted">
           {session.agentName} · {session.id}
@@ -28,10 +33,16 @@ export function FilesDialog({ session, homeDir, onReveal, onClose }: Props) {
         {session.database && (
           <div className="database-note">
             <p>
-              {session.agentName} keeps all sessions in one shared database, so this session has no files of its own.
-              Deleting it removes its rows through {session.agentName}'s own command; the database file stays.
+              {session.agentName} keeps all sessions in one shared database, so
+              this session has no files of its own. Deleting it removes its rows
+              through {session.agentName}'s own command; the database file
+              stays.
             </p>
-            <FileList paths={[session.database]} homeDir={homeDir} onReveal={onReveal} />
+            <FileList
+              paths={[session.database]}
+              homeDir={homeDir}
+              onReveal={onReveal}
+            />
           </div>
         )}
         <FileList paths={session.files} homeDir={homeDir} onReveal={onReveal} />

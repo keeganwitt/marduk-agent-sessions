@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { loadTranscript } from "../lib/ipc";
-import type { Label, SessionRow, Transcript, TranscriptMessage } from "../lib/types";
+import type {
+  Label,
+  SessionRow,
+  Transcript,
+  TranscriptMessage,
+} from "../lib/types";
 import { LabelChips } from "./LabelChip";
 import { Markdown } from "./Markdown";
 
@@ -21,7 +26,13 @@ function time(timestamp: string | null): string | null {
   return timestamp ? new Date(timestamp).toLocaleString() : null;
 }
 
-function MessageView({ message, id }: { message: TranscriptMessage; id: string }) {
+function MessageView({
+  message,
+  id,
+}: {
+  message: TranscriptMessage;
+  id: string;
+}) {
   const timestamp = time(message.timestamp);
   if (message.tool) {
     return (
@@ -64,7 +75,11 @@ function promptLabel(text: string): string {
   return flat.length > 80 ? `${flat.slice(0, 79)}…` : flat;
 }
 
-export function TranscriptPanel({ session, labelsById = new Map(), onClose }: Props) {
+export function TranscriptPanel({
+  session,
+  labelsById = new Map(),
+  onClose,
+}: Props) {
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showTools, setShowTools] = useState(true);
@@ -73,11 +88,11 @@ export function TranscriptPanel({ session, labelsById = new Map(), onClose }: Pr
 
   useEffect(() => {
     let cancelled = false;
-    setTranscript(null);
-    setError(null);
     loadTranscript(session.uid).then(
       (loaded) => !cancelled && setTranscript(loaded),
-      (caught: unknown) => !cancelled && setError(caught instanceof Error ? caught.message : String(caught)),
+      (caught: unknown) =>
+        !cancelled &&
+        setError(caught instanceof Error ? caught.message : String(caught)),
     );
     return () => {
       cancelled = true;
@@ -93,7 +108,8 @@ export function TranscriptPanel({ session, labelsById = new Map(), onClose }: Pr
   }, [onClose]);
 
   const visible = (message: TranscriptMessage) =>
-    (showTools || message.role !== "tool") && (showContext || message.role !== "context");
+    (showTools || message.role !== "tool") &&
+    (showContext || message.role !== "context");
   const sections = transcript
     ? [
         { key: "head", messages: transcript.head },
@@ -102,16 +118,25 @@ export function TranscriptPanel({ session, labelsById = new Map(), onClose }: Pr
     : [];
   const prompts = sections.flatMap((section) =>
     section.messages.flatMap((message, index) =>
-      message.role === "user" ? [{ id: `${section.key}-${index}`, label: promptLabel(message.text) }] : [],
+      message.role === "user"
+        ? [{ id: `${section.key}-${index}`, label: promptLabel(message.text) }]
+        : [],
     ),
   );
 
   const jumpTo = (id: string) => {
-    body.current?.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView?.({ block: "start" });
+    body.current
+      ?.querySelector(`#${CSS.escape(id)}`)
+      ?.scrollIntoView?.({ block: "start" });
   };
 
   return (
-    <aside className="transcript" role="dialog" aria-modal="false" aria-labelledby="transcript-title">
+    <aside
+      className="transcript"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="transcript-title"
+    >
       <header className="transcript-header">
         <div className="transcript-heading">
           <h2 id="transcript-title">{session.title ?? session.id}</h2>
@@ -127,15 +152,27 @@ export function TranscriptPanel({ session, labelsById = new Map(), onClose }: Pr
       </header>
       <div className="transcript-controls">
         <label>
-          <input type="checkbox" checked={showTools} onChange={(event) => setShowTools(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={showTools}
+            onChange={(event) => setShowTools(event.target.checked)}
+          />
           Tool calls
         </label>
         <label>
-          <input type="checkbox" checked={showContext} onChange={(event) => setShowContext(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={showContext}
+            onChange={(event) => setShowContext(event.target.checked)}
+          />
           Injected context
         </label>
         {prompts.length > 1 && (
-          <select aria-label="Jump to prompt" value="" onChange={(event) => jumpTo(event.target.value)}>
+          <select
+            aria-label="Jump to prompt"
+            value=""
+            onChange={(event) => jumpTo(event.target.value)}
+          >
             <option value="" disabled>
               Jump to prompt ({prompts.length})
             </option>
@@ -154,34 +191,55 @@ export function TranscriptPanel({ session, labelsById = new Map(), onClose }: Pr
           </div>
         )}
         {!transcript && !error && <p className="muted">Loading…</p>}
-        {transcript && transcript.head.length + transcript.tail.length === 0 && !transcript.note && (
-          <p className="muted">This session has no messages to show.</p>
-        )}
+        {transcript &&
+          transcript.head.length + transcript.tail.length === 0 &&
+          !transcript.note && (
+            <p className="muted">This session has no messages to show.</p>
+          )}
         {transcript &&
           transcript.head.length + transcript.tail.length > 0 &&
           !transcript.head.concat(transcript.tail).some(visible) && (
             <p className="muted">
-              Everything in this session is hidden by the filters above. Turn on Tool calls or Injected context to see it.
+              Everything in this session is hidden by the filters above. Turn on
+              Tool calls or Injected context to see it.
             </p>
           )}
         {transcript?.note && <p className="muted note">{transcript.note}</p>}
         {session.running && (
-          <p className="muted note">This session is still running, so the transcript may be incomplete.</p>
+          <p className="muted note">
+            This session is still running, so the transcript may be incomplete.
+          </p>
         )}
         {transcript?.shortened && (
-          <p className="muted note">Some long messages or tool outputs are shortened.</p>
+          <p className="muted note">
+            Some long messages or tool outputs are shortened.
+          </p>
         )}
         {transcript?.head.map(
-          (message, index) => visible(message) && <MessageView key={`head-${index}`} id={`head-${index}`} message={message} />,
+          (message, index) =>
+            visible(message) && (
+              <MessageView
+                key={`head-${index}`}
+                id={`head-${index}`}
+                message={message}
+              />
+            ),
         )}
         {transcript && transcript.omitted > 0 && (
           <p className="omitted">
-            {transcript.omitted} messages in the middle of this session aren't shown. Use Files to open the full
-            transcript.
+            {transcript.omitted} messages in the middle of this session aren't
+            shown. Use Files to open the full transcript.
           </p>
         )}
         {transcript?.tail.map(
-          (message, index) => visible(message) && <MessageView key={`tail-${index}`} id={`tail-${index}`} message={message} />,
+          (message, index) =>
+            visible(message) && (
+              <MessageView
+                key={`tail-${index}`}
+                id={`tail-${index}`}
+                message={message}
+              />
+            ),
         )}
       </div>
     </aside>
