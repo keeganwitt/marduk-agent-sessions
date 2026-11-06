@@ -756,18 +756,51 @@ button.title-link {
 }
 
 button.expander {
-  border: none;
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  width: 20px;
+  height: 20px;
+  margin: -2px 4px -2px -4px;
   padding: 0;
-  width: 16px;
-  margin-right: 4px;
-  color: var(--muted);
-  font-size: 11px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+button.expander svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.12s ease;
+}
+
+button.expander[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+button.expander:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+button.expander:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.expander svg {
+    transition: none;
+  }
 }
 
 .expander-spacer {
   display: inline-block;
   width: 20px;
+  margin-right: 4px;
+  margin-left: -4px;
 }
 
 .sessions tr.context-row td {

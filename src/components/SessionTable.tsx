@@ -324,7 +324,16 @@ export function SessionTable(props: Props) {
                 aria-label={`${expanded ? "Hide" : "Show"} ${childCount} subagent ${childCount === 1 ? "session" : "sessions"} of ${label}`}
                 onClick={() => onToggleExpand(session.uid)}
               >
-                {expanded ? "▾" : "▸"}
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    d="M6 3.5 10.5 8 6 12.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
             ) : (
               <span className="expander-spacer" aria-hidden="true" />
