@@ -171,22 +171,32 @@ table.sessions {
   max-width: 280px;
 }
 
+/* Status badges share one shape and differ only by color (--badge). */
 .badge {
+  --badge: var(--muted);
   display: inline-block;
   margin-left: 6px;
-  padding: 1px 6px;
+  padding: 1px 7px;
   border-radius: 10px;
   font-size: 11px;
-  border: 1px solid var(--border);
+  color: var(--badge);
+  background: color-mix(in srgb, var(--badge) 16%, transparent);
 }
 
 .badge.running {
-  border-color: #2e9d4f;
-  color: #2e9d4f;
+  --badge: #2e9d4f;
 }
 
-.badge.muted {
-  color: var(--muted);
+.badge.warn {
+  --badge: #c98a00;
+}
+
+.badge.danger {
+  --badge: var(--danger);
+}
+
+.badge.archived {
+  --badge: #7a6fd0;
 }
 
 .empty {
@@ -262,11 +272,6 @@ table.sessions {
 
 .muted {
   color: var(--muted);
-}
-
-.badge.danger {
-  border-color: var(--danger);
-  color: var(--danger);
 }
 
 .permanent-warning {
@@ -666,11 +671,6 @@ button.title-link {
   }
 }
 
-.badge.warn {
-  border-color: #c98a00;
-  color: #c98a00;
-}
-
 button.expander {
   border: none;
   background: none;
@@ -688,12 +688,6 @@ button.expander {
 
 .sessions tr.context-row td {
   opacity: 0.55;
-}
-
-.badge.archived {
-  background: var(--border);
-  border-color: transparent;
-  color: inherit;
 }
 
 button.child-count {
