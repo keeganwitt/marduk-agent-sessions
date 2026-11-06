@@ -147,8 +147,8 @@ describe("App", () => {
     expect(screen.queryByText("Child")).not.toBeInTheDocument();
     expect(screen.getByText("1 subagent")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Show 1 subagent session of Parent" }));
-    expect(screen.getByText("Child")).toBeInTheDocument();
-    expect(screen.getByText("Subagent")).toBeInTheDocument();
+    expect(screen.getByText("Child").closest("td")).toHaveStyle({ paddingLeft: "28px" });
+    expect(screen.queryByText("Subagent")).not.toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "Select Parent" }));
     await user.click(screen.getByRole("button", { name: /Delete 1/ }));
 

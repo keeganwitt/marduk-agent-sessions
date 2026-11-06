@@ -677,3 +677,23 @@ button.expander {
 .sessions tr.context-row td {
   opacity: 0.55;
 }
+
+.badge.archived {
+  background: var(--border);
+  border-color: transparent;
+  color: inherit;
+}
+
+button.child-count {
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+button.child-count:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}

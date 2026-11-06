@@ -19,7 +19,7 @@ interface Props {
   onOpenTranscript: (session: SessionRow) => void;
 }
 
-function StatusBadges({ session }: { session: SessionRow }) {
+function StatusBadges({ session, nested }: { session: SessionRow; nested: boolean }) {
   return (
     <>
       {session.running && (
@@ -32,12 +32,12 @@ function StatusBadges({ session }: { session: SessionRow }) {
           Parent deleted
         </span>
       )}
-      {session.parentId && !session.parentMissing && (
+      {session.parentId && !session.parentMissing && !nested && (
         <span className="badge muted" title={`Started by session ${session.parentId}`}>
           Subagent
         </span>
       )}
-      {session.archived && <span className="badge">Archived</span>}
+      {session.archived && <span className="badge archived">Archived</span>}
       {session.readOnlyReason && (
         <span className="badge muted" title={session.readOnlyReason}>
           Read-only
@@ -161,11 +161,17 @@ export function SessionTable(props: Props) {
                 >
                   {label}
                 </button>{" "}
-                <StatusBadges session={session} />
-                {childCount > 0 && !expanded && (
-                  <span className="badge muted">
+                <StatusBadges session={session} nested={depth > 0} />
+                {childCount > 0 && (
+                  <button
+                    type="button"
+                    className="child-count"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    onClick={() => onToggleExpand(session.uid)}
+                  >
                     {childCount} {childCount === 1 ? "subagent" : "subagents"}
-                  </span>
+                  </button>
                 )}
               </td>
               <td>{session.agentName}</td>
