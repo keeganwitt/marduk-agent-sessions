@@ -24,8 +24,13 @@ function StatusBadges({ session }: { session: SessionRow }) {
           Running
         </span>
       )}
-      {session.parentId && (
-        <span className="badge muted" title={`Spawned by session ${session.parentId}`}>
+      {session.parentId && session.parentMissing && (
+        <span className="badge warn" title={`Started by session ${session.parentId}, which no longer exists`}>
+          Parent deleted
+        </span>
+      )}
+      {session.parentId && !session.parentMissing && (
+        <span className="badge muted" title={`Started by session ${session.parentId}`}>
           Subagent
         </span>
       )}

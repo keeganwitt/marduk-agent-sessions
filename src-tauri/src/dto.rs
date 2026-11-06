@@ -32,6 +32,10 @@ pub struct SessionRow {
     /// Set for database-backed agents, whose sessions have no files of their own.
     pub database: Option<String>,
     pub parent_id: Option<String>,
+    /// The parent isn't in the scan (it was deleted), so this subagent stands on its own.
+    pub parent_missing: bool,
+    /// Whether the agent deletes this session along with its parent.
+    pub deleted_with_parent: bool,
     pub archived: bool,
     pub running: bool,
     pub read_only_reason: Option<String>,
@@ -152,6 +156,8 @@ fn session_row(catalog: &Catalog, session: &Session, now: SystemTime) -> Session
             .is_empty()
             .then(|| session.primary_file.to_string_lossy().into_owned()),
         parent_id: session.parent_id.clone(),
+        parent_missing: false,
+        deleted_with_parent: session.deleted_with_parent,
         archived: session.archived,
         running: session.is_running(now, catalog.running_window()),
         read_only_reason: match &plan {
@@ -169,6 +175,7 @@ pub fn scan_response(catalog: &Catalog, scans: Vec<AgentScan>, now: SystemTime) 
         .flat_map(|scan| scan.sessions.iter().map(|session| session_row(catalog, session, now)))
         .collect();
     sessions.sort_by(|a, b| b.last_activity.cmp(&a.last_activity));
+    mark_missing_parents(&mut sessions, &scans);
     let agents = scans
         .into_iter()
         .map(|scan| AgentSummary {
@@ -183,6 +190,26 @@ pub fn scan_response(catalog: &Catalog, scans: Vec<AgentScan>, now: SystemTime) 
         agents,
         sessions,
         home_dir: marduk_core::home_dir().to_string_lossy().into_owned(),
+    }
+}
+
+/// Only judged for agents whose scan was complete: an unreadable part of an agent's storage
+/// could hold the parent.
+fn mark_missing_parents(sessions: &mut [SessionRow], scans: &[AgentScan]) {
+    let complete: std::collections::HashSet<&str> = scans
+        .iter()
+        .filter(|scan| scan.complete)
+        .map(|scan| scan.agent)
+        .collect();
+    let present: std::collections::HashSet<(&str, String)> = sessions
+        .iter()
+        .map(|session| (session.agent, session.id.clone()))
+        .collect();
+    for session in sessions.iter_mut() {
+        if let Some(parent) = &session.parent_id {
+            session.parent_missing =
+                complete.contains(session.agent) && !present.contains(&(session.agent, parent.clone()));
+        }
     }
 }
 
@@ -266,6 +293,61 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    fn row(agent: &'static str, id: &str, parent: Option<&str>) -> SessionRow {
+        SessionRow {
+            uid: format!("{agent}:{id}"),
+            key: format!("{agent}:{id}"),
+            agent,
+            agent_name: agent,
+            id: id.into(),
+            title: None,
+            project_dir: None,
+            created: None,
+            last_activity: String::new(),
+            size_bytes: 0,
+            files: vec![],
+            database: None,
+            parent_id: parent.map(str::to_string),
+            parent_missing: false,
+            deleted_with_parent: false,
+            archived: false,
+            running: false,
+            read_only_reason: None,
+            permanent_delete: false,
+            can_archive: false,
+        }
+    }
+
+    fn scan(agent: &'static str, complete: bool) -> AgentScan {
+        AgentScan {
+            agent,
+            display_name: agent,
+            complete,
+            errors: vec![],
+            sessions: vec![],
+        }
+    }
+
+    #[test]
+    fn marks_subagents_whose_parent_is_gone_only_for_complete_scans() {
+        let mut sessions = vec![
+            row("codex", "parent", None),
+            row("codex", "child", Some("parent")),
+            row("codex", "orphan", Some("deleted")),
+            row("opencode", "unsure", Some("deleted")),
+            row("opencode", "other-agent-parent", Some("parent")),
+        ];
+
+        mark_missing_parents(&mut sessions, &[scan("codex", true), scan("opencode", false)]);
+
+        let missing: Vec<&str> = sessions
+            .iter()
+            .filter(|session| session.parent_missing)
+            .map(|session| session.id.as_str())
+            .collect();
+        assert_eq!(missing, vec!["orphan"]);
+    }
 
     #[test]
     fn delete_result_serializes_with_status_tag() {

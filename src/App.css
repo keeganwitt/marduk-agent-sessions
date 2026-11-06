@@ -658,3 +658,8 @@ button.title-link {
     animation-duration: 2.4s;
   }
 }
+
+.badge.warn {
+  border-color: #c98a00;
+  color: #c98a00;
+}

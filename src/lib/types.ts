@@ -20,6 +20,8 @@ export interface SessionRow {
   files: string[];
   database: string | null;
   parentId: string | null;
+  parentMissing: boolean;
+  deletedWithParent: boolean;
   archived: boolean;
   running: boolean;
   readOnlyReason: string | null;

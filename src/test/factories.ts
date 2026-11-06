@@ -16,6 +16,8 @@ export function makeSession(overrides: Partial<SessionRow> = {}): SessionRow {
     files: [`/sessions/${uid}.jsonl`],
     database: null,
     parentId: null,
+    parentMissing: false,
+    deletedWithParent: false,
     archived: false,
     running: false,
     readOnlyReason: null,

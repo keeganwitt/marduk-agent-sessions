@@ -34,6 +34,11 @@ describe("filterSessions", () => {
     expect(childUids(true)).toEqual(["old", "child"]);
   });
 
+  it("always shows subagents whose parent is gone", () => {
+    const orphan = makeSession({ uid: "orphan", parentId: "deleted", parentMissing: true });
+    expect(filterSessions([orphan], EMPTY_FILTER, now).map((s) => s.uid)).toEqual(["orphan"]);
+  });
+
   it("filters by minimum age in days", () => {
     expect(uids({ ...EMPTY_FILTER, olderThanDays: 30 })).toEqual(["old"]);
   });

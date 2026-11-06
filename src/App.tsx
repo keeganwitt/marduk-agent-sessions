@@ -257,7 +257,7 @@ export default function App() {
       {scan && (
         <Filters
           agents={scan.agents}
-          subagentCount={scan.sessions.filter((session) => session.parentId !== null).length}
+          subagentCount={scan.sessions.filter((session) => session.parentId !== null && !session.parentMissing).length}
           filter={filter}
           onChange={setFilter}
         />

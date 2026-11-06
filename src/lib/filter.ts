@@ -30,7 +30,7 @@ export function filterSessions(sessions: SessionRow[], filter: SessionFilter, no
     (session) =>
       (filter.agent === ALL_AGENTS || session.agent === filter.agent) &&
       (filter.archive === "all" || session.archived === (filter.archive === "archived")) &&
-      (filter.showSubagents || session.parentId === null) &&
+      (filter.showSubagents || session.parentId === null || session.parentMissing) &&
       (filter.olderThanDays === null || ageInDays(session.lastActivity, now) >= filter.olderThanDays) &&
       (minBytes === null || session.sizeBytes >= minBytes) &&
       (query === "" ||
