@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use marduk_core::catalog::{self, AgentScan, Catalog, Preview};
+use marduk_core::catalog::{self, AgentScan, Catalog, Preview, ScanStatus};
 use marduk_core::{ArchiveOutcome, DeleteOutcome, DeletePlan, Message, Role, Session, Transcript};
 use serde::Serialize;
 
@@ -41,6 +41,22 @@ pub struct SessionRow {
     pub read_only_reason: Option<String>,
     pub permanent_delete: bool,
     pub can_archive: bool,
+}
+
+#[derive(Serialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanProgressDto {
+    pub done: u64,
+    pub total: u64,
+    pub agent: &'static str,
+}
+
+pub fn scan_progress(status: ScanStatus) -> ScanProgressDto {
+    ScanProgressDto {
+        done: status.done,
+        total: status.total,
+        agent: status.agent,
+    }
 }
 
 #[derive(Serialize, Debug, PartialEq)]

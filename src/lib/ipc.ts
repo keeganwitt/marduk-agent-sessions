@@ -1,9 +1,11 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type { Theme } from "./theme";
-import type { ArchiveResult, CliStatus, DeleteResult, PreviewItem, ScanResponse, Transcript } from "./types";
+import type { ArchiveResult, CliStatus, DeleteResult, PreviewItem, ScanProgress, ScanResponse, Transcript } from "./types";
 
-export function scanSessions(): Promise<ScanResponse> {
-  return invoke("scan_sessions");
+export function scanSessions(onProgress: (progress: ScanProgress) => void = () => {}): Promise<ScanResponse> {
+  const channel = new Channel<ScanProgress>();
+  channel.onmessage = onProgress;
+  return invoke("scan_sessions", { onProgress: channel });
 }
 
 export function previewDelete(uids: string[]): Promise<PreviewItem[]> {

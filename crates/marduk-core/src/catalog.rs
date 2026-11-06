@@ -1,10 +1,47 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant, SystemTime};
 
-use crate::adapter::{AgentAdapter, DeletePlan};
+use crate::adapter::{AgentAdapter, DeletePlan, ScanProgress};
 use crate::delete::{self, ArchiveOutcome, DeleteBackend, DeleteOutcome, PlannedDelete};
 use crate::session::Session;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScanStatus {
+    pub done: u64,
+    pub total: u64,
+    /// The agent being scanned, empty once the scan has finished.
+    pub agent: &'static str,
+}
+
+const REPORT_INTERVAL: Duration = Duration::from_millis(50);
+
+/// One agent's share of the overall progress, capped at its estimate.
+struct ProgressTracker<'a> {
+    base: u64,
+    cap: u64,
+    total: u64,
+    agent: &'static str,
+    done: AtomicU64,
+    last_report: Mutex<Instant>,
+    report: &'a (dyn Fn(ScanStatus) + Sync),
+}
+
+impl ScanProgress for ProgressTracker<'_> {
+    fn advance(&self, bytes: u64) {
+        let done = self.done.fetch_add(bytes, Ordering::Relaxed).saturating_add(bytes);
+        let mut last = self.last_report.lock().unwrap();
+        if last.elapsed() >= REPORT_INTERVAL {
+            *last = Instant::now();
+            (self.report)(ScanStatus {
+                done: self.base + done.min(self.cap),
+                total: self.total,
+                agent: self.agent,
+            });
+        }
+    }
+}
 
 pub struct AgentScan {
     pub agent: &'static str,
@@ -53,25 +90,54 @@ impl Catalog {
     }
 
     pub fn scan(&self) -> Vec<AgentScan> {
-        let mut snapshot = HashMap::new();
-        let scans = self
+        self.scan_with_progress(&|_| {})
+    }
+
+    /// Scans every agent, reporting progress against a total measured before any parsing,
+    /// so it only moves forward and reaches `total` exactly when the scan finishes.
+    pub fn scan_with_progress(&self, report: &(dyn Fn(ScanStatus) + Sync)) -> Vec<AgentScan> {
+        let estimates: Vec<u64> = self
             .adapters
             .iter()
-            .enumerate()
-            .map(|(index, adapter)| {
-                let result = adapter.scan();
-                for session in &result.sessions {
-                    snapshot.insert(uid(session), (index, session.clone()));
-                }
-                AgentScan {
-                    agent: adapter.id(),
-                    display_name: adapter.display_name(),
-                    complete: result.complete,
-                    errors: result.errors,
-                    sessions: result.sessions,
-                }
-            })
+            .map(|adapter| adapter.estimate_scan_bytes())
             .collect();
+        let total = estimates.iter().sum();
+        let mut base = 0;
+        let mut snapshot = HashMap::new();
+        let mut scans = Vec::new();
+        for (index, adapter) in self.adapters.iter().enumerate() {
+            report(ScanStatus {
+                done: base,
+                total,
+                agent: adapter.display_name(),
+            });
+            let tracker = ProgressTracker {
+                base,
+                cap: estimates[index],
+                total,
+                agent: adapter.display_name(),
+                done: AtomicU64::new(0),
+                last_report: Mutex::new(Instant::now()),
+                report,
+            };
+            let result = adapter.scan_with(&tracker);
+            base += estimates[index];
+            for session in &result.sessions {
+                snapshot.insert(uid(session), (index, session.clone()));
+            }
+            scans.push(AgentScan {
+                agent: adapter.id(),
+                display_name: adapter.display_name(),
+                complete: result.complete,
+                errors: result.errors,
+                sessions: result.sessions,
+            });
+        }
+        report(ScanStatus {
+            done: total,
+            total,
+            agent: "",
+        });
         *self.snapshot.lock().unwrap() = snapshot;
         scans
     }
@@ -509,6 +575,33 @@ mod tests {
             preview[2].result.is_ok(),
             "guardian reviews aren't deleted with their parent"
         );
+    }
+
+    #[test]
+    fn progress_only_moves_forward_and_ends_at_the_total() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("--p--");
+        fs::create_dir(&dir).unwrap();
+        for index in 0..5 {
+            fs::write(dir.join(format!("t_{index}.jsonl")), "x".repeat(1000 * (index + 1))).unwrap();
+        }
+        let catalog = Catalog::new(
+            vec![Box::new(PiAdapter::new(root.path().to_path_buf()))],
+            Duration::from_secs(60),
+        );
+        let reports = Mutex::new(Vec::new());
+
+        catalog.scan_with_progress(&|status| reports.lock().unwrap().push(status));
+
+        let reports = reports.into_inner().unwrap();
+        assert!(reports.windows(2).all(|pair| pair[0].done <= pair[1].done));
+        assert!(
+            reports
+                .iter()
+                .all(|status| status.total == 15_000 && status.done <= status.total)
+        );
+        assert_eq!(reports.last().unwrap().done, 15_000);
+        assert_eq!(reports[0].agent, "Pi");
     }
 
     #[test]

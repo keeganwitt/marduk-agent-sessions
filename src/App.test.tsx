@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -460,6 +460,26 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Rescan" })).toBeDisabled();
     finish(scanOf(makeSession({ uid: "u1", title: "Loaded" })));
     expect(await screen.findByRole("button", { name: "Rescan" })).toBeEnabled();
+  });
+
+  it("shows a progress bar with the agent being scanned once progress arrives", async () => {
+    let report: (progress: { done: number; total: number; agent: string }) => void = () => {};
+    let finish: (value: ScanResponse) => void = () => {};
+    scanSessions.mockImplementationOnce((onProgress) => {
+      report = onProgress!;
+      return new Promise((resolve) => (finish = resolve));
+    });
+
+    render(<App />);
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+
+    act(() => report({ done: 50, total: 200, agent: "Codex" }));
+
+    expect(screen.getByRole("progressbar", { name: "Scan progress" })).toHaveAttribute("value", "25");
+    expect(screen.getByText(/Scanning Codex… 25%/)).toBeInTheDocument();
+    finish(scanOf(makeSession({ uid: "u1", title: "Loaded" })));
+    expect(await screen.findByText("Loaded")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 
   it("shows an error when scanning fails", async () => {

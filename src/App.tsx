@@ -19,6 +19,7 @@ import {
   type ArchiveResult,
   type DeleteResult,
   type PreviewItem,
+  type ScanProgress,
   type ScanResponse,
   type SessionRow,
 } from "./lib/types";
@@ -81,11 +82,27 @@ function NoticeBanner({ notice, onDismiss }: { notice: Notice; onDismiss: () => 
   );
 }
 
-function BusyIndicator({ label, overlay = false }: { label: string; overlay?: boolean }) {
+function BusyIndicator({
+  label,
+  progress,
+  overlay = false,
+}: {
+  label: string;
+  progress: ScanProgress | null;
+  overlay?: boolean;
+}) {
+  const percent = progress && progress.total > 0 ? Math.min(100, Math.floor((progress.done / progress.total) * 100)) : null;
   return (
     <div className={overlay ? "busy overlay-busy" : "busy"} role="status" aria-live="polite">
-      <span className="spinner" aria-hidden="true" />
-      <span>{label}</span>
+      {percent === null ? (
+        <span className="spinner" aria-hidden="true" />
+      ) : (
+        <progress className="scan-progress" max={100} value={percent} aria-label="Scan progress" />
+      )}
+      <span>
+        {progress?.agent ? `Scanning ${progress.agent}…` : label}
+        {percent !== null && ` ${percent}%`}
+      </span>
     </div>
   );
 }
@@ -95,6 +112,7 @@ export default function App() {
   const [scannedAt, setScannedAt] = useState(() => new Date());
   const [activity, setActivity] = useState<string | null>("Scanning sessions…");
   const busy = activity !== null;
+  const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState(EMPTY_FILTER);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -111,13 +129,15 @@ export default function App() {
     setActivity("Scanning sessions…");
     setError(null);
     try {
-      setScan(await scanSessions());
+      setProgress(null);
+      setScan(await scanSessions(setProgress));
       setScannedAt(new Date());
       setSelected(new Set());
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
       setActivity(null);
+      setProgress(null);
     }
   }, []);
 
@@ -296,10 +316,10 @@ export default function App() {
       {scan && (
         <Filters agents={scan.agents} filter={filter} onChange={setFilter} />
       )}
-      {!scan && activity && <BusyIndicator label={activity} />}
+      {!scan && activity && <BusyIndicator label={activity} progress={progress} />}
       {scan && (
         <div className="table-area" aria-busy={busy}>
-          {activity && <BusyIndicator label={activity} overlay />}
+          {activity && <BusyIndicator label={activity} progress={progress} overlay />}
           <div className="table-wrap">
           <SessionTable
             rows={rows}

@@ -736,3 +736,28 @@ button.child-count:hover {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+
+progress.scan-progress {
+  width: min(360px, 60%);
+  height: 8px;
+  appearance: none;
+  border: none;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+progress.scan-progress::-webkit-progress-bar {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+progress.scan-progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.15s linear;
+}
+
+progress.scan-progress::-moz-progress-bar {
+  background: var(--accent);
+}

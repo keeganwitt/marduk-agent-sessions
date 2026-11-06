@@ -27,10 +27,15 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) 
 }
 
 #[tauri::command]
-async fn scan_sessions(catalog: tauri::State<'_, SharedCatalog>) -> Result<ScanResponse, String> {
+async fn scan_sessions(
+    catalog: tauri::State<'_, SharedCatalog>,
+    on_progress: tauri::ipc::Channel<dto::ScanProgressDto>,
+) -> Result<ScanResponse, String> {
     let catalog = catalog.inner().clone();
     blocking(move || {
-        let scans = catalog.scan();
+        let scans = catalog.scan_with_progress(&|status| {
+            let _ = on_progress.send(dto::scan_progress(status));
+        });
         dto::scan_response(&catalog, scans, SystemTime::now())
     })
     .await

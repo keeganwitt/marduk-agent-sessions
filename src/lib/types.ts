@@ -29,6 +29,13 @@ export interface SessionRow {
   canArchive: boolean;
 }
 
+export interface ScanProgress {
+  done: number;
+  total: number;
+  /** The agent being scanned, empty once the scan has finished. */
+  agent: string;
+}
+
 export interface ScanResponse {
   agents: AgentSummary[];
   sessions: SessionRow[];
