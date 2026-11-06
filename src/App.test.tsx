@@ -735,6 +735,41 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows Claude subagents under their session as rows that can't be selected", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "p", id: "p", title: "Main task" }),
+        makeSession({
+          uid: "s",
+          id: "p/agent-a1",
+          title: "Research the API · general-purpose",
+          parentId: "p",
+          deletedWithParent: true,
+          partOfParent: true,
+          readOnlyReason: "This subagent is part of its parent session.",
+        }),
+      ),
+    );
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Show 1 subagent session of Main task",
+      }),
+    );
+
+    expect(
+      screen.getByText("Research the API · general-purpose"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Select Research the API · general-purpose",
+      }),
+    ).toBeDisabled();
+    expect(screen.queryByText("Read-only")).not.toBeInTheDocument();
+  });
+
   it("shows a parent, dimmed and opened, when only its subagent matches the search", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(

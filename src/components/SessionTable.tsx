@@ -74,7 +74,7 @@ function StatusBadges({
         </span>
       )}
       {session.archived && <span className="badge archived">Archived</span>}
-      {session.readOnlyReason && (
+      {session.readOnlyReason && !session.partOfParent && (
         <span className="badge muted" title={session.readOnlyReason}>
           Read-only
         </span>

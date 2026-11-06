@@ -304,6 +304,7 @@ impl OpenCodeAdapter {
             files: Vec::new(),
             fingerprint,
             deleted_with_parent: row.parent_id.is_some(),
+            part_of_parent: false,
             parent_id: row.parent_id,
         }
     }

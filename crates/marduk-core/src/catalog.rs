@@ -211,9 +211,13 @@ impl Catalog {
                     let adapter = self.adapters[*index].as_ref();
                     let result = delete::preflight(adapter, session, now, self.running_window).map(
                         |mut plan| {
-                            if plan.is_permanent() && plan.warning.is_none() {
-                                plan.warning =
-                                    descendants_warning(&snapshot, session, adapter.display_name());
+                            if plan.warning.is_none() {
+                                plan.warning = descendants_warning(
+                                    &snapshot,
+                                    session,
+                                    adapter.display_name(),
+                                    plan.is_permanent(),
+                                );
                             }
                             plan
                         },
@@ -377,6 +381,7 @@ fn descendants_warning(
     snapshot: &HashMap<String, (usize, Session)>,
     session: &Session,
     agent_name: &str,
+    permanent: bool,
 ) -> Option<String> {
     let mut pending = vec![session.id.clone()];
     let mut seen = std::collections::HashSet::from([session.id.clone()]);
@@ -393,11 +398,15 @@ fn descendants_warning(
             }
         }
     }
+    let sessions = if count == 1 { "session" } else { "sessions" };
     (count > 0).then(|| {
-        format!(
-            "{agent_name} also deletes {count} subagent {} that this session started.",
-            if count == 1 { "session" } else { "sessions" }
-        )
+        if permanent {
+            format!(
+                "{agent_name} also deletes {count} subagent {sessions} that this session started."
+            )
+        } else {
+            format!("This also moves its {count} subagent {sessions} to the Trash.")
+        }
     })
 }
 
@@ -652,6 +661,67 @@ mod tests {
         );
         assert_eq!(reports.last().unwrap().done, 15_000);
         assert_eq!(reports[0].agent, "Pi");
+    }
+
+    #[test]
+    fn claude_subagents_are_view_only_children_counted_in_the_parents_delete() {
+        use crate::agents::claude::ClaudeAdapter;
+        let config = tempfile::tempdir().unwrap();
+        let id = "a9d8b9f2-3d8c-48bd-8b2d-ed6447b3e25f";
+        let project = config.path().join("projects").join("-w");
+        let subagents = project.join(id).join("subagents");
+        fs::create_dir_all(&subagents).unwrap();
+        let old =
+            filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+        let parent = project.join(format!("{id}.jsonl"));
+        fs::write(
+            &parent,
+            r#"{"type":"user","cwd":"/w","message":{"role":"user","content":"main task"}}"#,
+        )
+        .unwrap();
+        let child = subagents.join("agent-a1.jsonl");
+        fs::write(
+            &child,
+            r#"{"type":"user","isSidechain":true,"message":{"role":"user","content":"look things up"}}"#,
+        )
+        .unwrap();
+        fs::write(
+            subagents.join("agent-a1.meta.json"),
+            r#"{"description":"Research the API","agentType":"general-purpose"}"#,
+        )
+        .unwrap();
+        for file in [&parent, &child] {
+            filetime::set_file_mtime(file, old).unwrap();
+        }
+        let catalog = Catalog::new(
+            vec![Box::new(ClaudeAdapter::new(config.path().to_path_buf()))],
+            Duration::from_secs(60),
+        );
+        let scans = catalog.scan();
+        let sessions = &scans[0].sessions;
+        let sub = sessions.iter().find(|s| s.part_of_parent).unwrap();
+        let main = sessions.iter().find(|s| !s.part_of_parent).unwrap();
+
+        assert_eq!(
+            sub.title.as_deref(),
+            Some("Research the API · general-purpose")
+        );
+        assert_eq!(sub.parent_id.as_deref(), Some(id));
+        assert_eq!(sub.files.len(), 2);
+        assert!(matches!(
+            catalog.delete_plan(sub),
+            Some(DeletePlan::ReadOnly { .. })
+        ));
+        assert_eq!(
+            catalog.transcript(&uid(sub)).unwrap().head[0].text,
+            "look things up"
+        );
+
+        let preview = catalog.preview(&[uid(main)], SystemTime::now());
+        assert_eq!(
+            preview[0].result.as_ref().unwrap().warning.as_deref(),
+            Some("This also moves its 1 subagent session to the Trash.")
+        );
     }
 
     #[test]

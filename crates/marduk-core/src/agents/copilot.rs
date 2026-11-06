@@ -287,6 +287,7 @@ fn session_from(
         fingerprint,
         parent_id: None,
         deleted_with_parent: false,
+        part_of_parent: false,
     }
 }
 

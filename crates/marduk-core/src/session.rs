@@ -40,6 +40,9 @@ pub struct Session {
     pub parent_id: Option<String>,
     /// True when the agent's own delete of the parent also deletes this session.
     pub deleted_with_parent: bool,
+    /// Stored inside its parent session (Claude Code subagents): shown and readable, but
+    /// only deleted, archived or labeled along with the parent.
+    pub part_of_parent: bool,
 }
 
 impl Session {

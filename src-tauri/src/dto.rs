@@ -36,6 +36,8 @@ pub struct SessionRow {
     pub parent_missing: bool,
     /// Whether the agent deletes this session along with its parent.
     pub deleted_with_parent: bool,
+    /// Stored inside its parent session: shown and readable, but not separately changed.
+    pub part_of_parent: bool,
     pub archived: bool,
     pub running: bool,
     pub read_only_reason: Option<String>,
@@ -250,6 +252,7 @@ fn session_row(catalog: &Catalog, session: &Session, now: SystemTime) -> Session
         parent_id: session.parent_id.clone(),
         parent_missing: false,
         deleted_with_parent: session.deleted_with_parent,
+        part_of_parent: session.part_of_parent,
         archived: session.archived,
         running: session.is_running(now, catalog.running_window()),
         read_only_reason: match &plan {
@@ -427,6 +430,7 @@ mod tests {
             parent_id: parent.map(str::to_string),
             parent_missing: false,
             deleted_with_parent: false,
+            part_of_parent: false,
             archived: false,
             running: false,
             read_only_reason: None,

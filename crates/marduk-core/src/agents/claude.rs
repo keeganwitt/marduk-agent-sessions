@@ -49,24 +49,44 @@ impl AgentAdapter for ClaudeAdapter {
     fn scan_with(&self, progress: &dyn ScanProgress) -> ScanResult {
         let mut result = ScanResult::empty_complete();
         let files = jsonl_two_levels(&self.projects_dir, &mut result);
+        let mut seen: Vec<PathBuf> = Vec::new();
         for path in &files {
             match self.read_session(path, progress) {
-                Ok(session) => result.sessions.push(session),
+                Ok(session) => {
+                    for subagent in subagent_transcripts(path) {
+                        match self.read_subagent(&subagent, &session, progress) {
+                            Ok(child) => result.sessions.push(child),
+                            Err(error) => {
+                                result.record_error(format!("{}: {error}", subagent.display()))
+                            }
+                        }
+                        seen.push(subagent);
+                    }
+                    result.sessions.push(session);
+                }
                 Err(error) => result.record_error(format!("{}: {error}", path.display())),
             }
         }
-        self.cache.retain(&files.into_iter().collect());
+        seen.extend(files);
+        self.cache.retain(&seen.into_iter().collect());
         result
     }
 
     fn estimate_scan_bytes(&self) -> u64 {
-        total_size(&jsonl_two_levels(
-            &self.projects_dir,
-            &mut ScanResult::default(),
-        ))
+        let files = jsonl_two_levels(&self.projects_dir, &mut ScanResult::default());
+        let subagents: Vec<PathBuf> = files
+            .iter()
+            .flat_map(|path| subagent_transcripts(path))
+            .collect();
+        total_size(&files) + total_size(&subagents)
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {
+        if session.part_of_parent {
+            return DeletePlan::ReadOnly {
+                reason: "This subagent is part of its parent session; deleting the parent deletes it too.".to_string(),
+            };
+        }
         DeletePlan::Trash {
             files: session.files.clone(),
             warning: None,
@@ -74,7 +94,49 @@ impl AgentAdapter for ClaudeAdapter {
     }
 
     fn transcript(&self, session: &Session) -> std::io::Result<Transcript> {
-        read_transcript(&session.primary_file)
+        read_transcript(&session.primary_file, session.part_of_parent)
+    }
+}
+
+/// `<project>/<session-id>/subagents/agent-*.jsonl`, the transcripts of subagents the
+/// session started. They live inside the parent's folder and belong to it.
+fn subagent_transcripts(transcript: &Path) -> Vec<PathBuf> {
+    let id = transcript.file_stem().unwrap_or_default().to_string_lossy();
+    if !fs_util::looks_like_uuid(&id) {
+        return Vec::new();
+    }
+    let Some(folder) = transcript
+        .parent()
+        .map(|dir| dir.join(id.as_ref()).join("subagents"))
+    else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = fs::read_dir(&folder)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl") && path.is_file())
+        .collect();
+    files.sort();
+    files
+}
+
+/// "Check codex delete cascades to guardians · general-purpose" from a subagent's
+/// `agent-<id>.meta.json`.
+fn subagent_meta_title(meta: &Path) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(meta).ok()?).ok()?;
+    let description = value["description"]
+        .as_str()
+        .filter(|text| !text.trim().is_empty());
+    let kind = value["agentType"]
+        .as_str()
+        .filter(|text| !text.trim().is_empty());
+    match (description, kind) {
+        (Some(description), Some(kind)) => Some(format!("{description} · {kind}")),
+        (Some(description), None) => Some(description.to_string()),
+        (None, Some(kind)) => Some(kind.to_string()),
+        (None, None) => None,
     }
 }
 
@@ -86,13 +148,15 @@ fn user_role(is_meta: bool, text: &str) -> Role {
     }
 }
 
-fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
+/// A parent's transcript skips sidechain records (its subagents' turns); a subagent's own
+/// transcript is entirely sidechain records.
+fn read_transcript(path: &Path, sidechain: bool) -> std::io::Result<Transcript> {
     let mut builder = TranscriptBuilder::default();
     jsonl::for_each_line(path, |line| {
         let Ok(record) = serde_json::from_str::<serde_json::Value>(line) else {
             return;
         };
-        if record["isSidechain"] == true {
+        if !sidechain && record["isSidechain"] == true {
             return;
         }
         let timestamp = record["timestamp"]
@@ -242,6 +306,49 @@ impl ClaudeAdapter {
         progress.advance(fingerprint.len);
         Ok(session_from(path, parsed, fingerprint))
     }
+
+    fn read_subagent(
+        &self,
+        path: &Path,
+        parent: &Session,
+        progress: &dyn ScanProgress,
+    ) -> std::io::Result<Session> {
+        let fingerprint = fs_util::fingerprint(path)?;
+        let parsed = self
+            .cache
+            .get_or_parse(path, fingerprint, || parse_file(path))?;
+        progress.advance(fingerprint.len);
+        let stem = path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let meta = path.with_file_name(format!("{stem}.meta.json"));
+        let title = subagent_meta_title(&meta).or_else(|| parsed.clone().title());
+        let mut files = vec![path.to_path_buf()];
+        if meta.is_file() {
+            files.push(meta);
+        }
+        Ok(Session {
+            agent: "claude",
+            id: format!("{}/{stem}", parent.id),
+            project_dir: parsed.cwd.clone().or_else(|| parent.project_dir.clone()),
+            title,
+            created: parsed.span.first.or_else(|| fs_util::created(path)),
+            last_activity: parsed
+                .span
+                .last
+                .unwrap_or_else(|| fingerprint.modified.into()),
+            size_bytes: files.iter().map(|file| fs_util::path_size(file)).sum(),
+            archived: false,
+            primary_file: path.to_path_buf(),
+            files,
+            fingerprint,
+            parent_id: Some(parent.id.clone()),
+            deleted_with_parent: true,
+            part_of_parent: true,
+        })
+    }
 }
 
 fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Session {
@@ -270,6 +377,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         fingerprint,
         parent_id: None,
         deleted_with_parent: false,
+        part_of_parent: false,
     }
 }
 

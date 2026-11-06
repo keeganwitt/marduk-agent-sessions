@@ -556,6 +556,7 @@ fn session_from(
         fingerprint,
         parent_id: first.parent_id.clone(),
         deleted_with_parent: first.spawned,
+        part_of_parent: false,
     }
 }
 

@@ -22,6 +22,8 @@ export interface SessionRow {
   parentId: string | null;
   parentMissing: boolean;
   deletedWithParent: boolean;
+  /** Stored inside its parent session (Claude Code subagents): readable, not separately changed. */
+  partOfParent: boolean;
   archived: boolean;
   running: boolean;
   readOnlyReason: string | null;
@@ -99,7 +101,9 @@ export function isArchivable(session: SessionRow): boolean {
 }
 
 export function isSelectable(session: SessionRow): boolean {
-  return isDeletable(session) || isArchivable(session);
+  return (
+    !session.partOfParent && (isDeletable(session) || isArchivable(session))
+  );
 }
 
 export interface CliStatus {

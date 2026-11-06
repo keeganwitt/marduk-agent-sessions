@@ -300,6 +300,7 @@ mod tests {
             fingerprint: fs_util::fingerprint(path).unwrap(),
             parent_id: None,
             deleted_with_parent: false,
+            part_of_parent: false,
         }
     }
 
