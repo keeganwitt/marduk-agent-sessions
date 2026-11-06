@@ -79,6 +79,7 @@ impl AgentAdapter for ClaudeAdapter {
     fn delete_plan(&self, session: &Session) -> DeletePlan {
         DeletePlan::Trash {
             files: session.files.clone(),
+            warning: None,
         }
     }
 
@@ -445,7 +446,8 @@ mod tests {
         assert_eq!(
             adapter.delete_plan(&session),
             DeletePlan::Trash {
-                files: session.files.clone()
+                files: session.files.clone(),
+                warning: None,
             }
         );
     }

@@ -79,7 +79,7 @@ pub fn preflight(
 ) -> Result<PlannedDelete, String> {
     let (files, method, warning) = match adapter.delete_plan(session) {
         DeletePlan::ReadOnly { reason } => return Err(reason),
-        DeletePlan::Trash { files } => (files, Method::Trash, None),
+        DeletePlan::Trash { files, warning } => (files, Method::Trash, warning),
         DeletePlan::AgentCommand {
             command,
             files,
@@ -297,6 +297,7 @@ mod tests {
     fn trash_plan(files: &[&Path]) -> DeletePlan {
         DeletePlan::Trash {
             files: files.iter().map(|path| path.to_path_buf()).collect(),
+            warning: None,
         }
     }
 

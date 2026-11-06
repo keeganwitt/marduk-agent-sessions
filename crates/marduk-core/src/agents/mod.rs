@@ -1,6 +1,7 @@
 pub mod claude;
 pub mod cli;
 pub mod codex;
+pub mod copilot;
 pub mod opencode;
 pub mod pi;
 

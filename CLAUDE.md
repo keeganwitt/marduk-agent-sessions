@@ -15,6 +15,7 @@ Author is `Keegan Witt <keeganwitt@gmail.com>`, set in this repo's local git con
 ## Design rules (don't break these)
 
 - If an agent has its own per-session delete or archive command, use it (`DeletePlan::AgentCommand`, `AgentAdapter::archive_command`). Today that's `codex delete --force` (permanent), `codex archive`/`unarchive` and `opencode session delete` (permanent, cascades to child sessions; surfaced via `DeletePlan::AgentCommand.warning`). Without a native command, delete to the system Trash (`trash` crate; the macOS NSFileManager method avoids a permission prompt to automate Finder). Never fall back to unlinking.
+- Native delete commands that only exist interactively (Copilot's `/session delete`, Antigravity's TUI) don't count; use the Trash and explain side effects with `DeletePlan::Trash.warning`.
 - Permanent deletes must say so in the UI: `PreviewItem.permanent` and the exact `command` are shown in the dialog.
 - After an agent command reports success, check that the transcript actually moved or disappeared, and treat it as a failure if it didn't.
 - Agent CLIs go through `agents::cli::Cli`: a user-chosen path from Settings (`CliOverrides`, persisted by `src-tauri/src/settings.rs` in the app config folder) wins, otherwise `agents::find_program`, which also searches common install folders because Dock-launched apps get a minimal `PATH`. CLIs are re-resolved on every scan. Don't download or bundle agent CLIs: a version that differs from the user's agent could migrate its data.

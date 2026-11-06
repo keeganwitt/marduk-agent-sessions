@@ -78,6 +78,7 @@ impl AgentAdapter for PiAdapter {
     fn delete_plan(&self, session: &Session) -> DeletePlan {
         DeletePlan::Trash {
             files: session.files.clone(),
+            warning: None,
         }
     }
 

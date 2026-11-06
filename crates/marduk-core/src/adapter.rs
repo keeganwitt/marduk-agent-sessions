@@ -74,6 +74,8 @@ impl ScanResult {
 pub enum DeletePlan {
     Trash {
         files: Vec<PathBuf>,
+        /// Extra consequences the user should know about before confirming.
+        warning: Option<String>,
     },
     /// Delete through the agent's own CLI, which also cleans up its indexes. Permanent.
     AgentCommand {
