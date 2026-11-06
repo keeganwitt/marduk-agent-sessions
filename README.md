@@ -1,5 +1,7 @@
 # Marduk
 
+<img src="assets/marduk.svg" alt="Marduk holding a spade" width="192" height="192">
+
 Marduk is a cross-platform desktop app for finding and cleaning up old AI coding-agent sessions.
 
 It scans the transcripts that coding agents keep on disk and shows them in one list. You can filter by agent, age, size or project, then delete the sessions you don't need, or archive them when the agent supports archiving.
