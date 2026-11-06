@@ -8,6 +8,7 @@ pub mod session;
 pub mod transcript;
 
 pub use adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanResult};
+pub use agents::cli::{CliInfo, CliOverrides};
 pub use delete::{ArchiveOutcome, DeleteBackend, DeleteOutcome, PlannedDelete, SystemBackend};
 pub use session::{Fingerprint, Session};
 pub use transcript::{Message, Role, ToolCall, Transcript};
@@ -20,11 +21,11 @@ pub fn home_dir() -> std::path::PathBuf {
 
 pub const RUNNING_WINDOW: Duration = Duration::from_secs(5 * 60);
 
-pub fn default_adapters() -> Vec<Box<dyn AgentAdapter>> {
+pub fn default_adapters(overrides: std::sync::Arc<agents::cli::CliOverrides>) -> Vec<Box<dyn AgentAdapter>> {
     vec![
         Box::new(agents::claude::ClaudeAdapter::from_env()),
-        Box::new(agents::codex::CodexAdapter::from_env()),
-        Box::new(agents::opencode::OpenCodeAdapter::from_env()),
+        Box::new(agents::codex::CodexAdapter::from_env(overrides.clone())),
+        Box::new(agents::opencode::OpenCodeAdapter::from_env(overrides)),
         Box::new(agents::pi::PiAdapter::from_env()),
     ]
 }

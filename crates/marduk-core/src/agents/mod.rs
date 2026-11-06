@@ -1,4 +1,5 @@
 pub mod claude;
+pub mod cli;
 pub mod codex;
 pub mod opencode;
 pub mod pi;
@@ -50,7 +51,7 @@ fn find_in(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
     })
 }
 
-fn is_executable(path: &Path) -> bool {
+pub(crate) fn is_executable(path: &Path) -> bool {
     let Ok(meta) = path.metadata() else {
         return false;
     };

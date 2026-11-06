@@ -29,7 +29,7 @@ Click a session's title to read it in a side panel. Messages are rendered as Mar
 - **Confined to agent folders.** Every path is resolved (following `..` and symlinks) and must sit inside the agent's session folder.
 - **Agent databases are never written to.** For agents that keep sessions in a database, Marduk will only delete through the agent's own CLI.
 - **No invented archives.** Marduk only archives through an agent's own archive command, and doesn't create archive folders that agents don't know about.
-- **Agent CLIs are found outside your shell too.** Apps opened from the Dock don't get your shell's `PATH`, so Marduk also looks in `~/.local/bin`, Homebrew and other common install folders.
+- **Agent CLIs are found outside your shell too.** Apps opened from the Dock don't get your shell's `PATH`, so Marduk also looks in `~/.local/bin`, Homebrew and other common install folders. If yours is somewhere else, choose it in **Settings → Agent CLIs**, which also shows the version Marduk will run. Marduk never installs or updates agent CLIs itself, because a different version from the agent you use could migrate its data out from under it.
 
 ## Development
 

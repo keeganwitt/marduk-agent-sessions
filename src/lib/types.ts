@@ -82,3 +82,14 @@ export function isArchivable(session: SessionRow): boolean {
 export function isSelectable(session: SessionRow): boolean {
   return isDeletable(session) || isArchivable(session);
 }
+
+export interface CliStatus {
+  agent: string;
+  agentName: string;
+  program: string;
+  installUrl: string;
+  path: string | null;
+  overridden: boolean;
+  version: string | null;
+  problem: string | null;
+}

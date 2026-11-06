@@ -7,7 +7,7 @@ use marduk_core::RUNNING_WINDOW;
 use marduk_core::catalog::Catalog;
 
 fn main() {
-    let catalog = Catalog::new(marduk_core::default_adapters(), RUNNING_WINDOW);
+    let catalog = Catalog::new(marduk_core::default_adapters(Default::default()), RUNNING_WINDOW);
     let now = SystemTime::now();
     for scan in catalog.scan() {
         let bytes: u64 = scan.sessions.iter().map(|session| session.size_bytes).sum();

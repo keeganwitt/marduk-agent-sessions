@@ -559,3 +559,49 @@ button.title-link {
   font-size: 12px;
   color: var(--muted);
 }
+
+.cli-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cli-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.cli-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cli-detail {
+  font-size: 12px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.cli-detail .path {
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.cli-detail.missing,
+.cli-detail.problem {
+  color: var(--danger);
+}
+
+.cli-detail a {
+  color: var(--accent);
+}
+
+.cli-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}

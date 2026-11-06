@@ -7,7 +7,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use serde_json::value::RawValue;
 
-use super::{env_dir, find_program, home_dir};
+use super::cli::{Cli, CliOverrides};
+use super::{env_dir, home_dir};
 use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanResult};
 use crate::fs_util;
 use crate::jsonl;
@@ -18,19 +19,25 @@ use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 /// `archived_sessions/` with `codex archive`. Thread names live in `session_index.jsonl`.
 pub struct CodexAdapter {
     home: PathBuf,
-    cli: Option<PathBuf>,
+    cli: Cli,
 }
+
+const PROGRAM: &str = "codex";
+const INSTALL_URL: &str = "https://github.com/openai/codex#installing-and-running-codex-cli";
 
 impl CodexAdapter {
     pub fn new(home: PathBuf, cli: Option<PathBuf>) -> Self {
-        Self { home, cli }
+        Self {
+            home,
+            cli: Cli::fixed(PROGRAM, INSTALL_URL, cli),
+        }
     }
 
-    pub fn from_env() -> Self {
-        Self::new(
-            env_dir("CODEX_HOME").unwrap_or_else(|| home_dir().join(".codex")),
-            find_program("codex"),
-        )
+    pub fn from_env(overrides: std::sync::Arc<CliOverrides>) -> Self {
+        Self {
+            home: env_dir("CODEX_HOME").unwrap_or_else(|| home_dir().join(".codex")),
+            cli: Cli::detect("codex", PROGRAM, INSTALL_URL, overrides),
+        }
     }
 
     fn sessions_dir(&self) -> PathBuf {
@@ -45,9 +52,10 @@ impl CodexAdapter {
         if !fs_util::looks_like_uuid(&session.id) {
             return Err("Codex can only manage sessions that have a UUID id.".to_string());
         }
-        let program = self.cli.clone().ok_or_else(|| {
-            "Install the Codex CLI (`codex`) so Marduk can delete and archive Codex sessions.".to_string()
-        })?;
+        let program = self
+            .cli
+            .path()
+            .ok_or_else(|| self.cli.missing_reason("Codex", "delete and archive Codex sessions"))?;
         let mut args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
         args.push(session.id.clone());
         Ok(AgentCommand { program, args })
@@ -68,6 +76,7 @@ impl AgentAdapter for CodexAdapter {
     }
 
     fn scan(&self) -> ScanResult {
+        self.cli.refresh();
         let mut result = ScanResult::empty_complete();
         let titles = read_thread_names(&self.home.join("session_index.jsonl"));
         let mut compressed = 0usize;
@@ -102,6 +111,10 @@ impl AgentAdapter for CodexAdapter {
 
     fn transcript(&self, session: &Session) -> std::io::Result<Transcript> {
         read_transcript(&session.primary_file)
+    }
+
+    fn cli(&self) -> Option<&Cli> {
+        Some(&self.cli)
     }
 
     fn archive_command(&self, session: &Session) -> Option<AgentCommand> {

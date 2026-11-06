@@ -21,6 +21,10 @@ pub trait AgentAdapter: Send + Sync {
     fn still_present(&self, session: &Session) -> bool {
         session.primary_file.exists()
     }
+    /// The agent's CLI, for agents that need it to delete or archive.
+    fn cli(&self) -> Option<&crate::agents::cli::Cli> {
+        None
+    }
     /// The agent's own command to archive this session, or to unarchive it when it is
     /// already archived. `None` when the agent has no native archive.
     fn archive_command(&self, _session: &Session) -> Option<AgentCommand> {

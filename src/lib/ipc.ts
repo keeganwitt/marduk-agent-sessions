@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ArchiveResult, DeleteResult, PreviewItem, ScanResponse, Transcript } from "./types";
+import type { ArchiveResult, CliStatus, DeleteResult, PreviewItem, ScanResponse, Transcript } from "./types";
 
 export function scanSessions(): Promise<ScanResponse> {
   return invoke("scan_sessions");
@@ -27,4 +27,12 @@ export function openProjectDir(uid: string): Promise<void> {
 
 export function loadTranscript(uid: string): Promise<Transcript> {
   return invoke("load_transcript", { uid });
+}
+
+export function cliStatuses(): Promise<CliStatus[]> {
+  return invoke("cli_statuses");
+}
+
+export function setCliPath(agent: string, path: string | null): Promise<CliStatus[]> {
+  return invoke("set_cli_path", { agent, path });
 }

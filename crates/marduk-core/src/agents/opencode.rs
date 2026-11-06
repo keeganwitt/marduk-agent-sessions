@@ -6,7 +6,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::Value;
 
-use super::{env_dir, find_program, home_dir};
+use super::cli::{Cli, CliOverrides};
+use super::{env_dir, home_dir};
 use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanResult};
 use crate::jsonl;
 use crate::session::{Fingerprint, Session};
@@ -18,8 +19,11 @@ use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 pub struct OpenCodeAdapter {
     data_dir: PathBuf,
     explicit_db: Option<PathBuf>,
-    cli: Option<PathBuf>,
+    cli: Cli,
 }
+
+const PROGRAM: &str = "opencode";
+const INSTALL_URL: &str = "https://opencode.ai/docs/";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Layout {
@@ -94,16 +98,20 @@ impl OpenCodeAdapter {
         Self {
             data_dir,
             explicit_db,
-            cli,
+            cli: Cli::fixed(PROGRAM, INSTALL_URL, cli),
         }
     }
 
-    pub fn from_env() -> Self {
+    pub fn from_env(overrides: std::sync::Arc<CliOverrides>) -> Self {
         let data_dir = env_dir("XDG_DATA_HOME")
             .unwrap_or_else(|| home_dir().join(".local").join("share"))
             .join("opencode");
         let explicit_db = env_dir("OPENCODE_DB").map(|db| if db.is_absolute() { db } else { data_dir.join(db) });
-        Self::new(data_dir, explicit_db, find_program("opencode"))
+        Self {
+            data_dir,
+            explicit_db,
+            cli: Cli::detect("opencode", PROGRAM, INSTALL_URL, overrides),
+        }
     }
 
     /// `opencode.db`, plus `opencode-<channel>.db` for non-release channels.
@@ -175,9 +183,10 @@ impl OpenCodeAdapter {
         if !is_safe_id(&session.id) {
             return Err("This OpenCode session id can't be passed to the OpenCode CLI safely.".to_string());
         }
-        let program = self.cli.clone().ok_or_else(|| {
-            "Install the OpenCode CLI (`opencode`) so Marduk can delete OpenCode sessions.".to_string()
-        })?;
+        let program = self
+            .cli
+            .path()
+            .ok_or_else(|| self.cli.missing_reason("OpenCode", "delete OpenCode sessions"))?;
         Ok(AgentCommand {
             program,
             args: vec!["session".into(), "delete".into(), session.id.clone()],
@@ -360,6 +369,7 @@ impl AgentAdapter for OpenCodeAdapter {
     }
 
     fn scan(&self) -> ScanResult {
+        self.cli.refresh();
         let mut result = ScanResult::empty_complete();
         for db in self.databases() {
             if db.is_file() {
@@ -391,6 +401,10 @@ impl AgentAdapter for OpenCodeAdapter {
             Some((_, updated, totals)) => Ok(fingerprint_of(updated, totals)),
             None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "session row is gone")),
         }
+    }
+
+    fn cli(&self) -> Option<&Cli> {
+        Some(&self.cli)
     }
 
     fn still_present(&self, session: &Session) -> bool {

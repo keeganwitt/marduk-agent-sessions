@@ -76,6 +76,18 @@ impl Catalog {
         scans
     }
 
+    /// Each CLI-dependent agent's CLI, re-resolved so a changed setting shows immediately.
+    pub fn cli_status(&self) -> Vec<(&'static str, &'static str, crate::agents::cli::CliInfo)> {
+        self.adapters
+            .iter()
+            .filter_map(|adapter| {
+                let cli = adapter.cli()?;
+                cli.refresh();
+                Some((adapter.id(), adapter.display_name(), cli.info()))
+            })
+            .collect()
+    }
+
     pub fn display_name(&self, agent: &str) -> &'static str {
         self.adapters
             .iter()

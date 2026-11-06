@@ -7,7 +7,7 @@ use marduk_core::RUNNING_WINDOW;
 use marduk_core::catalog::{self, Catalog};
 
 fn main() {
-    let catalog = Catalog::new(marduk_core::default_adapters(), RUNNING_WINDOW);
+    let catalog = Catalog::new(marduk_core::default_adapters(Default::default()), RUNNING_WINDOW);
     for scan in catalog.scan() {
         let Some(largest) = scan.sessions.iter().max_by_key(|session| session.size_bytes) else {
             continue;

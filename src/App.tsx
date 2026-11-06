@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DeleteDialog } from "./components/DeleteDialog";
 import { FilesDialog } from "./components/FilesDialog";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import { Filters } from "./components/Filters";
 import { SessionTable } from "./components/SessionTable";
@@ -89,6 +90,7 @@ export default function App() {
   const [sort, setSort] = useState<SortState | null>(null);
   const [filesFor, setFilesFor] = useState<SessionRow | null>(null);
   const [transcriptFor, setTranscriptFor] = useState<SessionRow | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const rescan = useCallback(async () => {
     setBusy(true);
@@ -208,6 +210,9 @@ export default function App() {
         <span className="summary">
           {scan ? `${visible.length} of ${scan.sessions.length} sessions · ${formatBytes(visibleBytes)}` : ""}
         </span>
+        <button type="button" onClick={() => setSettingsOpen(true)}>
+          Settings
+        </button>
         <button type="button" onClick={() => void rescan()} disabled={busy}>
           {busy ? "Working…" : "Rescan"}
         </button>
@@ -258,6 +263,14 @@ export default function App() {
         </div>
       )}
 
+      {settingsOpen && (
+        <SettingsDialog
+          onClose={(changed) => {
+            setSettingsOpen(false);
+            if (changed) void rescan();
+          }}
+        />
+      )}
       {transcriptFor && <TranscriptPanel session={transcriptFor} onClose={closeTranscript} />}
       {filesFor && <FilesDialog session={filesFor} onReveal={(path) => void reveal(path)} onClose={closeFiles} />}
 
