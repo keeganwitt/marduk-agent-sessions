@@ -300,7 +300,7 @@ describe("App", () => {
     render(<App />);
 
     const button = await screen.findByRole("button", { name: "Open project folder /Users/me/Documents/Projects/team/api" });
-    expect(button).toHaveTextContent("…/team/api");
+    expect(button).toHaveTextContent("~/…/team/api");
   });
 
   it("opens the project folder from the table", async () => {

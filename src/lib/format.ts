@@ -27,14 +27,18 @@ export function formatAge(isoTimestamp: string, now: Date): string {
   return `${Math.floor(days / 365)}y ago`;
 }
 
-/** `~` for the home folder, and only the last two folders of long paths. */
+/**
+ * `~` for the home folder, and for long paths only the root plus the last two folders, so a
+ * shortened path still reads as absolute (`~/…/team/app`, `/…/c/d`, `C:\\…\\team\\app`).
+ */
 export function shortenPath(path: string, homeDir: string): string {
   const home = homeDir.replace(/[\\/]+$/, "");
-  const withHome = home && (path === home || path.startsWith(`${home}/`) || path.startsWith(`${home}\\`))
-    ? `~${path.slice(home.length)}`
-    : path;
-  const parts = withHome.split(/[\\/]/).filter(Boolean);
-  if (parts.length <= 3) return withHome;
-  const separator = withHome.includes("\\") && !withHome.includes("/") ? "\\" : "/";
-  return `…${separator}${parts.slice(-2).join(separator)}`;
+  const inHome = home !== "" && (path === home || path.startsWith(`${home}/`) || path.startsWith(`${home}\\`));
+  const display = inHome ? `~${path.slice(home.length)}` : path;
+  const separator = display.includes("\\") && !display.includes("/") ? "\\" : "/";
+  const parts = display.split(/[\\/]/).filter(Boolean);
+  const root = inHome ? "~" : /^[A-Za-z]:/.test(display) ? parts[0] : "";
+  const rest = root === "" ? parts : parts.slice(1);
+  if (rest.length <= 3) return display;
+  return [root, "…", ...rest.slice(-2)].join(separator);
 }

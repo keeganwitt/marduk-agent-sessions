@@ -34,14 +34,17 @@ describe("formatAge", () => {
 
 describe("shortenPath", () => {
   it.each([
-    ["/Users/me/work/app", "~/work/app"],
-    ["/Users/me", "~"],
-    ["/Users/me/Documents/Projects/sec-eng/service-account-manager-rest", "…/sec-eng/service-account-manager-rest"],
-    ["/Users/meow/x", "/Users/meow/x"],
-    ["/opt/a/b/c/d", "…/c/d"],
-    ["C:\\Users\\me\\src\\team\\app", "…\\team\\app"],
-  ])("shortens %s to %s", (path, expected) => {
-    const home = path.startsWith("C:") ? "C:\\Users\\other" : "/Users/me";
+    ["/Users/me/work/app", "/Users/me", "~/work/app"],
+    ["/Users/me", "/Users/me", "~"],
+    ["/Users/me/a/b/c", "/Users/me", "~/a/b/c"],
+    ["/Users/me/Documents/Projects/sec-eng/service-account-manager-rest", "/Users/me", "~/…/sec-eng/service-account-manager-rest"],
+    ["/Users/me/Documents/Codex/2026-11-06/did-x20", "/Users/me/", "~/…/2026-11-06/did-x20"],
+    ["/Users/meow/x", "/Users/me", "/Users/meow/x"],
+    ["/opt/a/b/c/d", "/Users/me", "/…/c/d"],
+    ["/opt/a/b", "/Users/me", "/opt/a/b"],
+    ["C:\\Users\\me\\src\\team\\app", "C:\\Users\\other", "C:\\…\\team\\app"],
+    ["C:\\Users\\me\\src\\team\\app", "C:\\Users\\me", "~\\src\\team\\app"],
+  ])("shortens %s (home %s) to %s", (path, home, expected) => {
     expect(shortenPath(path, home)).toBe(expected);
   });
 });
