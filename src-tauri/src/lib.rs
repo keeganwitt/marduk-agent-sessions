@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use marduk_core::catalog::Catalog;
 use marduk_core::{RUNNING_WINDOW, SystemBackend};
 
-use dto::{ArchiveResult, DeleteResult, PreviewItem, ScanResponse};
+use dto::{ArchiveResult, DeleteResult, PreviewItem, ScanResponse, TranscriptDto};
 
 type SharedCatalog = Arc<Catalog>;
 
@@ -97,6 +97,12 @@ async fn open_project_dir(catalog: tauri::State<'_, SharedCatalog>, uid: String)
     .await?
 }
 
+#[tauri::command]
+async fn load_transcript(catalog: tauri::State<'_, SharedCatalog>, uid: String) -> Result<TranscriptDto, String> {
+    let catalog = catalog.inner().clone();
+    blocking(move || catalog.transcript(&uid).map(dto::transcript_dto)).await?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let catalog: SharedCatalog = Arc::new(Catalog::new(marduk_core::default_adapters(), RUNNING_WINDOW));
@@ -109,7 +115,8 @@ pub fn run() {
             delete_sessions,
             toggle_archive,
             reveal_session_file,
-            open_project_dir
+            open_project_dir,
+            load_transcript
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

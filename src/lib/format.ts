@@ -18,9 +18,23 @@ export function ageInDays(isoTimestamp: string, now: Date): number {
 
 export function formatAge(isoTimestamp: string, now: Date): string {
   const days = ageInDays(isoTimestamp, now);
-  if (days < 1 / 24) return "just now";
+  const minutes = days * 24 * 60;
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${Math.floor(minutes)}m ago`;
   if (days < 1) return `${Math.floor(days * 24)}h ago`;
   if (days < 60) return `${Math.floor(days)}d ago`;
   if (days < 730) return `${Math.floor(days / 30)}mo ago`;
   return `${Math.floor(days / 365)}y ago`;
+}
+
+/** `~` for the home folder, and only the last two folders of long paths. */
+export function shortenPath(path: string, homeDir: string): string {
+  const home = homeDir.replace(/[\\/]+$/, "");
+  const withHome = home && (path === home || path.startsWith(`${home}/`) || path.startsWith(`${home}\\`))
+    ? `~${path.slice(home.length)}`
+    : path;
+  const parts = withHome.split(/[\\/]/).filter(Boolean);
+  if (parts.length <= 3) return withHome;
+  const separator = withHome.includes("\\") && !withHome.includes("/") ? "\\" : "/";
+  return `…${separator}${parts.slice(-2).join(separator)}`;
 }

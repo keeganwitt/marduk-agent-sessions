@@ -13,6 +13,7 @@ vi.mock("./lib/ipc", () => ({
   toggleArchive: vi.fn(),
   revealSessionFile: vi.fn(),
   openProjectDir: vi.fn(),
+  loadTranscript: vi.fn(),
 }));
 
 const scanSessions = vi.mocked(ipc.scanSessions);
@@ -21,6 +22,7 @@ const deleteSessions = vi.mocked(ipc.deleteSessions);
 const toggleArchive = vi.mocked(ipc.toggleArchive);
 const revealSessionFile = vi.mocked(ipc.revealSessionFile);
 const openProjectDir = vi.mocked(ipc.openProjectDir);
+const loadTranscript = vi.mocked(ipc.loadTranscript);
 
 function rowTitles(): string[] {
   return screen
@@ -33,6 +35,7 @@ function scanOf(...sessions: SessionRow[]): ScanResponse {
   return {
     agents: [{ id: "claude", name: "Claude Code", complete: true, errors: [], sessionCount: sessions.length }],
     sessions,
+    homeDir: "/Users/me",
   };
 }
 
@@ -223,6 +226,34 @@ describe("App", () => {
     expect(previewDelete).not.toHaveBeenCalled();
   });
 
+  it("opens a session's transcript from its title", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "u1", title: "Mystery session" })));
+    loadTranscript.mockResolvedValue({
+      head: [{ role: "user", text: "Explain the flaky test", timestamp: null, tool: null }],
+      omitted: 0,
+      tail: [],
+      shortened: false,
+    });
+
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Mystery session" }));
+
+    expect(loadTranscript).toHaveBeenCalledWith("u1");
+    expect(await screen.findByText("Explain the flaky test")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close transcript" }));
+    expect(screen.queryByText("Explain the flaky test")).not.toBeInTheDocument();
+  });
+
+  it("shows project folders relative to home", async () => {
+    scanSessions.mockResolvedValue(scanOf(makeSession({ projectDir: "/Users/me/Documents/Projects/team/api" })));
+
+    render(<App />);
+
+    const button = await screen.findByRole("button", { name: "Open project folder /Users/me/Documents/Projects/team/api" });
+    expect(button).toHaveTextContent("…/team/api");
+  });
+
   it("opens the project folder from the table", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "u1", projectDir: "/work/app" })));
@@ -255,6 +286,7 @@ describe("App", () => {
     scanSessions.mockResolvedValue({
       agents: [{ id: "pi", name: "Pi", complete: false, errors: ["/x: permission denied"], sessionCount: 0 }],
       sessions: [],
+      homeDir: "/Users/me",
     });
 
     render(<App />);

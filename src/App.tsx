@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DeleteDialog } from "./components/DeleteDialog";
 import { FilesDialog } from "./components/FilesDialog";
+import { TranscriptPanel } from "./components/TranscriptPanel";
 import { Filters } from "./components/Filters";
 import { SessionTable } from "./components/SessionTable";
 import { EMPTY_FILTER, filterSessions } from "./lib/filter";
@@ -87,6 +88,7 @@ export default function App() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [sort, setSort] = useState<SortState | null>(null);
   const [filesFor, setFilesFor] = useState<SessionRow | null>(null);
+  const [transcriptFor, setTranscriptFor] = useState<SessionRow | null>(null);
 
   const rescan = useCallback(async () => {
     setBusy(true);
@@ -195,6 +197,7 @@ export default function App() {
   };
 
   const closeFiles = useCallback(() => setFilesFor(null), []);
+  const closeTranscript = useCallback(() => setTranscriptFor(null), []);
 
   return (
     <main className="app">
@@ -239,6 +242,7 @@ export default function App() {
         <div className="table-wrap">
           <SessionTable
             sessions={visible}
+            homeDir={scan.homeDir}
             selected={selected}
             now={scannedAt}
             sort={sort}
@@ -247,10 +251,12 @@ export default function App() {
             onSetMany={setMany}
             onOpenProject={(session) => void openProject(session)}
             onShowFiles={setFilesFor}
+            onOpenTranscript={setTranscriptFor}
           />
         </div>
       )}
 
+      {transcriptFor && <TranscriptPanel session={transcriptFor} onClose={closeTranscript} />}
       {filesFor && <FilesDialog session={filesFor} onReveal={(path) => void reveal(path)} onClose={closeFiles} />}
 
       {preview && (

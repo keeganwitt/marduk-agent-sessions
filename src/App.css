@@ -362,3 +362,189 @@ button.link:hover {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+button.title-link {
+  font-size: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.transcript {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(760px, 62vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18);
+  z-index: 10;
+}
+
+.transcript-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.transcript-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.transcript-heading h2 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+
+.transcript-heading p {
+  margin: 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.transcript-controls {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.transcript-controls label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.transcript-controls select {
+  margin-left: auto;
+  max-width: 50%;
+  font: inherit;
+}
+
+.transcript-body {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message {
+  border-radius: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+}
+
+.message.user {
+  background: var(--row-selected);
+}
+
+.message header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.message .role {
+  font-weight: 600;
+}
+
+.message.tool,
+.message.context {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.message summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tool-name {
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.when {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.message pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  margin: 6px 0;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.tool-output-label {
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.markdown {
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown pre {
+  background: rgba(127, 127, 127, 0.12);
+  padding: 8px;
+  border-radius: 6px;
+  overflow: auto;
+}
+
+.markdown code {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
+
+.markdown table {
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--border);
+  padding: 3px 6px;
+}
+
+.markdown a {
+  color: var(--accent);
+}
+
+.image-label,
+.omitted,
+.note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.omitted {
+  text-align: center;
+  padding: 8px;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+}

@@ -157,6 +157,13 @@ impl Catalog {
         }
     }
 
+    pub fn transcript(&self, uid: &str) -> Result<crate::transcript::Transcript, String> {
+        let (index, session) = self.snapshot.lock().unwrap().get(uid).cloned().ok_or_else(not_found)?;
+        self.adapters[index]
+            .transcript(&session)
+            .map_err(|error| format!("Couldn't read {}: {error}", session.primary_file.display()))
+    }
+
     /// True when `path` is one of the files of a session in the current scan. Lets the UI
     /// reveal session files without being able to point at arbitrary paths.
     pub fn owns_path(&self, path: &std::path::Path) -> bool {

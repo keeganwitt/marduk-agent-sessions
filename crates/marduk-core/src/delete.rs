@@ -255,6 +255,9 @@ mod tests {
         fn archive_command(&self, _session: &Session) -> Option<AgentCommand> {
             self.archive.clone()
         }
+        fn transcript(&self, _session: &Session) -> std::io::Result<crate::transcript::Transcript> {
+            Ok(Default::default())
+        }
     }
 
     #[derive(Default)]

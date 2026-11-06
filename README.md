@@ -16,6 +16,10 @@ OpenCode is next.
 
 When an agent has its own delete or archive command, Marduk uses it, so the agent's own indexes stay consistent. Otherwise sessions go to the system Trash. Claude Code and Pi have no per-session delete command; Pi's own session picker also uses the Trash.
 
+## Reading transcripts
+
+Click a session's title to read it in a side panel. Messages are rendered as Markdown, tool calls are collapsed with their output, and injected context (system prompts, AGENTS.md) is hidden unless you turn it on. Very long sessions show their first and last 500 messages. For Pi, only the active branch is shown, not abandoned rewinds.
+
 ## Safety rules
 
 - **Trash, unless the agent deletes natively.** Sessions without a native delete command go to the system Trash (Recycle Bin on Windows). If that fails, Marduk reports the error rather than deleting permanently. Native deletes that can't be undone (Codex) are labeled *Permanent* in the confirmation dialog, which also shows the exact command.
@@ -36,6 +40,7 @@ pnpm tauri dev                          # run the app
 pnpm test                               # frontend tests (Vitest)
 cargo test --workspace                  # Rust tests
 cargo run -p marduk-core --example scan # read-only scan of this machine, for checking adapters
+cargo run --release -p marduk-core --example transcript # parse each agent's largest transcript
 ```
 
 The repo layout:

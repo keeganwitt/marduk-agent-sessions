@@ -5,12 +5,18 @@ pub mod delete;
 pub mod fs_util;
 mod jsonl;
 pub mod session;
+pub mod transcript;
 
 pub use adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanResult};
 pub use delete::{ArchiveOutcome, DeleteBackend, DeleteOutcome, PlannedDelete, SystemBackend};
 pub use session::{Fingerprint, Session};
+pub use transcript::{Message, Role, ToolCall, Transcript};
 
 use std::time::Duration;
+
+pub fn home_dir() -> std::path::PathBuf {
+    agents::home_dir()
+}
 
 pub const RUNNING_WINDOW: Duration = Duration::from_secs(5 * 60);
 

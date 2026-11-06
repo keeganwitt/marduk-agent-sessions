@@ -12,6 +12,7 @@ use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanResult};
 use crate::fs_util;
 use crate::jsonl;
 use crate::session::Session;
+use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
 /// Codex keeps rollouts at `sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl` and moves them to
 /// `archived_sessions/` with `codex archive`. Thread names live in `session_index.jsonl`.
@@ -96,6 +97,10 @@ impl AgentAdapter for CodexAdapter {
             },
             Err(reason) => DeletePlan::ReadOnly { reason },
         }
+    }
+
+    fn transcript(&self, session: &Session) -> std::io::Result<Transcript> {
+        read_transcript(&session.primary_file)
     }
 
     fn archive_command(&self, session: &Session) -> Option<AgentCommand> {
@@ -203,6 +208,59 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
             }
         }
         _ => {}
+    }
+}
+
+/// Uses `response_item` records only; `event_msg` repeats the same conversation.
+fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
+    let mut builder = TranscriptBuilder::default();
+    jsonl::for_each_line(path, |line| {
+        let Ok(record) = serde_json::from_str::<Value>(line) else {
+            return;
+        };
+        if record["type"] != "response_item" {
+            return;
+        }
+        let timestamp = record["timestamp"].as_str().and_then(jsonl::parse_timestamp);
+        let item = &record["payload"];
+        match item["type"].as_str() {
+            Some("message") => {
+                let text = jsonl::content_text(&item["content"]).unwrap_or_default();
+                let role = match item["role"].as_str() {
+                    Some("assistant") => Role::Assistant,
+                    Some("user") if !is_injected(&text) => Role::User,
+                    _ => Role::Context,
+                };
+                builder.text(role, &text, timestamp);
+            }
+            Some("function_call") => builder.tool_call(
+                item["call_id"].as_str(),
+                item["name"].as_str().unwrap_or("tool"),
+                &pretty_arguments(&item["arguments"]),
+                timestamp,
+            ),
+            Some("custom_tool_call") => builder.tool_call(
+                item["call_id"].as_str(),
+                item["name"].as_str().unwrap_or("tool"),
+                &transcript::tool_input_text(&item["input"]),
+                timestamp,
+            ),
+            Some("function_call_output" | "custom_tool_call_output") => builder.tool_result(
+                item["call_id"].as_str(),
+                &transcript::tool_output_text(&item["output"]),
+                timestamp,
+            ),
+            _ => {}
+        }
+    })?;
+    Ok(builder.finish())
+}
+
+/// `function_call.arguments` is a JSON document encoded as a string.
+fn pretty_arguments(arguments: &Value) -> String {
+    match arguments.as_str().map(serde_json::from_str::<Value>) {
+        Some(Ok(parsed)) => transcript::tool_input_text(&parsed),
+        _ => transcript::tool_input_text(arguments),
     }
 }
 
@@ -355,6 +413,37 @@ mod tests {
             "",
         );
         assert_eq!(adapter(home.path(), None).scan().sessions[0].id, ID);
+    }
+
+    #[test]
+    fn transcript_uses_response_items_and_pairs_tool_output() {
+        let home = tempfile::tempdir().unwrap();
+        let content = [
+            r#"{"timestamp":"2026-11-06T18:05:32Z","type":"session_meta","payload":{"id":"x"}}"#,
+            r#"{"timestamp":"2026-11-06T18:05:33Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"<app-context>"}]}}"#,
+            r#"{"timestamp":"2026-11-06T18:05:34Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Check CI"}]}}"#,
+            r#"{"timestamp":"2026-11-06T18:05:34Z","type":"event_msg","payload":{"type":"user_message","message":"Check CI"}}"#,
+            r#"{"timestamp":"2026-11-06T18:05:35Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"ls\"}","call_id":"c1"}}"#,
+            r#"{"timestamp":"2026-11-06T18:05:36Z","type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"ci.yml"}}"#,
+            r#"{"timestamp":"2026-11-06T18:05:37Z","type":"response_item","payload":{"type":"reasoning","summary":[]}}"#,
+            r#"{"timestamp":"2026-11-06T18:05:38Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"CI looks fine."}]}}"#,
+        ]
+        .join("\n");
+        write(
+            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &content,
+        );
+        let codex = adapter(home.path(), None);
+        let session = codex.scan().sessions.remove(0);
+
+        let messages = codex.transcript(&session).unwrap().head;
+
+        let roles: Vec<Role> = messages.iter().map(|message| message.role).collect();
+        assert_eq!(roles, vec![Role::Context, Role::User, Role::Tool, Role::Assistant]);
+        let tool = messages[2].tool.as_ref().unwrap();
+        assert_eq!(tool.name, "exec_command");
+        assert_eq!(tool.output.as_deref(), Some("ci.yml"));
+        assert_eq!(messages[2].text, "{\n  \"cmd\": \"ls\"\n}");
     }
 
     #[test]

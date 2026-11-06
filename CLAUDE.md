@@ -9,7 +9,7 @@ Author is `Keegan Witt <keeganwitt@gmail.com>`, set in this repo's local git con
 ## Layout
 
 - `crates/marduk-core`: the `AgentAdapter` trait (`adapter.rs`), per-agent adapters (`agents/`), delete safety checks (`delete.rs`) and the scan snapshot (`catalog.rs`). No Tauri dependency.
-- `src-tauri`: Tauri commands `scan_sessions`, `preview_delete`, `delete_sessions`, `toggle_archive` and `reveal_session_file` (`lib.rs`), plus serializable DTOs (`dto.rs`).
+- `src-tauri`: Tauri commands `scan_sessions`, `preview_delete`, `delete_sessions`, `toggle_archive`, `reveal_session_file`, `open_project_dir` and `load_transcript` (`lib.rs`), plus serializable DTOs (`dto.rs`).
 - `src`: the UI. Backend calls go through `src/lib/ipc.ts`.
 
 ## Design rules (don't break these)
@@ -28,7 +28,7 @@ Author is `Keegan Witt <keeganwitt@gmail.com>`, set in this repo's local git con
 
 ## Adding an adapter
 
-Implement `AgentAdapter` in `crates/marduk-core/src/agents/<agent>.rs`, register it in `default_adapters()`, and add tempdir-based tests next to it (see `claude.rs`). Before an agent's sessions are deletable, check the agent's CLI for native per-session delete and archive commands (and whether they're permanent or prompt for confirmation), and use them if they exist. Adapters ported from yuluod/AllSessions (Apache-2.0) need attribution in `THIRD_PARTY_NOTICES.md`.
+Implement `AgentAdapter` (including `transcript`, built with `transcript::TranscriptBuilder` so long sessions keep their first and last messages and tool results attach to their calls) in `crates/marduk-core/src/agents/<agent>.rs`, register it in `default_adapters()`, and add tempdir-based tests next to it (see `claude.rs`). Before an agent's sessions are deletable, check the agent's CLI for native per-session delete and archive commands (and whether they're permanent or prompt for confirmation), and use them if they exist. Adapters ported from yuluod/AllSessions (Apache-2.0) need attribution in `THIRD_PARTY_NOTICES.md`.
 
 ## Releases
 

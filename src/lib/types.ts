@@ -28,6 +28,23 @@ export interface SessionRow {
 export interface ScanResponse {
   agents: AgentSummary[];
   sessions: SessionRow[];
+  homeDir: string;
+}
+
+export type MessageRole = "user" | "assistant" | "tool" | "context";
+
+export interface TranscriptMessage {
+  role: MessageRole;
+  text: string;
+  timestamp: string | null;
+  tool: { name: string; output: string | null } | null;
+}
+
+export interface Transcript {
+  head: TranscriptMessage[];
+  omitted: number;
+  tail: TranscriptMessage[];
+  shortened: boolean;
 }
 
 export interface PreviewItem {

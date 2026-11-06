@@ -1,9 +1,10 @@
-import { formatAge, formatBytes } from "../lib/format";
+import { formatAge, formatBytes, shortenPath } from "../lib/format";
 import type { SortKey, SortState } from "../lib/sort";
 import { isSelectable, type SessionRow } from "../lib/types";
 
 interface Props {
   sessions: SessionRow[];
+  homeDir: string;
   selected: ReadonlySet<string>;
   now: Date;
   sort: SortState | null;
@@ -12,6 +13,7 @@ interface Props {
   onSetMany: (uids: string[], selected: boolean) => void;
   onOpenProject: (session: SessionRow) => void;
   onShowFiles: (session: SessionRow) => void;
+  onOpenTranscript: (session: SessionRow) => void;
 }
 
 function StatusBadges({ session }: { session: SessionRow }) {
@@ -69,7 +71,8 @@ function DateCell({ value, now }: { value: string | null; now: Date }) {
 }
 
 export function SessionTable(props: Props) {
-  const { sessions, selected, now, sort, onSort, onToggle, onSetMany, onOpenProject, onShowFiles } = props;
+  const { sessions, homeDir, selected, now, sort, onSort, onToggle, onSetMany, onOpenProject, onShowFiles, onOpenTranscript } =
+    props;
   const selectable = sessions.filter(isSelectable).map((session) => session.uid);
   const allSelected = selectable.length > 0 && selectable.every((uid) => selected.has(uid));
 
@@ -120,7 +123,15 @@ export function SessionTable(props: Props) {
                 />
               </td>
               <td className="title">
-                <span title={session.id}>{label}</span> <StatusBadges session={session} />
+                <button
+                  type="button"
+                  className="link title-link"
+                  title={`Read transcript (${session.id})`}
+                  onClick={() => onOpenTranscript(session)}
+                >
+                  {label}
+                </button>{" "}
+                <StatusBadges session={session} />
               </td>
               <td>{session.agentName}</td>
               <td className="project">
@@ -132,7 +143,7 @@ export function SessionTable(props: Props) {
                     aria-label={`Open project folder ${session.projectDir}`}
                     onClick={() => onOpenProject(session)}
                   >
-                    {session.projectDir}
+                    {shortenPath(session.projectDir, homeDir)}
                   </button>
                 ) : (
                   <span className="muted">—</span>

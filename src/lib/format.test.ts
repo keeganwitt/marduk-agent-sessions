@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ageInDays, formatAge, formatBytes } from "./format";
+import { ageInDays, formatAge, formatBytes, shortenPath } from "./format";
 
 describe("formatBytes", () => {
   it.each([
@@ -17,7 +17,8 @@ describe("formatAge", () => {
   const now = new Date("2026-11-06T12:00:00Z");
 
   it.each([
-    ["2026-11-06T11:59:00Z", "just now"],
+    ["2026-11-06T11:59:30Z", "just now"],
+    ["2026-11-06T11:48:00Z", "12m ago"],
     ["2026-11-06T07:00:00Z", "5h ago"],
     ["2026-10-27T12:00:00Z", "10d ago"],
     ["2026-05-06T12:00:00Z", "6mo ago"],
@@ -28,5 +29,19 @@ describe("formatAge", () => {
 
   it("never reports a negative age for future timestamps", () => {
     expect(ageInDays("2026-11-07T12:00:00Z", now)).toBe(0);
+  });
+});
+
+describe("shortenPath", () => {
+  it.each([
+    ["/Users/me/work/app", "~/work/app"],
+    ["/Users/me", "~"],
+    ["/Users/me/Documents/Projects/sec-eng/service-account-manager-rest", "…/sec-eng/service-account-manager-rest"],
+    ["/Users/meow/x", "/Users/meow/x"],
+    ["/opt/a/b/c/d", "…/c/d"],
+    ["C:\\Users\\me\\src\\team\\app", "…\\team\\app"],
+  ])("shortens %s to %s", (path, expected) => {
+    const home = path.startsWith("C:") ? "C:\\Users\\other" : "/Users/me";
+    expect(shortenPath(path, home)).toBe(expected);
   });
 });

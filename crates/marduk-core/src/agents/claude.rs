@@ -10,6 +10,7 @@ use crate::adapter::{AgentAdapter, DeletePlan, ScanResult};
 use crate::fs_util;
 use crate::jsonl;
 use crate::session::Session;
+use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
 pub struct ClaudeAdapter {
     projects_dir: PathBuf,
@@ -80,6 +81,74 @@ impl AgentAdapter for ClaudeAdapter {
             files: session.files.clone(),
         }
     }
+
+    fn transcript(&self, session: &Session) -> std::io::Result<Transcript> {
+        read_transcript(&session.primary_file)
+    }
+}
+
+fn user_role(is_meta: bool, text: &str) -> Role {
+    if is_meta || text.trim_start().starts_with('<') {
+        Role::Context
+    } else {
+        Role::User
+    }
+}
+
+fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
+    let mut builder = TranscriptBuilder::default();
+    jsonl::for_each_line(path, |line| {
+        let Ok(record) = serde_json::from_str::<serde_json::Value>(line) else {
+            return;
+        };
+        if record["isSidechain"] == true {
+            return;
+        }
+        let timestamp = record["timestamp"].as_str().and_then(jsonl::parse_timestamp);
+        let is_meta = record["isMeta"] == true;
+        let content = &record["message"]["content"];
+        match record["type"].as_str() {
+            Some("user") => match content {
+                serde_json::Value::String(text) => builder.text(user_role(is_meta, text), text, timestamp),
+                serde_json::Value::Array(blocks) => {
+                    for block in blocks {
+                        match block["type"].as_str() {
+                            Some("text") => {
+                                let text = block["text"].as_str().unwrap_or_default();
+                                builder.text(user_role(is_meta, text), text, timestamp);
+                            }
+                            Some("tool_result") => builder.tool_result(
+                                block["tool_use_id"].as_str(),
+                                &transcript::tool_output_text(&block["content"]),
+                                timestamp,
+                            ),
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            },
+            Some("assistant") => {
+                for block in content.as_array().into_iter().flatten() {
+                    match block["type"].as_str() {
+                        Some("text") => {
+                            builder.text(Role::Assistant, block["text"].as_str().unwrap_or_default(), timestamp)
+                        }
+                        Some("tool_use") => builder.tool_call(
+                            block["id"].as_str(),
+                            block["name"].as_str().unwrap_or("tool"),
+                            &transcript::tool_input_text(&block["input"]),
+                            timestamp,
+                        ),
+                        _ => {}
+                    }
+                }
+            }
+            Some("summary") => builder.text(Role::Context, record["summary"].as_str().unwrap_or_default(), timestamp),
+            _ => {}
+        }
+    })?;
+    Ok(builder.finish())
 }
 
 #[derive(Deserialize)]
@@ -335,6 +404,35 @@ mod tests {
         let session = scan_one(config.path());
 
         assert_eq!(session.files, vec![dir.join("memory.jsonl")]);
+    }
+
+    #[test]
+    fn transcript_pairs_tools_marks_context_and_skips_sidechains() {
+        let config = tempfile::tempdir().unwrap();
+        let transcript = [
+            r#"{"type":"user","isMeta":true,"message":{"role":"user","content":"<local-command-caveat>x</local-command-caveat>"}}"#,
+            r#"{"type":"user","timestamp":"2026-11-01T10:00:00Z","message":{"role":"user","content":"What's in **src**?"}}"#,
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":""}]}}"#,
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls src"}}]}}"#,
+            r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"main.rs"}]}}"#,
+            r#"{"type":"assistant","isSidechain":true,"message":{"role":"assistant","content":[{"type":"text","text":"subagent noise"}]}}"#,
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Just `main.rs`."}]}}"#,
+        ]
+        .join("\n");
+        write_project(config.path(), "p", &[(&format!("{ID}.jsonl"), &transcript)]);
+        let adapter = ClaudeAdapter::new(config.path().to_path_buf());
+        let session = adapter.scan().sessions.remove(0);
+
+        let messages = adapter.transcript(&session).unwrap().head;
+
+        let roles: Vec<Role> = messages.iter().map(|message| message.role).collect();
+        assert_eq!(roles, vec![Role::Context, Role::User, Role::Tool, Role::Assistant]);
+        assert_eq!(messages[1].text, "What's in **src**?");
+        assert!(messages[1].timestamp.is_some());
+        let tool = messages[2].tool.as_ref().unwrap();
+        assert_eq!(tool.name, "Bash");
+        assert_eq!(tool.output.as_deref(), Some("main.rs"));
+        assert!(messages[2].text.contains("ls src"));
     }
 
     #[test]

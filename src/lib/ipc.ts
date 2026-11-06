@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ArchiveResult, DeleteResult, PreviewItem, ScanResponse } from "./types";
+import type { ArchiveResult, DeleteResult, PreviewItem, ScanResponse, Transcript } from "./types";
 
 export function scanSessions(): Promise<ScanResponse> {
   return invoke("scan_sessions");
@@ -23,4 +23,8 @@ export function revealSessionFile(path: string): Promise<void> {
 
 export function openProjectDir(uid: string): Promise<void> {
   return invoke("open_project_dir", { uid });
+}
+
+export function loadTranscript(uid: string): Promise<Transcript> {
+  return invoke("load_transcript", { uid });
 }

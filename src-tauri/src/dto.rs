@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 use marduk_core::catalog::{self, AgentScan, Catalog, Preview};
-use marduk_core::{ArchiveOutcome, DeleteOutcome, DeletePlan, Session};
+use marduk_core::{ArchiveOutcome, DeleteOutcome, DeletePlan, Message, Role, Session, Transcript};
 use serde::Serialize;
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -41,6 +41,32 @@ pub struct SessionRow {
 pub struct ScanResponse {
     pub agents: Vec<AgentSummary>,
     pub sessions: Vec<SessionRow>,
+    pub home_dir: String,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolDto {
+    pub name: String,
+    pub output: Option<String>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageDto {
+    pub role: &'static str,
+    pub text: String,
+    pub timestamp: Option<String>,
+    pub tool: Option<ToolDto>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptDto {
+    pub head: Vec<MessageDto>,
+    pub omitted: usize,
+    pub tail: Vec<MessageDto>,
+    pub shortened: bool,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -143,7 +169,37 @@ pub fn scan_response(catalog: &Catalog, scans: Vec<AgentScan>, now: SystemTime) 
             errors: scan.errors,
         })
         .collect();
-    ScanResponse { agents, sessions }
+    ScanResponse {
+        agents,
+        sessions,
+        home_dir: marduk_core::home_dir().to_string_lossy().into_owned(),
+    }
+}
+
+fn message_dto(message: Message) -> MessageDto {
+    MessageDto {
+        role: match message.role {
+            Role::User => "user",
+            Role::Assistant => "assistant",
+            Role::Tool => "tool",
+            Role::Context => "context",
+        },
+        text: message.text,
+        timestamp: message.timestamp.map(|timestamp| timestamp.to_rfc3339()),
+        tool: message.tool.map(|tool| ToolDto {
+            name: tool.name,
+            output: tool.output,
+        }),
+    }
+}
+
+pub fn transcript_dto(transcript: Transcript) -> TranscriptDto {
+    TranscriptDto {
+        head: transcript.head.into_iter().map(message_dto).collect(),
+        omitted: transcript.omitted,
+        tail: transcript.tail.into_iter().map(message_dto).collect(),
+        shortened: transcript.shortened,
+    }
 }
 
 pub fn preview_item(catalog: &Catalog, preview: Preview) -> PreviewItem {
@@ -225,6 +281,34 @@ mod tests {
         assert_eq!(
             json,
             json!({"status": "deleted", "uid": "u", "files": ["/a"], "command": "codex delete --force x"})
+        );
+    }
+
+    #[test]
+    fn transcript_messages_serialize_roles_and_tools() {
+        let transcript = Transcript {
+            head: vec![Message {
+                role: Role::Tool,
+                text: "ls".into(),
+                timestamp: None,
+                tool: Some(marduk_core::ToolCall {
+                    name: "bash".into(),
+                    output: Some("a".into()),
+                }),
+            }],
+            omitted: 3,
+            tail: vec![],
+            shortened: false,
+        };
+        let json = serde_json::to_value(transcript_dto(transcript)).unwrap();
+        assert_eq!(
+            json,
+            json!({
+                "head": [{"role": "tool", "text": "ls", "timestamp": null, "tool": {"name": "bash", "output": "a"}}],
+                "omitted": 3,
+                "tail": [],
+                "shortened": false
+            })
         );
     }
 

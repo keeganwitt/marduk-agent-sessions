@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::session::Session;
+use crate::transcript::Transcript;
 
 pub trait AgentAdapter: Send + Sync {
     fn id(&self) -> &'static str;
@@ -9,6 +10,7 @@ pub trait AgentAdapter: Send + Sync {
     fn roots(&self) -> Vec<PathBuf>;
     fn scan(&self) -> ScanResult;
     fn delete_plan(&self, session: &Session) -> DeletePlan;
+    fn transcript(&self, session: &Session) -> std::io::Result<Transcript>;
     /// The agent's own command to archive this session, or to unarchive it when it is
     /// already archived. `None` when the agent has no native archive.
     fn archive_command(&self, _session: &Session) -> Option<AgentCommand> {

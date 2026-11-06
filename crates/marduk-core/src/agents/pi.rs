@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -8,6 +9,7 @@ use crate::adapter::{AgentAdapter, DeletePlan, ScanResult};
 use crate::fs_util;
 use crate::jsonl;
 use crate::session::Session;
+use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
 /// Pi stores one JSONL file per session at `<sessions>/--<encoded cwd>--/<timestamp>_<id>.jsonl`.
 pub struct PiAdapter {
@@ -77,6 +79,99 @@ impl AgentAdapter for PiAdapter {
         DeletePlan::Trash {
             files: session.files.clone(),
         }
+    }
+
+    fn transcript(&self, session: &Session) -> std::io::Result<Transcript> {
+        read_transcript(&session.primary_file)
+    }
+}
+
+/// Pi sessions are trees: rewinds and forks leave abandoned entries in the file. Only the
+/// branch ending at the last entry is what the user last saw.
+fn active_branch(records: &[Value]) -> std::collections::HashSet<String> {
+    let parents: HashMap<&str, Option<&str>> = records
+        .iter()
+        .filter_map(|record| Some((record["id"].as_str()?, record["parentId"].as_str())))
+        .collect();
+    let mut active = std::collections::HashSet::new();
+    let mut current = records.iter().rev().find_map(|record| record["id"].as_str());
+    while let Some(id) = current {
+        if !active.insert(id.to_string()) {
+            break;
+        }
+        current = parents.get(id).copied().flatten();
+    }
+    active
+}
+
+fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
+    let mut records = Vec::new();
+    jsonl::for_each_line(path, |line| {
+        if let Ok(record) = serde_json::from_str::<Value>(line) {
+            records.push(record);
+        }
+    })?;
+    let active = active_branch(&records);
+    let mut builder = TranscriptBuilder::default();
+    for record in &records {
+        if let Some(id) = record["id"].as_str()
+            && !active.contains(id)
+        {
+            continue;
+        }
+        let timestamp = record["timestamp"].as_str().and_then(jsonl::parse_timestamp);
+        match record["type"].as_str() {
+            Some("message") => append_message(&mut builder, &record["message"], timestamp),
+            Some("compaction" | "branch_summary") => {
+                builder.text(Role::Context, record["summary"].as_str().unwrap_or_default(), timestamp)
+            }
+            _ => {}
+        }
+    }
+    Ok(builder.finish())
+}
+
+fn append_message(builder: &mut TranscriptBuilder, message: &Value, timestamp: Option<chrono::DateTime<chrono::Utc>>) {
+    let content = &message["content"];
+    match message["role"].as_str() {
+        Some("user") => builder.text(Role::User, &jsonl::content_text(content).unwrap_or_default(), timestamp),
+        Some("assistant") => {
+            let blocks = match content {
+                Value::Array(blocks) => blocks.clone(),
+                other => vec![other.clone()],
+            };
+            for block in &blocks {
+                match block["type"].as_str() {
+                    Some("text") => {
+                        builder.text(Role::Assistant, block["text"].as_str().unwrap_or_default(), timestamp)
+                    }
+                    Some("toolCall" | "tool_call" | "tool_use") => builder.tool_call(
+                        block["id"].as_str(),
+                        block["name"].as_str().unwrap_or("tool"),
+                        &transcript::tool_input_text(&block["arguments"]),
+                        timestamp,
+                    ),
+                    _ => {
+                        if let Some(text) = block.as_str() {
+                            builder.text(Role::Assistant, text, timestamp);
+                        }
+                    }
+                }
+            }
+        }
+        Some("toolResult" | "tool_result") => builder.tool_result(
+            message["toolCallId"]
+                .as_str()
+                .or_else(|| message["tool_call_id"].as_str()),
+            &transcript::tool_output_text(content),
+            timestamp,
+        ),
+        Some("branchSummary" | "branch_summary" | "compactionSummary" | "compaction_summary") => builder.text(
+            Role::Context,
+            message["summary"].as_str().unwrap_or_default(),
+            timestamp,
+        ),
+        _ => {}
     }
 }
 
@@ -204,6 +299,32 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         write_session(root.path(), "");
         assert_eq!(scan_one(root.path()).id, "01a1adaa-395a-7422-9391-5092469eda9a");
+    }
+
+    #[test]
+    fn transcript_follows_the_active_branch_and_pairs_tools() {
+        let root = tempfile::tempdir().unwrap();
+        let content = [
+            r#"{"type":"session","version":3,"id":"s","cwd":"/w"}"#,
+            r#"{"type":"message","id":"u1","parentId":null,"message":{"role":"user","content":[{"type":"text","text":"first try"}]}}"#,
+            r#"{"type":"message","id":"a1","parentId":"u1","message":{"role":"assistant","content":[{"type":"text","text":"abandoned answer"}]}}"#,
+            r#"{"type":"message","id":"u2","parentId":null,"message":{"role":"user","content":[{"type":"text","text":"rewound prompt"}]}}"#,
+            r#"{"type":"message","id":"a2","parentId":"u2","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"bash","arguments":{"command":"ls"}}]}}"#,
+            r#"{"type":"message","id":"r1","parentId":"a2","message":{"role":"toolResult","toolCallId":"c1","toolName":"bash","content":[{"type":"text","text":"a.txt"}]}}"#,
+            r#"{"type":"message","id":"a3","parentId":"r1","message":{"role":"assistant","content":[{"type":"text","text":"Found a.txt"}]}}"#,
+        ]
+        .join("\n");
+        write_session(root.path(), &content);
+        let adapter = PiAdapter::new(root.path().to_path_buf());
+        let session = adapter.scan().sessions.remove(0);
+
+        let messages = adapter.transcript(&session).unwrap().head;
+
+        let texts: Vec<&str> = messages.iter().map(|message| message.text.as_str()).collect();
+        assert_eq!(texts[0], "rewound prompt");
+        assert!(!texts.contains(&"abandoned answer"));
+        assert_eq!(messages[1].tool.as_ref().unwrap().output.as_deref(), Some("a.txt"));
+        assert_eq!(messages[2].text, "Found a.txt");
     }
 
     #[test]
