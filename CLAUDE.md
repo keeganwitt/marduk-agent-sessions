@@ -34,6 +34,11 @@ Author is `Keegan Witt <keeganwitt@gmail.com>`, set in this repo's local git con
 
 Implement `AgentAdapter` (including `transcript`, built with `transcript::TranscriptBuilder` so long sessions keep their first and last messages and tool results attach to their calls) in `crates/marduk-core/src/agents/<agent>.rs`, register it in `default_adapters()`, and add tempdir-based tests next to it (see `claude.rs`). Before an agent's sessions are deletable, check the agent's CLI for native per-session delete and archive commands (and whether they're permanent or prompt for confirmation), and use them if they exist. Adapters ported from yuluod/AllSessions (Apache-2.0) need attribution in `THIRD_PARTY_NOTICES.md`.
 
+## Agents deliberately not supported yet
+
+- **Gemini CLI** (decided 2026-11-06): skipped for now; most users are moving to Antigravity. If revisited: storage is `~/.gemini/tmp/<project-slug>/chats/session-*.jsonl` (JSONL with `$set`/`$rewindTo`/`$patch` replay records, slug mapping in `~/.gemini/projects.json`), and `gemini --delete-session <uuid>` is a non-interactive, permanent delete that also removes subagent chats, `logs/session-<id>.jsonl`, `tool-outputs/session-<id>/` and the `<slug>/<id>/` plans folder.
+- **Antigravity** (`agy`, desktop app, IDE): skipped because its storage is undocumented. Community reports say `~/.gemini/antigravity-cli/conversations/<uuid>.db` plus `brain/<uuid>/`, with shared indexes (`conversation_summaries.db`, `agyhub_summaries_proto.pb`, `last_conversations.json`), and older `.pb` conversations are encrypted. Its only delete is in the TUI, and we can't tell which files a conversation owns or how its indexes react to removal.
+
 ## Releases
 
 CI and releases run on GitHub Actions (`.github/workflows`). Binaries are unsigned for now, so don't add signing secrets or notarization steps unless asked.
