@@ -79,9 +79,12 @@ pub(crate) fn find_program(name: &str) -> Option<PathBuf> {
     find_in(name, &dirs)
 }
 
+#[cfg(not(unix))]
+const WINDOWS_EXECUTABLES: [&str; 4] = ["exe", "cmd", "bat", "com"];
+
 fn find_in(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
     let candidates: &[&str] = if cfg!(windows) {
-        &["exe", "cmd", "bat"]
+        &["exe", "cmd", "bat", "com"]
     } else {
         &[""]
     };
@@ -106,9 +109,14 @@ pub(crate) fn is_executable(path: &Path) -> bool {
         use std::os::unix::fs::PermissionsExt;
         meta.is_file() && meta.permissions().mode() & 0o111 != 0
     }
+    // Windows has no executable bit; what runs is decided by the file extension.
     #[cfg(not(unix))]
     {
         meta.is_file()
+            && path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| WINDOWS_EXECUTABLES.contains(&ext.to_ascii_lowercase().as_str()))
     }
 }
 
