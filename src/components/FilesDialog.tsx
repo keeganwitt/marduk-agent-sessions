@@ -1,13 +1,15 @@
 import { useEffect } from "react";
 import type { SessionRow } from "../lib/types";
+import { FileList } from "./FileList";
 
 interface Props {
   session: SessionRow;
+  homeDir: string;
   onReveal: (path: string) => void;
   onClose: () => void;
 }
 
-export function FilesDialog({ session, onReveal, onClose }: Props) {
+export function FilesDialog({ session, homeDir, onReveal, onClose }: Props) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -29,26 +31,10 @@ export function FilesDialog({ session, onReveal, onClose }: Props) {
               {session.agentName} keeps all sessions in one shared database, so this session has no files of its own.
               Deleting it removes its rows through {session.agentName}'s own command; the database file stays.
             </p>
-            <ul className="files">
-              <li>
-                <span className="path">{session.database}</span>
-                <button type="button" className="link" onClick={() => onReveal(session.database!)}>
-                  Show in folder
-                </button>
-              </li>
-            </ul>
+            <FileList paths={[session.database]} homeDir={homeDir} onReveal={onReveal} />
           </div>
         )}
-        <ul className="files">
-          {session.files.map((file) => (
-            <li key={file}>
-              <span className="path">{file}</span>
-              <button type="button" className="link" onClick={() => onReveal(file)}>
-                Show in folder
-              </button>
-            </li>
-          ))}
-        </ul>
+        <FileList paths={session.files} homeDir={homeDir} onReveal={onReveal} />
         <div className="actions">
           <button type="button" onClick={onClose}>
             Close

@@ -1,6 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { Theme } from "./theme";
-import type { ArchiveResult, CliStatus, DeleteResult, Label, PreviewItem, ScanProgress, ScanResponse, Transcript } from "./types";
+import type { ArchiveResult, CliStatus, DeleteResult, FileDetail, Label, PreviewItem, ScanProgress, ScanResponse, Transcript } from "./types";
 
 export function scanSessions(onProgress: (progress: ScanProgress) => void = () => {}): Promise<ScanResponse> {
   const channel = new Channel<ScanProgress>();
@@ -66,4 +66,8 @@ export function deleteLabel(id: number): Promise<void> {
 
 export function applyLabels(uids: string[], add: number[], remove: number[]): Promise<void> {
   return invoke("apply_labels", { uids, add, remove });
+}
+
+export function fileDetails(paths: string[]): Promise<FileDetail[]> {
+  return invoke("file_details", { paths });
 }

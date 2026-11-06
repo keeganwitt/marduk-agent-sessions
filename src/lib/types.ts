@@ -112,3 +112,10 @@ export interface CliStatus {
   version: string | null;
   problem: string | null;
 }
+
+export interface FileDetail {
+  path: string;
+  sizeBytes: number;
+  isDir: boolean;
+  exists: boolean;
+}

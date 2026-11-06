@@ -1,4 +1,5 @@
 import type { PreviewItem } from "../lib/types";
+import { FileList } from "./FileList";
 
 interface Props {
   items: PreviewItem[];
@@ -6,13 +7,14 @@ interface Props {
   onConfirm: (uids: string[]) => void;
   onCancel: () => void;
   onReveal: (path: string) => void;
+  homeDir: string;
 }
 
 function plural(count: number, word: string): string {
   return `${count} ${count === 1 ? word : `${word}s`}`;
 }
 
-export function DeleteDialog({ items, busy, onConfirm, onCancel, onReveal }: Props) {
+export function DeleteDialog({ items, busy, onConfirm, onCancel, onReveal, homeDir }: Props) {
   const ready = items.filter((item) => item.refusedReason === null);
   const refused = items.filter((item) => item.refusedReason !== null);
   const toTrash = ready.filter((item) => !item.permanent);
@@ -46,16 +48,7 @@ export function DeleteDialog({ items, busy, onConfirm, onCancel, onReveal }: Pro
                 </div>
                 {item.command && <code className="command">{item.command}</code>}
                 {item.warning && <p className="item-warning">{item.warning}</p>}
-                <ul className="files">
-                  {item.files.map((file) => (
-                    <li key={file}>
-                      <span className="path">{file}</span>
-                      <button type="button" className="link" onClick={() => onReveal(file)}>
-                        Show in folder
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <FileList paths={item.files} homeDir={homeDir} onReveal={onReveal} />
               </li>
             ))}
           </ul>

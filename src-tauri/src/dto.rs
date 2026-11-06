@@ -88,6 +88,33 @@ pub fn attach_labels(
     Ok(())
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileDetail {
+    pub path: String,
+    pub size_bytes: u64,
+    pub is_dir: bool,
+    pub exists: bool,
+}
+
+/// Size and kind of session files, for paths that belong to scanned sessions only.
+pub fn file_details(catalog: &Catalog, paths: &[String]) -> Vec<FileDetail> {
+    paths
+        .iter()
+        .filter(|path| catalog.owns_path(std::path::Path::new(path)))
+        .map(|path| {
+            let path_buf = std::path::Path::new(path);
+            let meta = std::fs::symlink_metadata(path_buf).ok();
+            FileDetail {
+                path: path.clone(),
+                size_bytes: marduk_core::fs_util::path_size(path_buf),
+                is_dir: meta.as_ref().is_some_and(|meta| meta.is_dir()),
+                exists: meta.is_some(),
+            }
+        })
+        .collect()
+}
+
 #[derive(Serialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanProgressDto {
@@ -390,6 +417,37 @@ mod tests {
             errors: vec![],
             sessions: vec![],
         }
+    }
+
+    #[test]
+    fn file_details_cover_only_files_of_scanned_sessions() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("--p--");
+        std::fs::create_dir(&dir).unwrap();
+        let file = dir.join("t_a.jsonl");
+        std::fs::write(&file, "12345").unwrap();
+        let catalog = Catalog::new(
+            vec![Box::new(marduk_core::agents::pi::PiAdapter::new(root.path().to_path_buf()))],
+            marduk_core::RUNNING_WINDOW,
+        );
+        catalog.scan();
+        let outside = root.path().join("secret.txt");
+        std::fs::write(&outside, "x").unwrap();
+
+        let details = file_details(
+            &catalog,
+            &[file.to_string_lossy().into_owned(), outside.to_string_lossy().into_owned()],
+        );
+
+        assert_eq!(
+            details,
+            vec![FileDetail {
+                path: file.to_string_lossy().into_owned(),
+                size_bytes: 5,
+                is_dir: false,
+                exists: true,
+            }]
+        );
     }
 
     #[test]

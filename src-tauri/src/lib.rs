@@ -177,6 +177,15 @@ async fn reveal_session_file(catalog: tauri::State<'_, SharedCatalog>, path: Str
 }
 
 #[tauri::command]
+async fn file_details(
+    catalog: tauri::State<'_, SharedCatalog>,
+    paths: Vec<String>,
+) -> Result<Vec<dto::FileDetail>, String> {
+    let catalog = catalog.inner().clone();
+    blocking(move || dto::file_details(&catalog, &paths)).await
+}
+
+#[tauri::command]
 async fn open_project_dir(catalog: tauri::State<'_, SharedCatalog>, uid: String) -> Result<(), String> {
     let catalog = catalog.inner().clone();
     blocking(move || {
@@ -253,6 +262,7 @@ pub fn run() {
             toggle_archive,
             reveal_session_file,
             open_project_dir,
+            file_details,
             load_transcript,
             cli_statuses,
             set_cli_path,

@@ -18,6 +18,7 @@ vi.mock("./lib/ipc", () => ({
   listLabels: vi.fn(),
   createLabel: vi.fn(),
   applyLabels: vi.fn(),
+  fileDetails: vi.fn(),
 }));
 
 const scanSessions = vi.mocked(ipc.scanSessions);
@@ -62,6 +63,7 @@ describe("App", () => {
     vi.resetAllMocks();
     getTheme.mockResolvedValue("system");
     vi.mocked(ipc.listLabels).mockResolvedValue([]);
+    vi.mocked(ipc.fileDetails).mockResolvedValue([]);
   });
 
   it("labels selected sessions from the Labels menu, then filters by label", async () => {
@@ -134,7 +136,8 @@ describe("App", () => {
     const dialog = await screen.findByRole("dialog");
     expect(previewDelete).toHaveBeenCalledWith(["u1"]);
     expect(within(dialog).getByText(/Move 1 session to the Trash\?/)).toBeInTheDocument();
-    expect(within(dialog).getByText("/p/u1")).toBeInTheDocument();
+    expect(within(dialog).getByText("u1.jsonl")).toBeInTheDocument();
+    expect(within(dialog).getByText("/p")).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Move to Trash" }));
 
     expect(deleteSessions).toHaveBeenCalledWith(["u1"]);
@@ -233,7 +236,8 @@ describe("App", () => {
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/one shared database/)).toBeInTheDocument();
-    expect(within(dialog).getByText("/data/opencode.db")).toBeInTheDocument();
+    expect(within(dialog).getByText("opencode.db")).toBeInTheDocument();
+    expect(within(dialog).getByText("/data")).toBeInTheDocument();
   });
 
   it("does not let running sessions be selected", async () => {
@@ -330,11 +334,18 @@ describe("App", () => {
       scanOf(makeSession({ uid: "u1", title: "Old work", files: ["/p/u1.jsonl", "/p/u1"] })),
     );
     revealSessionFile.mockResolvedValue();
+    vi.mocked(ipc.fileDetails).mockResolvedValue([
+      { path: "/p/u1.jsonl", sizeBytes: 1536, isDir: false, exists: true },
+      { path: "/p/u1", sizeBytes: 900, isDir: true, exists: true },
+    ]);
 
     render(<App />);
     await user.click(await screen.findByRole("button", { name: "Show files for Old work" }));
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("/p/u1.jsonl")).toBeInTheDocument();
+    expect(within(dialog).getByText("u1.jsonl")).toBeInTheDocument();
+    expect(await within(dialog).findByText("1.5 KB")).toBeInTheDocument();
+    expect(within(dialog).getByText("u1/")).toBeInTheDocument();
+    expect(within(dialog).getByText("u1.jsonl").closest("li")).toHaveAttribute("title", "/p/u1.jsonl");
     await user.click(within(dialog).getAllByRole("button", { name: "Show in folder" })[0]);
     expect(revealSessionFile).toHaveBeenCalledWith("/p/u1.jsonl");
 

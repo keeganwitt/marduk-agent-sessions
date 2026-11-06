@@ -441,7 +441,14 @@ export default function App() {
           onClose={closeTranscript}
         />
       )}
-      {filesFor && <FilesDialog session={filesFor} onReveal={(path) => void reveal(path)} onClose={closeFiles} />}
+      {filesFor && (
+        <FilesDialog
+          session={filesFor}
+          homeDir={scan?.homeDir ?? ""}
+          onReveal={(path) => void reveal(path)}
+          onClose={closeFiles}
+        />
+      )}
 
       {preview && (
         <DeleteDialog
@@ -450,6 +457,7 @@ export default function App() {
           onConfirm={(uids) => void confirmDelete(uids)}
           onCancel={() => setPreview(null)}
           onReveal={(path) => void reveal(path)}
+          homeDir={scan?.homeDir ?? ""}
         />
       )}
     </main>
