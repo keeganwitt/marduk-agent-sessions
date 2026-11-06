@@ -39,7 +39,13 @@ Click a session's title to read it in a side panel. Messages are rendered as Mar
 
 ## Development
 
-Requirements: Rust (stable), Node.js 22 and pnpm 10. On Linux you also need the [Tauri system dependencies](https://tauri.app/start/prerequisites/).
+Requirements: Rust (stable), Node.js 22 and pnpm 10, plus the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS:
+
+- **macOS:** Xcode Command Line Tools (`xcode-select --install`).
+- **Windows:** Microsoft C++ Build Tools ("Desktop development with C++") and the WebView2 runtime (already installed on Windows 10 and 11). Use the `x86_64-pc-windows-msvc` Rust toolchain, which is the default from rustup.
+- **Linux:** the WebKitGTK and related packages listed on that page.
+
+The repo uses LF line endings on every OS (`.gitattributes`), so Windows checkouts stay byte-for-byte the same as macOS ones.
 
 ```sh
 pnpm install
