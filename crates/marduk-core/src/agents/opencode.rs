@@ -391,8 +391,33 @@ impl AgentAdapter for OpenCodeAdapter {
     }
 
     fn transcript(&self, session: &Session) -> std::io::Result<Transcript> {
-        let connection = open(&session.primary_file).map_err(std::io::Error::other)?;
-        read_transcript(&connection, &session.id).map_err(std::io::Error::other)
+        let direct = open(&session.primary_file)
+            .and_then(|connection| read_transcript(&connection, &session.id))
+            .map_err(|error| error.to_string());
+        let recognized = match &direct {
+            Ok(transcript) => !transcript.head.is_empty() || session.fingerprint.len == 0,
+            Err(_) => false,
+        };
+        if recognized {
+            return direct.map_err(std::io::Error::other);
+        }
+        let fallback = match self.cli.path() {
+            Some(cli) if is_safe_id(&session.id) => export_transcript(&cli, &session.id),
+            Some(_) => Err("This session id can't be passed to the OpenCode CLI safely.".to_string()),
+            None => Err(self
+                .cli
+                .missing_reason("OpenCode", "read sessions it can't read directly")),
+        };
+        match (direct, fallback) {
+            (_, Ok(transcript)) => Ok(transcript),
+            (Ok(mut transcript), Err(reason)) => {
+                transcript.note = Some(format!(
+                    "Marduk didn't recognize how this session's messages are stored. {reason}"
+                ));
+                Ok(transcript)
+            }
+            (Err(direct), Err(reason)) => Err(std::io::Error::other(format!("{direct}. {reason}"))),
+        }
     }
 
     fn fingerprint(&self, session: &Session) -> std::io::Result<Fingerprint> {
@@ -485,35 +510,76 @@ fn read_v2(connection: &Connection, session_id: &str, builder: &mut TranscriptBu
         ))
     })? {
         let (id, kind, created, data) = row?;
-        let timestamp = millis_to_datetime(created);
-        let data = parse(&data);
-        let text = data["text"].as_str().unwrap_or_default();
-        match kind.as_str() {
-            "user" => builder.text(Role::User, text, timestamp),
-            "synthetic" | "system" | "skill" => builder.text(Role::Context, text, timestamp),
-            "shell" => {
-                builder.tool_call(
-                    Some(&id),
-                    "shell",
-                    data["command"].as_str().unwrap_or_default(),
-                    timestamp,
-                );
-                if let Some(output) = data["output"]["output"].as_str() {
-                    builder.tool_result(Some(&id), output, timestamp);
-                }
-            }
-            "compaction" => builder.text(Role::Context, data["summary"].as_str().unwrap_or_default(), timestamp),
-            "assistant" => {
-                let inline = data["content"].as_array().cloned().unwrap_or_default();
-                let content = parts.remove(&id).unwrap_or_default().into_iter().chain(inline);
-                for block in content {
-                    append_v2_block(builder, &block, timestamp);
-                }
-            }
-            _ => {}
-        }
+        let content = parts.remove(&id).unwrap_or_default();
+        append_v2_message(builder, &id, &kind, created, &parse(&data), content);
     }
     Ok(())
+}
+
+/// One `session_message` row, or one message of `opencode session export` (same shape).
+/// `parts` are the assistant's `session_part` rows, which come before any inline content.
+fn append_v2_message(
+    builder: &mut TranscriptBuilder,
+    id: &str,
+    kind: &str,
+    created_ms: i64,
+    data: &Value,
+    parts: Vec<Value>,
+) {
+    let timestamp = millis_to_datetime(created_ms);
+    let text = data["text"].as_str().unwrap_or_default();
+    match kind {
+        "user" => builder.text(Role::User, text, timestamp),
+        "synthetic" | "system" | "skill" => builder.text(Role::Context, text, timestamp),
+        "shell" => {
+            builder.tool_call(
+                Some(id),
+                "shell",
+                data["command"].as_str().unwrap_or_default(),
+                timestamp,
+            );
+            if let Some(output) = data["output"]["output"].as_str() {
+                builder.tool_result(Some(id), output, timestamp);
+            }
+        }
+        "compaction" => builder.text(Role::Context, data["summary"].as_str().unwrap_or_default(), timestamp),
+        "assistant" => {
+            let inline = data["content"].as_array().cloned().unwrap_or_default();
+            for block in parts.into_iter().chain(inline) {
+                append_v2_block(builder, &block, timestamp);
+            }
+        }
+        _ => {}
+    }
+}
+
+const EXPORT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Reads a session through `opencode session export`, which returns OpenCode's own decoded
+/// `{ info, messages }` and so keeps working when its tables change shape.
+fn export_transcript(cli: &Path, session_id: &str) -> Result<Transcript, String> {
+    let output = super::cli::run_capture(cli, &["session", "export", session_id], EXPORT_TIMEOUT)?;
+    let export: Value = serde_json::from_str(&output).map_err(|error| format!("Unexpected export output: {error}"))?;
+    let messages = export["messages"]
+        .as_array()
+        .ok_or("The export had no messages list.")?;
+    let mut builder = TranscriptBuilder::default();
+    for message in messages {
+        append_v2_message(
+            &mut builder,
+            message["id"].as_str().unwrap_or_default(),
+            message["type"].as_str().unwrap_or_default(),
+            message["time"]["created"].as_i64().unwrap_or_default(),
+            message,
+            Vec::new(),
+        );
+    }
+    let mut transcript = builder.finish();
+    transcript.note = Some(
+        "Read through `opencode session export`, because Marduk didn't recognize how this session is stored."
+            .to_string(),
+    );
+    Ok(transcript)
 }
 
 fn append_v2_block(builder: &mut TranscriptBuilder, block: &Value, timestamp: Option<DateTime<Utc>>) {
@@ -764,6 +830,81 @@ mod tests {
         let messages = opencode.transcript(old).unwrap().head;
         assert_eq!(messages[0].text, "hello");
         assert_eq!(messages[1].tool.as_ref().unwrap().output.as_deref(), Some("file body"));
+    }
+
+    #[cfg(unix)]
+    fn fake_cli(dir: &Path, export: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let export_file = dir.join("export.json");
+        std::fs::write(&export_file, export).unwrap();
+        let script = dir.join("opencode");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\n[ \"$1 $2 $3\" = \"session export ses_new\" ] || exit 9\ncat '{}'\n",
+                export_file.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        script
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn falls_back_to_cli_export_when_messages_are_unrecognized() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_, connection) = v2_db(dir.path());
+        insert_session(&connection, "ses_new", None, Some("t"), false);
+        insert_message(&connection, "ses_new", "msg_1", 1, "from-the-future", r#"{"blob":1}"#);
+        let cli = fake_cli(
+            dir.path(),
+            r#"{"info":{"id":"ses_new"},"messages":[
+                {"id":"msg_1","type":"user","text":"hello from export","time":{"created":1762400000000}},
+                {"id":"msg_2","type":"assistant","time":{"created":1762400001000},
+                 "content":[{"type":"tool","id":"c1","name":"read","state":{"status":"completed","input":{},
+                   "content":[{"type":"text","text":"file body"}]}},{"type":"text","text":"Done"}]}]}"#,
+        );
+        let opencode = OpenCodeAdapter::new(dir.path().to_path_buf(), None, Some(cli));
+        let session = opencode.scan().sessions.remove(0);
+
+        let transcript = opencode.transcript(&session).unwrap();
+
+        assert_eq!(transcript.head[0].text, "hello from export");
+        assert_eq!(
+            transcript.head[1].tool.as_ref().unwrap().output.as_deref(),
+            Some("file body")
+        );
+        assert_eq!(transcript.head[2].text, "Done");
+        assert!(transcript.note.unwrap().contains("opencode session export"));
+    }
+
+    #[test]
+    fn unrecognized_messages_without_cli_explain_why() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_, connection) = v2_db(dir.path());
+        insert_session(&connection, "ses_new", None, Some("t"), false);
+        insert_message(&connection, "ses_new", "msg_1", 1, "from-the-future", r#"{"blob":1}"#);
+        let opencode = adapter(dir.path(), None);
+        let session = opencode.scan().sessions.remove(0);
+
+        let transcript = opencode.transcript(&session).unwrap();
+
+        assert!(transcript.head.is_empty());
+        assert!(transcript.note.unwrap().contains("Install the OpenCode CLI"));
+    }
+
+    #[test]
+    fn empty_sessions_do_not_trigger_the_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_, connection) = v2_db(dir.path());
+        insert_session(&connection, "ses_empty", None, Some("t"), false);
+        let opencode = adapter(dir.path(), Some("/nonexistent/opencode"));
+        let session = opencode.scan().sessions.remove(0);
+
+        let transcript = opencode.transcript(&session).unwrap();
+
+        assert!(transcript.note.is_none());
     }
 
     #[test]

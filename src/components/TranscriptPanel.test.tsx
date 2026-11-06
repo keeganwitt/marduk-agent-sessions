@@ -14,7 +14,7 @@ function message(role: TranscriptMessage["role"], text: string, tool: Transcript
 }
 
 function transcriptOf(head: TranscriptMessage[], extra: Partial<Transcript> = {}): Transcript {
-  return { head, omitted: 0, tail: [], shortened: false, ...extra };
+  return { head, omitted: 0, tail: [], shortened: false, note: null, ...extra };
 }
 
 describe("TranscriptPanel", () => {
@@ -59,6 +59,16 @@ describe("TranscriptPanel", () => {
     expect(await screen.findByText(/42 messages in the middle/)).toBeInTheDocument();
     expect(screen.getByText("end")).toBeInTheDocument();
     expect(screen.getByText(/still running/)).toBeInTheDocument();
+  });
+
+  it("shows how the transcript was read when it wasn't the usual way", async () => {
+    loadTranscript.mockResolvedValue(
+      transcriptOf([message("user", "hi")], { note: "Read through `opencode session export`, because…" }),
+    );
+
+    render(<TranscriptPanel session={makeSession()} onClose={() => {}} />);
+
+    expect(await screen.findByText(/Read through `opencode session export`/)).toBeInTheDocument();
   });
 
   it("lists prompts to jump to", async () => {

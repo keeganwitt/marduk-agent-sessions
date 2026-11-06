@@ -47,6 +47,7 @@ export interface Transcript {
   omitted: number;
   tail: TranscriptMessage[];
   shortened: boolean;
+  note: string | null;
 }
 
 export interface PreviewItem {

@@ -282,6 +282,7 @@ describe("App", () => {
       omitted: 0,
       tail: [],
       shortened: false,
+      note: null,
     });
 
     render(<App />);

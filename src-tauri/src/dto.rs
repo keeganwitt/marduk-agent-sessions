@@ -70,6 +70,7 @@ pub struct TranscriptDto {
     pub omitted: usize,
     pub tail: Vec<MessageDto>,
     pub shortened: bool,
+    pub note: Option<String>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -208,6 +209,7 @@ pub fn transcript_dto(transcript: Transcript) -> TranscriptDto {
         omitted: transcript.omitted,
         tail: transcript.tail.into_iter().map(message_dto).collect(),
         shortened: transcript.shortened,
+        note: transcript.note,
     }
 }
 
@@ -309,6 +311,7 @@ mod tests {
             omitted: 3,
             tail: vec![],
             shortened: false,
+            note: None,
         };
         let json = serde_json::to_value(transcript_dto(transcript)).unwrap();
         assert_eq!(
@@ -317,7 +320,8 @@ mod tests {
                 "head": [{"role": "tool", "text": "ls", "timestamp": null, "tool": {"name": "bash", "output": "a"}}],
                 "omitted": 3,
                 "tail": [],
-                "shortened": false
+                "shortened": false,
+                "note": null
             })
         );
     }

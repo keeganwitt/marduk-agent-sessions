@@ -42,6 +42,8 @@ pub struct Transcript {
     pub tail: Vec<Message>,
     /// True when some message or tool output was shortened.
     pub shortened: bool,
+    /// How the transcript was read, when it wasn't the usual way.
+    pub note: Option<String>,
 }
 
 /// Builds a transcript in one pass, keeping only the first and last messages of long
@@ -151,6 +153,7 @@ impl TranscriptBuilder {
             omitted,
             tail: self.tail.into_iter().map(|(_, message)| message).collect(),
             shortened: self.shortened,
+            note: None,
         }
     }
 }

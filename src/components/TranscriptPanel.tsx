@@ -154,6 +154,7 @@ export function TranscriptPanel({ session, onClose }: Props) {
         {transcript && transcript.head.length + transcript.tail.length === 0 && (
           <p className="muted">This session has no messages to show.</p>
         )}
+        {transcript?.note && <p className="muted note">{transcript.note}</p>}
         {session.running && (
           <p className="muted note">This session is still running, so the transcript may be incomplete.</p>
         )}

@@ -1,7 +1,5 @@
-use std::io::Read;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan};
 use crate::fs_util;
@@ -32,38 +30,8 @@ impl DeleteBackend for SystemBackend {
     }
 
     fn run(&self, command: &AgentCommand) -> Result<(), String> {
-        let program = &command.program;
-        let mut child = Command::new(program)
-            .args(&command.args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|error| format!("Could not run {}: {error}", program.display()))?;
-        let started = Instant::now();
-        let status = loop {
-            if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
-                break status;
-            }
-            if started.elapsed() > AGENT_COMMAND_TIMEOUT {
-                let _ = child.kill();
-                return Err(format!(
-                    "{} did not finish within {:?}",
-                    program.display(),
-                    AGENT_COMMAND_TIMEOUT
-                ));
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        };
-        if status.success() {
-            return Ok(());
-        }
-        let mut stderr = String::new();
-        if let Some(mut pipe) = child.stderr.take() {
-            let _ = pipe.read_to_string(&mut stderr);
-        }
-        let detail: String = stderr.trim().chars().take(300).collect();
-        Err(format!("{} failed ({status}): {detail}", program.display()))
+        let args: Vec<&str> = command.args.iter().map(String::as_str).collect();
+        crate::agents::cli::run_capture(&command.program, &args, AGENT_COMMAND_TIMEOUT).map(|_| ())
     }
 }
 

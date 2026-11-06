@@ -118,43 +118,66 @@ pub fn is_executable(path: &Path) -> bool {
 
 const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// First line of `<program> --version`, to show which build Marduk will run.
-pub fn version(program: &Path) -> Result<String, String> {
+/// Runs `program args…` and returns its standard output. Output is read while the process
+/// runs; reading only after it exits would deadlock once the output fills the pipe buffer.
+pub fn run_capture(program: &Path, args: &[&str], timeout: std::time::Duration) -> Result<String, String> {
     use std::io::Read;
     use std::process::{Command, Stdio};
 
     let mut child = Command::new(program)
-        .arg("--version")
+        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| format!("Couldn't run {}: {error}", program.display()))?;
+    let mut stdout = child.stdout.take().ok_or("no stdout")?;
+    let mut stderr = child.stderr.take().ok_or("no stderr")?;
+    let stdout_reader = std::thread::spawn(move || {
+        let mut output = String::new();
+        let _ = stdout.read_to_string(&mut output);
+        output
+    });
+    let stderr_reader = std::thread::spawn(move || {
+        let mut output = String::new();
+        let _ = stderr.read_to_string(&mut output);
+        output
+    });
+    let command_line = std::iter::once(program.display().to_string())
+        .chain(args.iter().map(|arg| arg.to_string()))
+        .collect::<Vec<_>>()
+        .join(" ");
     let started = std::time::Instant::now();
     let status = loop {
         if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
             break status;
         }
-        if started.elapsed() > VERSION_TIMEOUT {
+        if started.elapsed() > timeout {
             let _ = child.kill();
-            return Err(format!("{} --version didn't finish", program.display()));
+            let _ = child.wait();
+            return Err(format!("{command_line} didn't finish within {timeout:?}"));
         }
         std::thread::sleep(std::time::Duration::from_millis(25));
     };
-    let mut output = String::new();
-    if let Some(mut stdout) = child.stdout.take() {
-        let _ = stdout.read_to_string(&mut output);
+    let output = stdout_reader.join().unwrap_or_default();
+    let errors = stderr_reader.join().unwrap_or_default();
+    if status.success() {
+        Ok(output)
+    } else {
+        let detail: String = errors.trim().chars().take(300).collect();
+        Err(format!("{command_line} failed ({status}): {detail}"))
     }
-    let first_line = output
+}
+
+/// First line of `<program> --version`, to show which build Marduk will run.
+pub fn version(program: &Path) -> Result<String, String> {
+    let output = run_capture(program, &["--version"], VERSION_TIMEOUT)?;
+    output
         .lines()
         .map(str::trim)
         .find(|line| !line.is_empty())
-        .unwrap_or_default();
-    if status.success() && !first_line.is_empty() {
-        Ok(first_line.to_string())
-    } else {
-        Err(format!("{} --version failed ({status})", program.display()))
-    }
+        .map(str::to_string)
+        .ok_or_else(|| format!("{} --version printed nothing", program.display()))
 }
 
 #[cfg(test)]
@@ -206,6 +229,35 @@ mod tests {
         assert_eq!(version(&script).unwrap(), "fake-cli 1.2.3");
         assert!(version(&failing).unwrap_err().contains("failed"));
         assert!(version(&dir.path().join("missing")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_capture_handles_output_larger_than_the_pipe_buffer() {
+        let output = run_capture(
+            Path::new("/bin/sh"),
+            &["-c", "head -c 1000000 /dev/zero | tr '\\0' x"],
+            std::time::Duration::from_secs(10),
+        )
+        .unwrap();
+        assert_eq!(output.len(), 1_000_000);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_capture_times_out_and_reports_stderr() {
+        let slow = run_capture(
+            Path::new("/bin/sh"),
+            &["-c", "sleep 5"],
+            std::time::Duration::from_millis(200),
+        );
+        assert!(slow.unwrap_err().contains("didn't finish"));
+        let failing = run_capture(
+            Path::new("/bin/sh"),
+            &["-c", "echo nope >&2; exit 4"],
+            std::time::Duration::from_secs(5),
+        );
+        assert!(failing.unwrap_err().contains("nope"));
     }
 
     #[test]

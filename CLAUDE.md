@@ -22,7 +22,9 @@ Author is `Keegan Witt <keeganwitt@gmail.com>`, set in this repo's local git con
 - `delete::preflight` and `delete::toggle_archive` refuse running sessions (`RUNNING_WINDOW`), sessions changed since the scan, and paths outside the adapter's roots.
 - Never write to an agent's database. Delete through the agent's CLI (e.g. `codex delete`, `opencode session delete`), or report `DeletePlan::ReadOnly`.
 - Don't invent archive folders. Only offer archiving through the agent's own command, and only show its native archive (e.g. Codex `archived_sessions`).
-- Database-backed agents (OpenCode) open their database with `SQLITE_OPEN_READ_ONLY` and override `AgentAdapter::fingerprint`/`still_present` to use the session's row; the database file's own mtime is meaningless per session. Their sessions have no `files`, and `uid` includes the session id because they share `primary_file`.
+- Database-backed agents (OpenCode) open their database with `SQLITE_OPEN_READ_ONLY` and override `AgentAdapter::fingerprint`/`still_present` to use the session's row; the database file's own mtime is meaningless per session. Their sessions have no `files`, and `uid` includes the session id because they share `primary_file`. When OpenCode's stored messages aren't recognized, `transcript` falls back to `opencode session export` and sets `Transcript.note`.
+- Run agent CLIs through `agents::cli::run_capture` (or `SystemBackend::run`), which reads output while the process runs; reading after exit deadlocks on large output.
+- Agent support is built from each agent's source and docs, with fixtures in tests, even when nobody on the project uses that agent.
 - `ScanResult.complete` must be false whenever part of an agent's storage couldn't be read. Future tag pruning depends on it.
 - `Session::key()` (`agent:id`) is the path-independent identity reserved for tags.
 - Links: `installExternalLinkHandler` (`src/lib/externalLinks.ts`) sends link clicks to `tauri-plugin-opener` (http, https and mailto only, scoped in `capabilities/default.json`). Tauri's webview ignores `target="_blank"`.
