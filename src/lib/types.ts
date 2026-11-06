@@ -14,8 +14,10 @@ export interface SessionRow {
   id: string;
   title: string | null;
   projectDir: string | null;
+  created: string | null;
   lastActivity: string;
   sizeBytes: number;
+  files: string[];
   archived: boolean;
   running: boolean;
   readOnlyReason: string | null;

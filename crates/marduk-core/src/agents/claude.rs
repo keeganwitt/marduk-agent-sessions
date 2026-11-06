@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
@@ -106,7 +105,7 @@ struct Parsed {
     ai_title: Option<String>,
     summary: Option<String>,
     first_prompt: Option<String>,
-    last_timestamp: Option<DateTime<Utc>>,
+    span: jsonl::Span,
 }
 
 impl Parsed {
@@ -123,7 +122,7 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
         return;
     };
     if let Some(timestamp) = record.timestamp.as_deref() {
-        parsed.last_timestamp = jsonl::later(parsed.last_timestamp, jsonl::parse_timestamp(timestamp));
+        parsed.span.observe(jsonl::parse_timestamp(timestamp));
     }
     if parsed.cwd.is_none() {
         parsed.cwd = record.cwd;
@@ -158,13 +157,15 @@ fn read_session(path: &Path) -> std::io::Result<Session> {
     let fingerprint = fs_util::fingerprint(path)?;
     let id = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
     let files = session_files(path, &id);
-    let last_activity = parsed.last_timestamp.unwrap_or_else(|| fingerprint.modified.into());
+    let last_activity = parsed.span.last.unwrap_or_else(|| fingerprint.modified.into());
+    let created = parsed.span.first.or_else(|| fs_util::created(path));
     Ok(Session {
         agent: "claude",
         size_bytes: files.iter().map(|file| fs_util::path_size(file)).sum(),
         project_dir: parsed.cwd.clone(),
         title: parsed.title(),
         id,
+        created,
         last_activity,
         archived: false,
         primary_file: path.to_path_buf(),
@@ -205,6 +206,8 @@ fn session_files(transcript: &Path, id: &str) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{DateTime, Utc};
+
     use super::*;
 
     const ID: &str = "a9d8b9f2-3d8c-48bd-8b2d-ed6447b3e25f";
@@ -254,6 +257,7 @@ mod tests {
         assert_eq!(session.project_dir.as_deref(), Some("/work/app"));
         assert_eq!(session.title.as_deref(), Some("Login bug fix"));
         assert_eq!(session.last_activity.to_rfc3339(), "2026-11-02T09:30:00+00:00");
+        assert_eq!(session.created.unwrap().to_rfc3339(), "2026-11-01T10:00:00+00:00");
     }
 
     #[test]

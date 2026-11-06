@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::value::RawValue;
@@ -158,7 +157,7 @@ struct Parsed {
     id: Option<String>,
     cwd: Option<String>,
     first_prompt: Option<String>,
-    last_timestamp: Option<DateTime<Utc>>,
+    span: jsonl::Span,
 }
 
 /// Codex injects `<environment_context>` blocks and AGENTS.md contents as user messages.
@@ -172,7 +171,7 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
         return;
     };
     if let Some(timestamp) = record.timestamp.as_deref() {
-        parsed.last_timestamp = jsonl::later(parsed.last_timestamp, jsonl::parse_timestamp(timestamp));
+        parsed.span.observe(jsonl::parse_timestamp(timestamp));
     }
     let Some(payload) = record.payload else {
         return;
@@ -182,6 +181,9 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
             if let Ok(meta) = serde_json::from_str::<Value>(payload.get()) {
                 parsed.id = meta["id"].as_str().map(str::to_string).or(parsed.id.take());
                 parsed.cwd = meta["cwd"].as_str().map(str::to_string).or(parsed.cwd.take());
+                parsed
+                    .span
+                    .observe(meta["timestamp"].as_str().and_then(jsonl::parse_timestamp));
             }
         }
         Some("event_msg") if parsed.first_prompt.is_none() && payload.get().contains("\"user_message\"") => {
@@ -228,7 +230,8 @@ fn read_session(path: &Path, archived: bool, titles: &HashMap<String, String>) -
         id,
         project_dir: parsed.cwd,
         title,
-        last_activity: parsed.last_timestamp.unwrap_or_else(|| fingerprint.modified.into()),
+        created: parsed.span.first.or_else(|| fs_util::created(path)),
+        last_activity: parsed.span.last.unwrap_or_else(|| fingerprint.modified.into()),
         size_bytes: fingerprint.len,
         archived,
         primary_file: path.to_path_buf(),
@@ -246,7 +249,7 @@ mod tests {
     fn rollout(id: &str) -> String {
         [
             format!(
-                r#"{{"timestamp":"2026-11-06T18:05:32.095Z","type":"session_meta","payload":{{"id":"{id}","cwd":"/work/api","originator":"codex_cli_rs"}}}}"#
+                r#"{{"timestamp":"2026-11-06T18:05:32.095Z","type":"session_meta","payload":{{"id":"{id}","timestamp":"2026-11-06T18:05:08Z","cwd":"/work/api","originator":"codex_cli_rs"}}}}"#
             ),
             r##"{"timestamp":"2026-11-06T18:05:33.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions for /work/api"}]}}"##.to_string(),
             r#"{"timestamp":"2026-11-06T18:05:34.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>cwd</environment_context>"}]}}"#.to_string(),
@@ -292,6 +295,7 @@ mod tests {
         assert_eq!(session.project_dir.as_deref(), Some("/work/api"));
         assert_eq!(session.title.as_deref(), Some("Add pagination to the users endpoint"));
         assert_eq!(session.last_activity.to_rfc3339(), "2026-11-06T19:00:00+00:00");
+        assert_eq!(session.created.unwrap().to_rfc3339(), "2026-11-06T18:05:08+00:00");
         assert_eq!(session.files, vec![active]);
         assert!(sessions[1].archived);
     }

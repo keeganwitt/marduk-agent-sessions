@@ -12,6 +12,11 @@ pub fn fingerprint(path: &Path) -> io::Result<Fingerprint> {
     })
 }
 
+/// File creation time. Not every filesystem records it (e.g. some Linux setups).
+pub fn created(path: &Path) -> Option<chrono::DateTime<chrono::Utc>> {
+    fs::metadata(path).ok()?.created().ok().map(Into::into)
+}
+
 /// Total size of a file, or of every file below a directory. Symlinks are not followed.
 pub fn path_size(path: &Path) -> u64 {
     let Ok(meta) = fs::symlink_metadata(path) else {

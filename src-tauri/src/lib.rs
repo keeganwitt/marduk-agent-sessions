@@ -87,6 +87,16 @@ async fn reveal_session_file(catalog: tauri::State<'_, SharedCatalog>, path: Str
     .await?
 }
 
+#[tauri::command]
+async fn open_project_dir(catalog: tauri::State<'_, SharedCatalog>, uid: String) -> Result<(), String> {
+    let catalog = catalog.inner().clone();
+    blocking(move || {
+        let dir = catalog.project_dir(&uid)?;
+        tauri_plugin_opener::open_path(&dir, None::<&str>).map_err(|error| error.to_string())
+    })
+    .await?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let catalog: SharedCatalog = Arc::new(Catalog::new(marduk_core::default_adapters(), RUNNING_WINDOW));
@@ -98,7 +108,8 @@ pub fn run() {
             preview_delete,
             delete_sessions,
             toggle_archive,
-            reveal_session_file
+            reveal_session_file,
+            open_project_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

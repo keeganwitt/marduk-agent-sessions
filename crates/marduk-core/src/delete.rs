@@ -291,6 +291,7 @@ mod tests {
             id: "s1".into(),
             project_dir: None,
             title: None,
+            created: None,
             last_activity: Utc::now(),
             size_bytes: 1,
             archived: false,

@@ -317,3 +317,48 @@ button.link {
   font-size: 12px;
   white-space: nowrap;
 }
+
+button.sort {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  font-weight: 600;
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.sort-indicator {
+  font-size: 9px;
+  min-width: 9px;
+}
+
+.sessions .project button.link {
+  font-size: inherit;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  text-align: left;
+}
+
+.sessions .project button.link:hover,
+button.link:hover {
+  text-decoration: underline;
+  color: var(--accent);
+}
+
+.actions-col {
+  width: 1%;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

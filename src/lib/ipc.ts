@@ -20,3 +20,7 @@ export function toggleArchive(uids: string[]): Promise<ArchiveResult[]> {
 export function revealSessionFile(path: string): Promise<void> {
   return invoke("reveal_session_file", { path });
 }
+
+export function openProjectDir(uid: string): Promise<void> {
+  return invoke("open_project_dir", { uid });
+}

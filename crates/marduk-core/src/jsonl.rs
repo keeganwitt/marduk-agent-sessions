@@ -59,10 +59,20 @@ pub fn to_title(text: &str) -> Option<String> {
     Some(truncated)
 }
 
-pub fn later(current: Option<DateTime<Utc>>, candidate: Option<DateTime<Utc>>) -> Option<DateTime<Utc>> {
-    match (current, candidate) {
-        (Some(a), Some(b)) => Some(a.max(b)),
-        (a, b) => a.or(b),
+/// Earliest and latest timestamps seen in a transcript.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Span {
+    pub first: Option<DateTime<Utc>>,
+    pub last: Option<DateTime<Utc>>,
+}
+
+impl Span {
+    pub fn observe(&mut self, timestamp: Option<DateTime<Utc>>) {
+        let Some(timestamp) = timestamp else {
+            return;
+        };
+        self.first = Some(self.first.map_or(timestamp, |first| first.min(timestamp)));
+        self.last = Some(self.last.map_or(timestamp, |last| last.max(timestamp)));
     }
 }
 
@@ -96,6 +106,17 @@ mod tests {
         let parsed = parse_timestamp("2026-11-05T10:00:00+02:00").unwrap();
         assert_eq!(parsed.to_rfc3339(), "2026-11-05T08:00:00+00:00");
         assert!(parse_timestamp("yesterday").is_none());
+    }
+
+    #[test]
+    fn span_tracks_earliest_and_latest_regardless_of_order() {
+        let mut span = Span::default();
+        span.observe(parse_timestamp("2026-11-02T00:00:00Z"));
+        span.observe(None);
+        span.observe(parse_timestamp("2026-11-01T00:00:00Z"));
+        span.observe(parse_timestamp("2026-11-03T00:00:00Z"));
+        assert_eq!(span.first, parse_timestamp("2026-11-01T00:00:00Z"));
+        assert_eq!(span.last, parse_timestamp("2026-11-03T00:00:00Z"));
     }
 
     #[test]

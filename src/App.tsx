@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DeleteDialog } from "./components/DeleteDialog";
+import { FilesDialog } from "./components/FilesDialog";
 import { Filters } from "./components/Filters";
 import { SessionTable } from "./components/SessionTable";
 import { EMPTY_FILTER, filterSessions } from "./lib/filter";
 import { formatBytes } from "./lib/format";
-import { deleteSessions, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
-import { isArchivable, isDeletable, type ArchiveResult, type DeleteResult, type PreviewItem, type ScanResponse } from "./lib/types";
+import { deleteSessions, openProjectDir, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
+import { nextSort, sortSessions, type SortKey, type SortState } from "./lib/sort";
+import {
+  isArchivable,
+  isDeletable,
+  type ArchiveResult,
+  type DeleteResult,
+  type PreviewItem,
+  type ScanResponse,
+  type SessionRow,
+} from "./lib/types";
 import "./App.css";
 
 interface Notice {
@@ -75,6 +85,8 @@ export default function App() {
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
+  const [filesFor, setFilesFor] = useState<SessionRow | null>(null);
 
   const rescan = useCallback(async () => {
     setBusy(true);
@@ -95,8 +107,8 @@ export default function App() {
   }, [rescan]);
 
   const visible = useMemo(
-    () => (scan ? filterSessions(scan.sessions, filter, scannedAt) : []),
-    [scan, filter, scannedAt],
+    () => (scan ? sortSessions(filterSessions(scan.sessions, filter, scannedAt), sort) : []),
+    [scan, filter, scannedAt, sort],
   );
   const selectedVisible = visible.filter((session) => selected.has(session.uid));
   const toDelete = selectedVisible.filter(isDeletable);
@@ -173,6 +185,17 @@ export default function App() {
     }
   };
 
+  const openProject = async (session: SessionRow) => {
+    setError(null);
+    try {
+      await openProjectDir(session.uid);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  };
+
+  const closeFiles = useCallback(() => setFilesFor(null), []);
+
   return (
     <main className="app">
       <header className="toolbar">
@@ -214,9 +237,21 @@ export default function App() {
       {scan && <Filters agents={scan.agents} filter={filter} onChange={setFilter} />}
       {scan && (
         <div className="table-wrap">
-          <SessionTable sessions={visible} selected={selected} now={scannedAt} onToggle={toggle} onSetMany={setMany} />
+          <SessionTable
+            sessions={visible}
+            selected={selected}
+            now={scannedAt}
+            sort={sort}
+            onSort={(key: SortKey) => setSort((current) => nextSort(current, key))}
+            onToggle={toggle}
+            onSetMany={setMany}
+            onOpenProject={(session) => void openProject(session)}
+            onShowFiles={setFilesFor}
+          />
         </div>
       )}
+
+      {filesFor && <FilesDialog session={filesFor} onReveal={(path) => void reveal(path)} onClose={closeFiles} />}
 
       {preview && (
         <DeleteDialog

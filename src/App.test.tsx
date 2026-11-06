@@ -12,6 +12,7 @@ vi.mock("./lib/ipc", () => ({
   deleteSessions: vi.fn(),
   toggleArchive: vi.fn(),
   revealSessionFile: vi.fn(),
+  openProjectDir: vi.fn(),
 }));
 
 const scanSessions = vi.mocked(ipc.scanSessions);
@@ -19,6 +20,14 @@ const previewDelete = vi.mocked(ipc.previewDelete);
 const deleteSessions = vi.mocked(ipc.deleteSessions);
 const toggleArchive = vi.mocked(ipc.toggleArchive);
 const revealSessionFile = vi.mocked(ipc.revealSessionFile);
+const openProjectDir = vi.mocked(ipc.openProjectDir);
+
+function rowTitles(): string[] {
+  return screen
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => (within(row).getAllByRole("cell")[1].textContent ?? "").trim());
+}
 
 function scanOf(...sessions: SessionRow[]): ScanResponse {
   return {
@@ -164,6 +173,66 @@ describe("App", () => {
     await user.click(within(dialog).getByRole("button", { name: "Move to Trash" }));
 
     expect(deleteSessions).toHaveBeenCalledWith(["a"]);
+  });
+
+  it("sorts by a column, reverses on the second click, and clears on the third", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "1", title: "Beta", sizeBytes: 10 }),
+        makeSession({ uid: "2", title: "alpha", sizeBytes: 30 }),
+        makeSession({ uid: "3", title: "Gamma", sizeBytes: 20 }),
+      ),
+    );
+
+    render(<App />);
+    const sessionHeader = await screen.findByRole("button", { name: /^Session/ });
+    expect(rowTitles()).toEqual(["Beta", "alpha", "Gamma"]);
+
+    await user.click(sessionHeader);
+    expect(rowTitles()).toEqual(["alpha", "Beta", "Gamma"]);
+    expect(screen.getByRole("columnheader", { name: /Session/ })).toHaveAttribute("aria-sort", "ascending");
+
+    await user.click(sessionHeader);
+    expect(rowTitles()).toEqual(["Gamma", "Beta", "alpha"]);
+
+    await user.click(sessionHeader);
+    expect(rowTitles()).toEqual(["Beta", "alpha", "Gamma"]);
+    expect(screen.getByRole("columnheader", { name: /Session/ })).toHaveAttribute("aria-sort", "none");
+
+    await user.click(screen.getByRole("button", { name: /^Size/ }));
+    expect(rowTitles()).toEqual(["alpha", "Gamma", "Beta"]);
+  });
+
+  it("shows a session's files without starting a delete", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "u1", title: "Old work", files: ["/p/u1.jsonl", "/p/u1"] })),
+    );
+    revealSessionFile.mockResolvedValue();
+
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Show files for Old work" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("/p/u1.jsonl")).toBeInTheDocument();
+    await user.click(within(dialog).getAllByRole("button", { name: "Show in folder" })[0]);
+    expect(revealSessionFile).toHaveBeenCalledWith("/p/u1.jsonl");
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(previewDelete).not.toHaveBeenCalled();
+  });
+
+  it("opens the project folder from the table", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "u1", projectDir: "/work/app" })));
+    openProjectDir.mockRejectedValue("The project folder /work/app no longer exists.");
+
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open project folder /work/app" }));
+
+    expect(openProjectDir).toHaveBeenCalledWith("u1");
+    expect(await screen.findByRole("alert")).toHaveTextContent("no longer exists");
   });
 
   it("filters to old sessions", async () => {

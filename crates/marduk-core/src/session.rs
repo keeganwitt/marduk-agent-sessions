@@ -27,6 +27,8 @@ pub struct Session {
     pub id: String,
     pub project_dir: Option<String>,
     pub title: Option<String>,
+    /// When the session started; `None` when neither the transcript nor the filesystem says.
+    pub created: Option<DateTime<Utc>>,
     pub last_activity: DateTime<Utc>,
     pub size_bytes: u64,
     pub archived: bool,

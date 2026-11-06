@@ -141,6 +141,22 @@ impl Catalog {
             .collect()
     }
 
+    /// The project folder a scanned session was run in, if it still exists.
+    pub fn project_dir(&self, uid: &str) -> Result<std::path::PathBuf, String> {
+        let snapshot = self.snapshot.lock().unwrap();
+        let (_, session) = snapshot.get(uid).ok_or_else(not_found)?;
+        let dir = session
+            .project_dir
+            .as_ref()
+            .map(std::path::PathBuf::from)
+            .ok_or_else(|| "This session doesn't record its project folder.".to_string())?;
+        if dir.is_dir() {
+            Ok(dir)
+        } else {
+            Err(format!("The project folder {} no longer exists.", dir.display()))
+        }
+    }
+
     /// True when `path` is one of the files of a session in the current scan. Lets the UI
     /// reveal session files without being able to point at arbitrary paths.
     pub fn owns_path(&self, path: &std::path::Path) -> bool {
@@ -249,6 +265,44 @@ mod tests {
         assert!(catalog.owns_path(&file));
         assert!(!catalog.owns_path(root.path()));
         assert!(!catalog.owns_path(std::path::Path::new("/etc/passwd")));
+    }
+
+    #[test]
+    fn project_dir_resolves_only_existing_folders_of_scanned_sessions() {
+        let root = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let dir = root.path().join("--p--");
+        fs::create_dir(&dir).unwrap();
+        for (name, cwd) in [
+            ("t_a.jsonl", project.path().to_str().unwrap()),
+            ("t_b.jsonl", "/does/not/exist"),
+        ] {
+            fs::write(
+                dir.join(name),
+                format!(r#"{{"type":"session","id":"{name}","cwd":"{cwd}"}}"#),
+            )
+            .unwrap();
+        }
+        let catalog = Catalog::new(
+            vec![Box::new(PiAdapter::new(root.path().to_path_buf()))],
+            Duration::from_secs(60),
+        );
+        let scans = catalog.scan();
+        let uid_of = |name: &str| uid(scans[0].sessions.iter().find(|s| s.id == name).unwrap());
+
+        assert_eq!(catalog.project_dir(&uid_of("t_a.jsonl")).unwrap(), project.path());
+        assert!(
+            catalog
+                .project_dir(&uid_of("t_b.jsonl"))
+                .unwrap_err()
+                .contains("no longer exists")
+        );
+        assert!(
+            catalog
+                .project_dir("pi:/nope")
+                .unwrap_err()
+                .contains("not in the current scan")
+        );
     }
 
     #[test]

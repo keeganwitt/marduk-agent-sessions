@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use super::{env_dir, home_dir};
@@ -87,7 +86,7 @@ struct Parsed {
     cwd: Option<String>,
     name: Option<String>,
     first_prompt: Option<String>,
-    last_timestamp: Option<DateTime<Utc>>,
+    span: jsonl::Span,
 }
 
 fn parse_line(parsed: &mut Parsed, line: &str) {
@@ -95,7 +94,7 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
         return;
     };
     if let Some(timestamp) = record["timestamp"].as_str() {
-        parsed.last_timestamp = jsonl::later(parsed.last_timestamp, jsonl::parse_timestamp(timestamp));
+        parsed.span.observe(jsonl::parse_timestamp(timestamp));
     }
     match record["type"].as_str() {
         Some("session") => {
@@ -135,7 +134,8 @@ fn read_session(path: &Path) -> std::io::Result<Session> {
         id: parsed.id.unwrap_or_else(|| id_from_file_name(path)),
         project_dir: parsed.cwd,
         title,
-        last_activity: parsed.last_timestamp.unwrap_or_else(|| fingerprint.modified.into()),
+        created: parsed.span.first.or_else(|| fs_util::created(path)),
+        last_activity: parsed.span.last.unwrap_or_else(|| fingerprint.modified.into()),
         size_bytes: fingerprint.len,
         archived: false,
         primary_file: path.to_path_buf(),
@@ -183,6 +183,7 @@ mod tests {
         assert_eq!(session.project_dir.as_deref(), Some("/Users/me/work"));
         assert_eq!(session.title.as_deref(), Some("refactor the parser"));
         assert_eq!(session.last_activity.to_rfc3339(), "2026-11-05T21:45:00+00:00");
+        assert_eq!(session.created.unwrap().to_rfc3339(), "2026-11-05T21:42:56.603+00:00");
         assert_eq!(session.files, vec![path]);
     }
 
