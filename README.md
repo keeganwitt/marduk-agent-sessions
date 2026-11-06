@@ -19,6 +19,10 @@ OpenCode and Kilo (an OpenCode fork) keep every session in one SQLite database. 
 
 When an agent has its own delete or archive command, Marduk uses it, so the agent's own indexes stay consistent. Otherwise sessions go to the system Trash. Claude Code and Pi have no per-session delete command; Pi's own session picker also uses the Trash.
 
+## Subagent sessions
+
+Sessions an agent started on its own (Codex Guardian reviews and spawned subagents, OpenCode and Kilo child sessions) are nested under the session that started them. Expand a parent to see them. A subagent whose parent was deleted is shown at the top level with a *Parent deleted* badge. Claude Code's subagents live inside the parent session's own folder, so they're part of the parent rather than separate rows.
+
 ## Reading transcripts
 
 Click a session's title to read it in a side panel. Messages are rendered as Markdown, tool calls are collapsed with their output, and injected context (system prompts, AGENTS.md) is hidden unless you turn it on. Very long sessions show their first and last 500 messages. For Pi, only the active branch is shown, not abandoned rewinds.

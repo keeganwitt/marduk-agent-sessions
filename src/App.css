@@ -663,3 +663,22 @@ button.title-link {
   border-color: #c98a00;
   color: #c98a00;
 }
+
+button.expander {
+  border: none;
+  background: none;
+  padding: 0;
+  width: 16px;
+  margin-right: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.expander-spacer {
+  display: inline-block;
+  width: 20px;
+}
+
+.sessions tr.context-row td {
+  opacity: 0.55;
+}

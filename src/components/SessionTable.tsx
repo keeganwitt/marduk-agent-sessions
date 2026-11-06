@@ -1,9 +1,11 @@
 import { formatAge, formatBytes, shortenPath } from "../lib/format";
 import type { SortKey, SortState } from "../lib/sort";
+import type { TreeRow } from "../lib/tree";
 import { isSelectable, type SessionRow } from "../lib/types";
 
 interface Props {
-  sessions: SessionRow[];
+  rows: TreeRow[];
+  onToggleExpand: (uid: string) => void;
   homeDir: string;
   selected: ReadonlySet<string>;
   now: Date;
@@ -81,12 +83,12 @@ function DateCell({ value, now }: { value: string | null; now: Date }) {
 }
 
 export function SessionTable(props: Props) {
-  const { sessions, homeDir, selected, now, sort, onSort, onToggle, onSetMany, onOpenProject, onShowFiles, onOpenTranscript } =
+  const { rows, onToggleExpand, homeDir, selected, now, sort, onSort, onToggle, onSetMany, onOpenProject, onShowFiles, onOpenTranscript } =
     props;
-  const selectable = sessions.filter(isSelectable).map((session) => session.uid);
+  const selectable = rows.map((row) => row.session).filter(isSelectable).map((session) => session.uid);
   const allSelected = selectable.length > 0 && selectable.every((uid) => selected.has(uid));
 
-  if (sessions.length === 0) {
+  if (rows.length === 0) {
     return <p className="empty">No sessions match these filters.</p>;
   }
 
@@ -119,10 +121,11 @@ export function SessionTable(props: Props) {
         </tr>
       </thead>
       <tbody>
-        {sessions.map((session) => {
+        {rows.map(({ session, depth, childCount, expanded, matched }) => {
           const label = session.title ?? session.id;
+          const classes = [selected.has(session.uid) && "selected", !matched && "context-row"].filter(Boolean).join(" ");
           return (
-            <tr key={session.uid} className={selected.has(session.uid) ? "selected" : undefined}>
+            <tr key={session.uid} className={classes || undefined}>
               <td className="check">
                 <input
                   type="checkbox"
@@ -132,7 +135,20 @@ export function SessionTable(props: Props) {
                   onChange={() => onToggle(session.uid)}
                 />
               </td>
-              <td className="title">
+              <td className="title" style={{ paddingLeft: 10 + depth * 18 }}>
+                {childCount > 0 ? (
+                  <button
+                    type="button"
+                    className="expander"
+                    aria-expanded={expanded}
+                    aria-label={`${expanded ? "Hide" : "Show"} ${childCount} subagent ${childCount === 1 ? "session" : "sessions"} of ${label}`}
+                    onClick={() => onToggleExpand(session.uid)}
+                  >
+                    {expanded ? "▾" : "▸"}
+                  </button>
+                ) : (
+                  <span className="expander-spacer" aria-hidden="true" />
+                )}
                 <button
                   type="button"
                   className="link title-link"
@@ -142,6 +158,11 @@ export function SessionTable(props: Props) {
                   {label}
                 </button>{" "}
                 <StatusBadges session={session} />
+                {childCount > 0 && !expanded && (
+                  <span className="badge muted">
+                    {childCount} {childCount === 1 ? "subagent" : "subagents"}
+                  </span>
+                )}
               </td>
               <td>{session.agentName}</td>
               <td className="project">

@@ -126,7 +126,7 @@ describe("App", () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
       scanOf(
-        makeSession({ uid: "o1", title: "Parent", agent: "opencode", permanentDelete: true }),
+        makeSession({ uid: "o1", id: "ses_parent", title: "Parent", agent: "opencode", permanentDelete: true }),
         makeSession({ uid: "o2", title: "Child", agent: "opencode", parentId: "ses_parent" }),
       ),
     );
@@ -145,7 +145,9 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByText("Parent")).toBeInTheDocument();
     expect(screen.queryByText("Child")).not.toBeInTheDocument();
-    await user.click(screen.getByLabelText("Show subagent sessions (1)"));
+    expect(screen.getByText("1 subagent")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show 1 subagent session of Parent" }));
+    expect(screen.getByText("Child")).toBeInTheDocument();
     expect(screen.getByText("Subagent")).toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "Select Parent" }));
     await user.click(screen.getByRole("button", { name: /Delete 1/ }));
@@ -344,6 +346,51 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText(/Some Pi sessions couldn't be read: \/x: permission denied/)).toBeInTheDocument();
+  });
+
+  it("nests subagents under their parent and shows orphans at the top level", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "p", id: "p", agent: "codex", title: "Main thread" }),
+        makeSession({ uid: "g", id: "g", agent: "codex", title: "Guardian review", parentId: "p" }),
+        makeSession({ uid: "o", id: "o", agent: "codex", title: "Lost review", parentId: "gone", parentMissing: true }),
+      ),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText("Main thread")).toBeInTheDocument();
+    expect(screen.queryByText("Guardian review")).not.toBeInTheDocument();
+    expect(screen.getByText("Lost review")).toBeInTheDocument();
+    expect(screen.getByText("Parent deleted")).toBeInTheDocument();
+
+    const expander = screen.getByRole("button", { name: "Show 1 subagent session of Main thread" });
+    await user.click(expander);
+    expect(screen.getByText("Guardian review")).toBeInTheDocument();
+    expect(expander).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(screen.getByRole("checkbox", { name: "Select all sessions shown" }));
+    expect(screen.getByRole("button", { name: /Delete 3/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Hide 1 subagent session of Main thread" }));
+    expect(screen.getByRole("button", { name: /Delete 2/ })).toBeInTheDocument();
+  });
+
+  it("shows a parent, dimmed and opened, when only its subagent matches the search", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "p", id: "p", title: "Main thread", projectDir: "/a" }),
+        makeSession({ uid: "c", id: "c", title: "Needle review", parentId: "p", projectDir: "/a" }),
+      ),
+    );
+
+    render(<App />);
+    await user.type(await screen.findByLabelText("Search"), "needle");
+
+    expect(screen.getByText("Needle review")).toBeInTheDocument();
+    expect(screen.getByText("Main thread").closest("tr")).toHaveClass("context-row");
+    expect(screen.getByText(/1 of 2 sessions/)).toBeInTheDocument();
   });
 
   it("shows a centered spinner while scanning, over the table on rescans", async () => {

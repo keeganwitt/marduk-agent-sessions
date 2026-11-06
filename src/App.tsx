@@ -5,10 +5,11 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import { Filters } from "./components/Filters";
 import { SessionTable } from "./components/SessionTable";
-import { EMPTY_FILTER, filterSessions } from "./lib/filter";
+import { EMPTY_FILTER, sessionMatcher } from "./lib/filter";
+import { buildTree } from "./lib/tree";
 import { formatBytes } from "./lib/format";
 import { deleteSessions, openProjectDir, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
-import { nextSort, sortSessions, type SortKey, type SortState } from "./lib/sort";
+import { nextSort, type SortKey, type SortState } from "./lib/sort";
 import {
   isArchivable,
   isDeletable,
@@ -98,6 +99,7 @@ export default function App() {
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [sort, setSort] = useState<SortState | null>(null);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [filesFor, setFilesFor] = useState<SessionRow | null>(null);
   const [transcriptFor, setTranscriptFor] = useState<SessionRow | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -120,17 +122,28 @@ export default function App() {
     void rescan();
   }, [rescan]);
 
-  const visible = useMemo(
-    () => (scan ? sortSessions(filterSessions(scan.sessions, filter, scannedAt), sort) : []),
-    [scan, filter, scannedAt, sort],
+  const matcher = useMemo(() => sessionMatcher(filter, scannedAt), [filter, scannedAt]);
+  const matching = useMemo(() => (scan ? scan.sessions.filter(matcher) : []), [scan, matcher]);
+  const rows = useMemo(
+    () => (scan ? buildTree(scan.sessions, matcher, sort, expanded) : []),
+    [scan, matcher, sort, expanded],
   );
+  const visible = rows.map((row) => row.session);
   const selectedVisible = visible.filter((session) => selected.has(session.uid));
   const toDelete = selectedVisible.filter(isDeletable);
   const toArchive = selectedVisible.filter((session) => isArchivable(session) && !session.archived);
   const toUnarchive = selectedVisible.filter((session) => isArchivable(session) && session.archived);
   const deleteBytes = toDelete.reduce((total, session) => total + session.sizeBytes, 0);
-  const visibleBytes = visible.reduce((total, session) => total + session.sizeBytes, 0);
+  const matchingBytes = matching.reduce((total, session) => total + session.sizeBytes, 0);
   const incompleteAgents = scan?.agents.filter((agent) => !agent.complete) ?? [];
+
+  const toggleExpanded = (uid: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
 
   const toggle = (uid: string) =>
     setSelected((current) => {
@@ -218,7 +231,7 @@ export default function App() {
       <header className="toolbar">
         <h1>Marduk</h1>
         <span className="summary">
-          {scan ? `${visible.length} of ${scan.sessions.length} sessions · ${formatBytes(visibleBytes)}` : ""}
+          {scan ? `${matching.length} of ${scan.sessions.length} sessions · ${formatBytes(matchingBytes)}` : ""}
         </span>
         <button type="button" onClick={() => setSettingsOpen(true)}>
           Settings
@@ -255,12 +268,7 @@ export default function App() {
       {notice && <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />}
 
       {scan && (
-        <Filters
-          agents={scan.agents}
-          subagentCount={scan.sessions.filter((session) => session.parentId !== null && !session.parentMissing).length}
-          filter={filter}
-          onChange={setFilter}
-        />
+        <Filters agents={scan.agents} filter={filter} onChange={setFilter} />
       )}
       {!scan && activity && <BusyIndicator label={activity} />}
       {scan && (
@@ -268,7 +276,8 @@ export default function App() {
           {activity && <BusyIndicator label={activity} overlay />}
           <div className="table-wrap">
           <SessionTable
-            sessions={visible}
+            rows={rows}
+            onToggleExpand={toggleExpanded}
             homeDir={scan.homeDir}
             selected={selected}
             now={scannedAt}

@@ -113,8 +113,18 @@ impl Catalog {
 
     pub fn preview(&self, uids: &[String], now: SystemTime) -> Vec<Preview> {
         let snapshot = self.snapshot.lock().unwrap();
+        let selected: std::collections::HashSet<(&str, &str)> = uids
+            .iter()
+            .filter_map(|uid| snapshot.get(uid))
+            .map(|(_, session)| (session.agent, session.id.as_str()))
+            .collect();
         uids.iter()
             .map(|uid| match snapshot.get(uid) {
+                Some((_, session)) if deleted_with_selected_ancestor(&snapshot, session, &selected) => Preview {
+                    uid: uid.clone(),
+                    session: Some(session.clone()),
+                    result: Err("Deleted along with its parent session, which is also selected.".to_string()),
+                },
                 None => Preview {
                     uid: uid.clone(),
                     session: None,
@@ -229,6 +239,36 @@ impl Catalog {
             })
             .collect()
     }
+}
+
+/// True when `session` will go with a selected ancestor: each link up to that ancestor is
+/// one the agent deletes along with its parent.
+fn deleted_with_selected_ancestor(
+    snapshot: &HashMap<String, (usize, Session)>,
+    session: &Session,
+    selected: &std::collections::HashSet<(&str, &str)>,
+) -> bool {
+    let by_id = |id: &str| {
+        snapshot
+            .values()
+            .map(|(_, candidate)| candidate)
+            .find(|candidate| candidate.agent == session.agent && candidate.id == id)
+    };
+    let mut current = session;
+    let mut seen = std::collections::HashSet::new();
+    while current.deleted_with_parent
+        && let Some(parent_id) = current.parent_id.as_deref()
+        && seen.insert(parent_id.to_string())
+    {
+        if selected.contains(&(session.agent, parent_id)) {
+            return true;
+        }
+        match by_id(parent_id) {
+            Some(parent) => current = parent,
+            None => return false,
+        }
+    }
+    false
 }
 
 /// Sessions the agent's delete of `session` will also remove, counted from the scan
@@ -415,6 +455,59 @@ mod tests {
         assert_eq!(
             plan.warning.as_deref(),
             Some("Codex also deletes 2 subagent sessions that this session started.")
+        );
+    }
+
+    #[test]
+    fn selected_children_deleted_with_a_selected_parent_are_not_deleted_separately() {
+        use crate::agents::codex::CodexAdapter;
+        let home = tempfile::tempdir().unwrap();
+        let day = home.path().join("sessions/2026/11/06");
+        fs::create_dir_all(&day).unwrap();
+        let uuid = |n: u8| format!("01a1b21a-26bc-7700-ae31-919e0387ce{n:02}");
+        let write = |n: u8, extra: String| {
+            let path = day.join(format!("rollout-x-{}.jsonl", uuid(n)));
+            fs::write(
+                &path,
+                format!(r#"{{"type":"session_meta","payload":{{"id":"{}"{extra}}}}}"#, uuid(n)),
+            )
+            .unwrap();
+            let old = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+            filetime::set_file_mtime(&path, old).unwrap();
+        };
+        let spawn = |parent: u8| {
+            format!(
+                r#","source":{{"subagent":{{"thread_spawn":{{"parent_thread_id":"{}"}}}}}}"#,
+                uuid(parent)
+            )
+        };
+        write(1, String::new());
+        write(2, spawn(1));
+        write(3, spawn(2));
+        write(4, format!(r#","parent_thread_id":"{}""#, uuid(1)));
+        let catalog = Catalog::new(
+            vec![Box::new(CodexAdapter::new(
+                home.path().to_path_buf(),
+                Some("/bin/codex".into()),
+            ))],
+            Duration::from_secs(60),
+        );
+        let scans = catalog.scan();
+        let uid_of = |n: u8| uid(scans[0].sessions.iter().find(|s| s.id == uuid(n)).unwrap());
+
+        let preview = catalog.preview(&[uid_of(1), uid_of(3), uid_of(4)], SystemTime::now());
+
+        assert!(preview[0].result.is_ok());
+        assert!(
+            preview[1]
+                .result
+                .as_ref()
+                .unwrap_err()
+                .contains("Deleted along with its parent")
+        );
+        assert!(
+            preview[2].result.is_ok(),
+            "guardian reviews aren't deleted with their parent"
         );
     }
 
