@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -491,6 +491,51 @@ describe("App", () => {
     await user.click(screen.getByRole("checkbox", { name: "Select Two" }));
     await user.keyboard("{/Shift}");
     expect(checked()).toEqual(["Four"]);
+  });
+
+  it("hides and shows columns from the Columns menu and remembers the choice", async () => {
+    const user = userEvent.setup();
+    localStorage.clear();
+    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "a", title: "Alpha", agentName: "Codex" })));
+
+    const { unmount } = render(<App />);
+    expect(await screen.findByRole("columnheader", { name: /Agent/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    await user.click(screen.getByRole("checkbox", { name: "Agent" }));
+
+    expect(screen.queryByRole("columnheader", { name: /Agent/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Codex")).not.toBeInTheDocument();
+    unmount();
+
+    render(<App />);
+    await screen.findByText("Alpha");
+    expect(screen.queryByRole("columnheader", { name: /Agent/ })).not.toBeInTheDocument();
+    localStorage.clear();
+  });
+
+  it("resizes columns by dragging or with the arrow keys, and resets on double-click", async () => {
+    const user = userEvent.setup();
+    localStorage.clear();
+    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "a", title: "Alpha" })));
+
+    render(<App />);
+    const handle = await screen.findByRole("separator", { name: "Resize Project column" });
+    const width = () => Number(handle.getAttribute("aria-valuenow"));
+    const initial = width();
+
+    handle.focus();
+    await user.keyboard("{ArrowRight}{ArrowRight}");
+    expect(width()).toBe(initial + 32);
+
+    fireEvent.pointerDown(handle, { clientX: 100 });
+    fireEvent.pointerMove(window, { clientX: 150 });
+    fireEvent.pointerUp(window);
+    expect(width()).toBe(initial + 82);
+    expect(JSON.parse(localStorage.getItem("marduk.columns")!).widths.project).toBe(initial + 82);
+
+    await user.dblClick(handle);
+    expect(width()).toBe(initial);
+    localStorage.clear();
   });
 
   it("shows a centered spinner while scanning, over the table on rescans", async () => {

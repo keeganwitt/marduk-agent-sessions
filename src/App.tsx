@@ -19,6 +19,7 @@ import {
   getTheme,
   listLabels,
   openProjectDir, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
+import { loadColumnPrefs, saveColumnPrefs, type ColumnPrefs } from "./lib/columns";
 import { DEFAULT_SORT, nextSort, type SortKey, type SortState } from "./lib/sort";
 import {
   isArchivable,
@@ -135,6 +136,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [labels, setLabels] = useState<Label[]>([]);
   const [labelMenuOpen, setLabelMenuOpen] = useState(false);
+  const [columns, setColumns] = useState<ColumnPrefs>(loadColumnPrefs);
+
+  useEffect(() => saveColumnPrefs(columns), [columns]);
   const labelsById = useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
 
   const refreshLabels = useCallback(async () => {
@@ -400,6 +404,8 @@ export default function App() {
           <div className="table-wrap">
           <SessionTable
             rows={rows}
+            columns={columns}
+            onColumnsChange={setColumns}
             labelsById={labelsById}
             onToggleExpand={toggleExpanded}
             homeDir={scan.homeDir}
