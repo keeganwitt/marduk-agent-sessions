@@ -77,10 +77,20 @@ function NoticeBanner({ notice, onDismiss }: { notice: Notice; onDismiss: () => 
   );
 }
 
+function BusyIndicator({ label, overlay = false }: { label: string; overlay?: boolean }) {
+  return (
+    <div className={overlay ? "busy overlay-busy" : "busy"} role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
 export default function App() {
   const [scan, setScan] = useState<ScanResponse | null>(null);
   const [scannedAt, setScannedAt] = useState(() => new Date());
-  const [busy, setBusy] = useState(true);
+  const [activity, setActivity] = useState<string | null>("Scanning sessions…");
+  const busy = activity !== null;
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState(EMPTY_FILTER);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -93,7 +103,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const rescan = useCallback(async () => {
-    setBusy(true);
+    setActivity("Scanning sessions…");
     setError(null);
     try {
       setScan(await scanSessions());
@@ -102,7 +112,7 @@ export default function App() {
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
-      setBusy(false);
+      setActivity(null);
     }
   }, []);
 
@@ -172,7 +182,7 @@ export default function App() {
   };
 
   const runArchive = async (uids: string[]) => {
-    setBusy(true);
+    setActivity("Updating archive…");
     setError(null);
     try {
       const outcome = await toggleArchive(uids);
@@ -214,7 +224,7 @@ export default function App() {
           Settings
         </button>
         <button type="button" onClick={() => void rescan()} disabled={busy}>
-          {busy ? "Working…" : "Rescan"}
+          Rescan
         </button>
         {toArchive.length > 0 && (
           <button type="button" disabled={busy} onClick={() => void runArchive(toArchive.map((s) => s.uid))}>
@@ -252,8 +262,11 @@ export default function App() {
           onChange={setFilter}
         />
       )}
+      {!scan && activity && <BusyIndicator label={activity} />}
       {scan && (
-        <div className="table-wrap">
+        <div className="table-area" aria-busy={busy}>
+          {activity && <BusyIndicator label={activity} overlay />}
+          <div className="table-wrap">
           <SessionTable
             sessions={visible}
             homeDir={scan.homeDir}
@@ -267,6 +280,7 @@ export default function App() {
             onShowFiles={setFilesFor}
             onOpenTranscript={setTranscriptFor}
           />
+          </div>
         </div>
       )}
 

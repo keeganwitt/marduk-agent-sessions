@@ -346,6 +346,27 @@ describe("App", () => {
     expect(await screen.findByText(/Some Pi sessions couldn't be read: \/x: permission denied/)).toBeInTheDocument();
   });
 
+  it("shows a centered spinner while scanning, over the table on rescans", async () => {
+    const user = userEvent.setup();
+    let finish: (value: ScanResponse) => void = () => {};
+    scanSessions.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+
+    render(<App />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Scanning sessions…");
+    finish(scanOf(makeSession({ uid: "u1", title: "Loaded" })));
+    expect(await screen.findByText("Loaded")).toBeInTheDocument();
+    expect(screen.queryByText("Scanning sessions…")).not.toBeInTheDocument();
+
+    scanSessions.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    await user.click(screen.getByRole("button", { name: "Rescan" }));
+    expect(screen.getByText("Scanning sessions…")).toBeInTheDocument();
+    expect(screen.getByText("Loaded")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rescan" })).toBeDisabled();
+    finish(scanOf(makeSession({ uid: "u1", title: "Loaded" })));
+    expect(await screen.findByRole("button", { name: "Rescan" })).toBeEnabled();
+  });
+
   it("shows an error when scanning fails", async () => {
     scanSessions.mockRejectedValue("boom");
 
