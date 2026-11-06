@@ -393,6 +393,42 @@ describe("App", () => {
     expect(screen.getByText(/1 of 2 sessions/)).toBeInTheDocument();
   });
 
+  it("shift-clicking selects or clears the range from the last clicked row, skipping running ones", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "1", title: "One" }),
+        makeSession({ uid: "2", title: "Two" }),
+        makeSession({ uid: "3", title: "Three", running: true }),
+        makeSession({ uid: "4", title: "Four" }),
+        makeSession({ uid: "5", title: "Five" }),
+      ),
+    );
+
+    render(<App />);
+    await user.click(await screen.findByRole("checkbox", { name: "Select Two" }));
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByRole("checkbox", { name: "Select Four" }));
+    await user.keyboard("{/Shift}");
+
+    const checked = () =>
+      ["One", "Two", "Three", "Four", "Five"].filter(
+        (name) => (screen.getByRole("checkbox", { name: `Select ${name}` }) as HTMLInputElement).checked,
+      );
+    expect(checked()).toEqual(["Two", "Four"]);
+    expect(screen.getByRole("button", { name: /Delete 2/ })).toBeInTheDocument();
+
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByRole("checkbox", { name: "Select One" }));
+    await user.keyboard("{/Shift}");
+    expect(checked()).toEqual(["One", "Two", "Four"]);
+
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByRole("checkbox", { name: "Select Two" }));
+    await user.keyboard("{/Shift}");
+    expect(checked()).toEqual(["Four"]);
+  });
+
   it("shows a centered spinner while scanning, over the table on rescans", async () => {
     const user = userEvent.setup();
     let finish: (value: ScanResponse) => void = () => {};

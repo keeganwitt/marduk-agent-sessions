@@ -11,7 +11,8 @@ interface Props {
   now: Date;
   sort: SortState | null;
   onSort: (key: SortKey) => void;
-  onToggle: (uid: string) => void;
+  /** `extend` is true for shift-clicks, which select a range. */
+  onToggle: (uid: string, extend: boolean) => void;
   onSetMany: (uids: string[], selected: boolean) => void;
   onOpenProject: (session: SessionRow) => void;
   onShowFiles: (session: SessionRow) => void;
@@ -132,7 +133,10 @@ export function SessionTable(props: Props) {
                   aria-label={`Select ${label}`}
                   checked={selected.has(session.uid)}
                   disabled={!isSelectable(session)}
-                  onChange={() => onToggle(session.uid)}
+                  onChange={(event) => {
+                    const native = event.nativeEvent;
+                    onToggle(session.uid, "shiftKey" in native && Boolean(native.shiftKey));
+                  }}
                 />
               </td>
               <td className="title" style={{ paddingLeft: 10 + depth * 18 }}>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeleteDialog } from "./components/DeleteDialog";
 import { FilesDialog } from "./components/FilesDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -6,6 +6,7 @@ import { TranscriptPanel } from "./components/TranscriptPanel";
 import { Filters } from "./components/Filters";
 import { SessionTable } from "./components/SessionTable";
 import { EMPTY_FILTER, sessionMatcher } from "./lib/filter";
+import { rangeBetween } from "./lib/selection";
 import { buildTree } from "./lib/tree";
 import { formatBytes } from "./lib/format";
 import { deleteSessions, openProjectDir, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
@@ -13,6 +14,7 @@ import { nextSort, type SortKey, type SortState } from "./lib/sort";
 import {
   isArchivable,
   isDeletable,
+  isSelectable,
   type ArchiveResult,
   type DeleteResult,
   type PreviewItem,
@@ -145,13 +147,29 @@ export default function App() {
       return next;
     });
 
-  const toggle = (uid: string) =>
+  const selectionAnchor = useRef<string | null>(null);
+
+  const toggle = (uid: string, extend: boolean) => {
+    const select = !selected.has(uid);
+    const range = extend
+      ? rangeBetween(
+          visible.map((session) => session.uid),
+          selectionAnchor.current,
+          uid,
+        )
+      : [uid];
+    const selectable = new Set(visible.filter(isSelectable).map((session) => session.uid));
+    selectionAnchor.current = uid;
     setSelected((current) => {
       const next = new Set(current);
-      if (next.has(uid)) next.delete(uid);
-      else next.add(uid);
+      for (const id of range) {
+        if (!selectable.has(id)) continue;
+        if (select) next.add(id);
+        else next.delete(id);
+      }
       return next;
     });
+  };
 
   const setMany = (uids: string[], select: boolean) =>
     setSelected((current) => {
