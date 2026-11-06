@@ -45,11 +45,6 @@ body {
   gap: 10px;
 }
 
-.toolbar h1 {
-  font-size: 18px;
-  margin: 0;
-}
-
 .summary {
   flex: 1;
   color: var(--muted);

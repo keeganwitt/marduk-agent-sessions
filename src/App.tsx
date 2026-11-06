@@ -229,7 +229,7 @@ export default function App() {
   return (
     <main className="app">
       <header className="toolbar">
-        <h1>Marduk</h1>
+        <h1 className="visually-hidden">Marduk</h1>
         <span className="summary">
           {scan ? `${matching.length} of ${scan.sessions.length} sessions · ${formatBytes(matchingBytes)}` : ""}
         </span>
