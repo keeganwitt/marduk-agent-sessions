@@ -1,0 +1,18 @@
+[package]
+name = "marduk-core"
+description = "Agent session discovery and safe deletion for Marduk"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+dirs = "7.0.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["raw_value"] }
+trash = "5.3.0"
+
+[dev-dependencies]
+filetime = "0.2.29"
+tempfile = "3.27.0"

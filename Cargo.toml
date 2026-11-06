@@ -1,0 +1,16 @@
+[workspace]
+members = ["crates/marduk-core", "src-tauri"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Keegan Witt <keeganwitt@gmail.com>"]
+license = "Apache-2.0"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
