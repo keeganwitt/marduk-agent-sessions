@@ -5,6 +5,7 @@ pub mod catalog;
 pub mod delete;
 pub mod fs_util;
 mod jsonl;
+pub mod labels;
 pub mod session;
 pub mod transcript;
 

@@ -1,10 +1,12 @@
 import { formatAge, formatBytes, shortenPath } from "../lib/format";
 import type { SortKey, SortState } from "../lib/sort";
 import type { TreeRow } from "../lib/tree";
-import { isSelectable, type SessionRow } from "../lib/types";
+import { LabelChips } from "./LabelChip";
+import { isSelectable, type Label, type SessionRow } from "../lib/types";
 
 interface Props {
   rows: TreeRow[];
+  labelsById: ReadonlyMap<number, Label>;
   onToggleExpand: (uid: string) => void;
   homeDir: string;
   selected: ReadonlySet<string>;
@@ -84,7 +86,7 @@ function DateCell({ value, now }: { value: string | null; now: Date }) {
 }
 
 export function SessionTable(props: Props) {
-  const { rows, onToggleExpand, homeDir, selected, now, sort, onSort, onToggle, onSetMany, onOpenProject, onShowFiles, onOpenTranscript } =
+  const { rows, labelsById, onToggleExpand, homeDir, selected, now, sort, onSort, onToggle, onSetMany, onOpenProject, onShowFiles, onOpenTranscript } =
     props;
   const selectable = rows.map((row) => row.session).filter(isSelectable).map((session) => session.uid);
   const allSelected = selectable.length > 0 && selectable.every((uid) => selected.has(uid));
@@ -111,6 +113,7 @@ export function SessionTable(props: Props) {
             />
           </th>
           {header("Session", "title")}
+          <th>Labels</th>
           {header("Agent", "agent")}
           {header("Project", "project")}
           {header("Created", "created", true)}
@@ -173,6 +176,9 @@ export function SessionTable(props: Props) {
                     {childCount} {childCount === 1 ? "subagent" : "subagents"}
                   </button>
                 )}
+              </td>
+              <td className="labels">
+                <LabelChips ids={session.labelIds} labelsById={labelsById} />
               </td>
               <td>{session.agentName}</td>
               <td className="project">

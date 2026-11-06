@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { cliStatuses, saveTheme, setCliPath } from "../lib/ipc";
 import { applyTheme, cachedTheme, THEMES, type Theme } from "../lib/theme";
+import { LabelManager } from "./LabelManager";
 import type { CliStatus } from "../lib/types";
 
 interface Props {
@@ -116,6 +117,8 @@ export function SettingsDialog({ onClose }: Props) {
             </label>
           ))}
         </div>
+        <h3>Labels</h3>
+        <LabelManager onChanged={() => setChanged(true)} onError={setError} />
         <h3>Agent CLIs</h3>
         <p className="muted">
           Some agents can only be changed through their own command-line tool. Marduk finds them automatically; choose

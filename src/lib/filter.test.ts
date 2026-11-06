@@ -26,6 +26,15 @@ describe("filterSessions", () => {
     expect(archivedUids("active")).toEqual(["old"]);
   });
 
+  it("filters by label, or by having no labels", () => {
+    const labeled = makeSession({ uid: "labeled", labelIds: [7] });
+    const uidsFor = (label: "none" | number) =>
+      filterSessions([old, labeled], { ...EMPTY_FILTER, label }, now).map((s) => s.uid);
+    expect(uidsFor(7)).toEqual(["labeled"]);
+    expect(uidsFor("none")).toEqual(["old"]);
+    expect(uidsFor(8)).toEqual([]);
+  });
+
   it("filters by minimum age in days", () => {
     expect(uids({ ...EMPTY_FILTER, olderThanDays: 30 })).toEqual(["old"]);
   });

@@ -1,8 +1,9 @@
-import { ALL_AGENTS, type ArchiveFilter, type SessionFilter } from "../lib/filter";
-import type { AgentSummary } from "../lib/types";
+import { ALL_AGENTS, type ArchiveFilter, type LabelFilter, type SessionFilter } from "../lib/filter";
+import type { AgentSummary, Label } from "../lib/types";
 
 interface Props {
   agents: AgentSummary[];
+  labels: Label[];
   filter: SessionFilter;
   onChange: (filter: SessionFilter) => void;
 }
@@ -13,7 +14,11 @@ function parseOptionalNumber(value: string): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-export function Filters({ agents, filter, onChange }: Props) {
+function parseLabelFilter(value: string): LabelFilter {
+  return value === "any" || value === "none" ? value : Number(value);
+}
+
+export function Filters({ agents, labels, filter, onChange }: Props) {
   return (
     <div className="filters" role="search">
       <label>
@@ -36,6 +41,21 @@ export function Filters({ agents, filter, onChange }: Props) {
           <option value="all">Active and archived</option>
           <option value="active">Active</option>
           <option value="archived">Archived</option>
+        </select>
+      </label>
+      <label>
+        Label
+        <select
+          value={String(filter.label)}
+          onChange={(event) => onChange({ ...filter, label: parseLabelFilter(event.target.value) })}
+        >
+          <option value="any">Any label</option>
+          <option value="none">No label</option>
+          {labels.map((label) => (
+            <option key={label.id} value={label.id}>
+              {label.name} ({label.count})
+            </option>
+          ))}
         </select>
       </label>
       <label>

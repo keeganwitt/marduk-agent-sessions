@@ -260,6 +260,11 @@ impl Catalog {
         }
     }
 
+    /// The path-independent `Session::key` of a scanned session.
+    pub fn key_of(&self, uid: &str) -> Option<String> {
+        self.snapshot.lock().unwrap().get(uid).map(|(_, session)| session.key())
+    }
+
     pub fn transcript(&self, uid: &str) -> Result<crate::transcript::Transcript, String> {
         let (index, session) = self.snapshot.lock().unwrap().get(uid).cloned().ok_or_else(not_found)?;
         self.adapters[index]

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { loadTranscript } from "../lib/ipc";
-import type { SessionRow, Transcript, TranscriptMessage } from "../lib/types";
+import type { Label, SessionRow, Transcript, TranscriptMessage } from "../lib/types";
+import { LabelChips } from "./LabelChip";
 import { Markdown } from "./Markdown";
 
 interface Props {
   session: SessionRow;
+  labelsById?: ReadonlyMap<number, Label>;
   onClose: () => void;
 }
 
@@ -62,7 +64,7 @@ function promptLabel(text: string): string {
   return flat.length > 80 ? `${flat.slice(0, 79)}…` : flat;
 }
 
-export function TranscriptPanel({ session, onClose }: Props) {
+export function TranscriptPanel({ session, labelsById = new Map(), onClose }: Props) {
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showTools, setShowTools] = useState(true);
@@ -113,6 +115,7 @@ export function TranscriptPanel({ session, onClose }: Props) {
       <header className="transcript-header">
         <div className="transcript-heading">
           <h2 id="transcript-title">{session.title ?? session.id}</h2>
+          <LabelChips ids={session.labelIds} labelsById={labelsById} />
           <p className="muted">
             {session.agentName}
             {session.projectDir && ` · ${session.projectDir}`}

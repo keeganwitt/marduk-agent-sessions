@@ -6,7 +6,14 @@ import * as ipc from "../lib/ipc";
 import type { CliStatus } from "../lib/types";
 import { SettingsDialog } from "./SettingsDialog";
 
-vi.mock("../lib/ipc", () => ({ cliStatuses: vi.fn(), setCliPath: vi.fn(), saveTheme: vi.fn() }));
+vi.mock("../lib/ipc", () => ({
+  cliStatuses: vi.fn(),
+  setCliPath: vi.fn(),
+  saveTheme: vi.fn(),
+  listLabels: vi.fn(),
+  updateLabel: vi.fn(),
+  deleteLabel: vi.fn(),
+}));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 const cliStatuses = vi.mocked(ipc.cliStatuses);
@@ -32,7 +39,35 @@ describe("SettingsDialog", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     saveTheme.mockResolvedValue();
+    vi.mocked(ipc.listLabels).mockResolvedValue([]);
     localStorage.clear();
+  });
+
+  it("renames, recolors and deletes labels after confirming", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    cliStatuses.mockResolvedValue([]);
+    const listLabels = vi.mocked(ipc.listLabels);
+    listLabels.mockResolvedValue([{ id: 1, name: "Work", color: "blue", count: 3 }]);
+    vi.mocked(ipc.updateLabel).mockResolvedValue();
+    vi.mocked(ipc.deleteLabel).mockResolvedValue();
+
+    render(<SettingsDialog onClose={onClose} />);
+    const name = await screen.findByRole("textbox", { name: "Name of Work" });
+    await user.clear(name);
+    await user.type(name, "Job{Enter}");
+    expect(ipc.updateLabel).toHaveBeenCalledWith(1, "Job", "blue");
+
+    await user.click(screen.getByRole("radio", { name: "Red" }));
+    expect(ipc.updateLabel).toHaveBeenCalledWith(1, "Work", "red");
+
+    await user.click(screen.getByRole("button", { name: "Delete label Work" }));
+    expect(ipc.deleteLabel).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Delete from 3 sessions" }));
+    expect(ipc.deleteLabel).toHaveBeenCalledWith(1);
+
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(onClose).toHaveBeenCalledWith(true);
   });
 
   it("defaults to the system theme and applies and saves a chosen one", async () => {

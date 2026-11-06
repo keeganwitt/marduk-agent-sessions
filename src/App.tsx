@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeleteDialog } from "./components/DeleteDialog";
 import { FilesDialog } from "./components/FilesDialog";
+import { LabelMenu } from "./components/LabelMenu";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import { Filters } from "./components/Filters";
@@ -8,9 +9,16 @@ import { SessionTable } from "./components/SessionTable";
 import { EMPTY_FILTER, sessionMatcher } from "./lib/filter";
 import { rangeBetween } from "./lib/selection";
 import { applyTheme, isTheme } from "./lib/theme";
+import { nextColor } from "./lib/labels";
 import { buildTree } from "./lib/tree";
 import { formatBytes } from "./lib/format";
-import { deleteSessions, getTheme, openProjectDir, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
+import {
+  applyLabels,
+  createLabel,
+  deleteSessions,
+  getTheme,
+  listLabels,
+  openProjectDir, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
 import { DEFAULT_SORT, nextSort, type SortKey, type SortState } from "./lib/sort";
 import {
   isArchivable,
@@ -19,6 +27,7 @@ import {
   type ArchiveResult,
   type DeleteResult,
   type PreviewItem,
+  type Label,
   type ScanProgress,
   type ScanResponse,
   type SessionRow,
@@ -124,6 +133,17 @@ export default function App() {
   const [filesFor, setFilesFor] = useState<SessionRow | null>(null);
   const [transcriptFor, setTranscriptFor] = useState<SessionRow | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [labels, setLabels] = useState<Label[]>([]);
+  const [labelMenuOpen, setLabelMenuOpen] = useState(false);
+  const labelsById = useMemo(() => new Map(labels.map((label) => [label.id, label])), [labels]);
+
+  const refreshLabels = useCallback(async () => {
+    try {
+      setLabels(await listLabels());
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }, []);
 
   const rescan = useCallback(async () => {
     setActivity("Scanning sessions…");
@@ -133,13 +153,14 @@ export default function App() {
       setScan(await scanSessions(setProgress));
       setScannedAt(new Date());
       setSelected(new Set());
+      await refreshLabels();
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
       setActivity(null);
       setProgress(null);
     }
-  }, []);
+  }, [refreshLabels]);
 
   useEffect(() => {
     void rescan();
@@ -252,6 +273,42 @@ export default function App() {
     await rescan();
   };
 
+  const labelSelected = async (add: number[], remove: number[]) => {
+    const uids = new Set(selectedVisible.map((session) => session.uid));
+    setLabelMenuOpen(false);
+    try {
+      await applyLabels([...uids], add, remove);
+      setScan(
+        (current) =>
+          current && {
+            ...current,
+            sessions: current.sessions.map((session) =>
+              uids.has(session.uid)
+                ? {
+                    ...session,
+                    labelIds: [...new Set([...session.labelIds, ...add])].filter((id) => !remove.includes(id)),
+                  }
+                : session,
+            ),
+          },
+      );
+      await refreshLabels();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  };
+
+  const newLabel = async (name: string): Promise<Label | null> => {
+    try {
+      const label = await createLabel(name, nextColor(labels));
+      setLabels((current) => [...current, label].sort((a, b) => a.name.localeCompare(b.name)));
+      return label;
+    } catch (caught) {
+      setError(errorMessage(caught));
+      return null;
+    }
+  };
+
   const reveal = async (path: string) => {
     try {
       await revealSessionFile(path);
@@ -282,6 +339,26 @@ export default function App() {
         <button type="button" onClick={() => setSettingsOpen(true)}>
           Settings
         </button>
+        <div className="menu-anchor">
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded={labelMenuOpen}
+            disabled={selectedVisible.length === 0 || busy}
+            onClick={() => setLabelMenuOpen((open) => !open)}
+          >
+            Labels ▾
+          </button>
+          {labelMenuOpen && (
+            <LabelMenu
+              labels={labels}
+              selected={selectedVisible}
+              onApply={(add, remove) => void labelSelected(add, remove)}
+              onCreate={newLabel}
+              onClose={() => setLabelMenuOpen(false)}
+            />
+          )}
+        </div>
         <button type="button" onClick={() => void rescan()} disabled={busy}>
           Rescan
         </button>
@@ -314,7 +391,7 @@ export default function App() {
       {notice && <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />}
 
       {scan && (
-        <Filters agents={scan.agents} filter={filter} onChange={setFilter} />
+        <Filters agents={scan.agents} labels={labels} filter={filter} onChange={setFilter} />
       )}
       {!scan && activity && <BusyIndicator label={activity} progress={progress} />}
       {scan && (
@@ -323,6 +400,7 @@ export default function App() {
           <div className="table-wrap">
           <SessionTable
             rows={rows}
+            labelsById={labelsById}
             onToggleExpand={toggleExpanded}
             homeDir={scan.homeDir}
             selected={selected}
@@ -347,7 +425,13 @@ export default function App() {
           }}
         />
       )}
-      {transcriptFor && <TranscriptPanel session={transcriptFor} onClose={closeTranscript} />}
+      {transcriptFor && (
+        <TranscriptPanel
+          session={scan?.sessions.find((session) => session.uid === transcriptFor.uid) ?? transcriptFor}
+          labelsById={labelsById}
+          onClose={closeTranscript}
+        />
+      )}
       {filesFor && <FilesDialog session={filesFor} onReveal={(path) => void reveal(path)} onClose={closeFiles} />}
 
       {preview && (

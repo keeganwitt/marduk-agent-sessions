@@ -23,6 +23,10 @@ When an agent has its own delete or archive command, Marduk uses it, so the agen
 
 Sessions an agent started on its own (Codex Guardian reviews and spawned subagents, OpenCode and Kilo child sessions) are nested under the session that started them. Expand a parent to see them. A subagent whose parent was deleted is shown at the top level with a *Parent deleted* badge. Claude Code's subagents live inside the parent session's own folder, so they're part of the parent rather than separate rows.
 
+## Labels
+
+Select sessions and use **Labels ▾** to add or remove labels, or create a new one by typing its name. Filter by label from the *Label* dropdown, and rename, recolor or delete labels in **Settings**. Labels are stored by Marduk (in `labels.db` in its app data folder), keyed by agent and session id, so they survive an agent archiving or moving a session. Deleting a session in Marduk removes its labels; labels of sessions deleted some other way are removed after they've been missing from complete scans for 7 days.
+
 ## Reading transcripts
 
 Click a session's title to read it in a side panel. Messages are rendered as Markdown, tool calls are collapsed with their output, and injected context (system prompts, AGENTS.md) is hidden unless you turn it on. Very long sessions show their first and last 500 messages. For Pi, only the active branch is shown, not abandoned rewinds.

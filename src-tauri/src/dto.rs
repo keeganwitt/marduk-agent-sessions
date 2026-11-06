@@ -41,6 +41,51 @@ pub struct SessionRow {
     pub read_only_reason: Option<String>,
     pub permanent_delete: bool,
     pub can_archive: bool,
+    pub label_ids: Vec<i64>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelDto {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub count: u64,
+}
+
+impl From<marduk_core::labels::Label> for LabelDto {
+    fn from(label: marduk_core::labels::Label) -> Self {
+        Self {
+            id: label.id,
+            name: label.name,
+            color: label.color,
+            count: label.count,
+        }
+    }
+}
+
+/// Drops labels of sessions missing from complete scans for longer than the grace period,
+/// then attaches each session's labels to its row.
+pub fn attach_labels(
+    response: &mut ScanResponse,
+    labels: &marduk_core::labels::LabelStore,
+    now: SystemTime,
+) -> Result<(), String> {
+    let seen: std::collections::HashSet<String> = response.sessions.iter().map(|row| row.key.clone()).collect();
+    let complete: std::collections::HashSet<&str> = response
+        .agents
+        .iter()
+        .filter(|agent| agent.complete)
+        .map(|agent| agent.id)
+        .collect();
+    labels.reconcile(&seen, &complete, now, marduk_core::labels::PRUNE_GRACE)?;
+    let assignments = labels.assignments()?;
+    for row in &mut response.sessions {
+        if let Some(ids) = assignments.get(&row.key) {
+            row.label_ids = ids.clone();
+        }
+    }
+    Ok(())
 }
 
 #[derive(Serialize, Debug, PartialEq, Clone)]
@@ -181,6 +226,7 @@ fn session_row(catalog: &Catalog, session: &Session, now: SystemTime) -> Session
             _ => None,
         },
         permanent_delete: matches!(plan, Some(DeletePlan::AgentCommand { .. })),
+        label_ids: Vec::new(),
         can_archive: catalog.can_archive(session),
     }
 }
@@ -332,6 +378,7 @@ mod tests {
             read_only_reason: None,
             permanent_delete: false,
             can_archive: false,
+            label_ids: vec![],
         }
     }
 
@@ -343,6 +390,39 @@ mod tests {
             errors: vec![],
             sessions: vec![],
         }
+    }
+
+    #[test]
+    fn attaches_labels_to_rows_by_session_key() {
+        let labels = marduk_core::labels::LabelStore::in_memory().unwrap();
+        let work = labels.create("Work", "blue").unwrap();
+        let now = SystemTime::now();
+        labels
+            .apply(&["codex:a".to_string(), "codex:gone".to_string()], &[work.id], &[], now)
+            .unwrap();
+        let mut response = ScanResponse {
+            agents: vec![AgentSummary {
+                id: "codex",
+                name: "Codex",
+                complete: true,
+                errors: vec![],
+                session_count: 2,
+            }],
+            sessions: vec![row("codex", "a", None), row("codex", "b", None)],
+            home_dir: String::new(),
+        };
+
+        attach_labels(&mut response, &labels, now).unwrap();
+
+        assert_eq!(response.sessions[0].label_ids, vec![work.id]);
+        assert!(response.sessions[1].label_ids.is_empty());
+        let later = now + marduk_core::labels::PRUNE_GRACE + std::time::Duration::from_secs(60);
+        attach_labels(&mut response, &labels, later).unwrap();
+        assert_eq!(
+            labels.labels().unwrap()[0].count,
+            1,
+            "the missing session's label was pruned"
+        );
     }
 
     #[test]

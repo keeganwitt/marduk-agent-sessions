@@ -15,6 +15,9 @@ vi.mock("./lib/ipc", () => ({
   openProjectDir: vi.fn(),
   loadTranscript: vi.fn(),
   getTheme: vi.fn(),
+  listLabels: vi.fn(),
+  createLabel: vi.fn(),
+  applyLabels: vi.fn(),
 }));
 
 const scanSessions = vi.mocked(ipc.scanSessions);
@@ -58,6 +61,53 @@ describe("App", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     getTheme.mockResolvedValue("system");
+    vi.mocked(ipc.listLabels).mockResolvedValue([]);
+  });
+
+  it("labels selected sessions from the Labels menu, then filters by label", async () => {
+    const user = userEvent.setup();
+    const work = { id: 1, name: "Work", color: "blue", count: 0 };
+    vi.mocked(ipc.listLabels).mockResolvedValue([work]);
+    vi.mocked(ipc.applyLabels).mockResolvedValue();
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "a", title: "Alpha" }), makeSession({ uid: "b", title: "Beta", labelIds: [1] })),
+    );
+
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Labels ▾" })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: "Select all sessions shown" }));
+    await user.click(screen.getByRole("button", { name: "Labels ▾" }));
+
+    const menu = screen.getByRole("dialog", { name: "Labels" });
+    const workBox = within(menu).getByRole("checkbox", { name: "Work" }) as HTMLInputElement;
+    expect(workBox.indeterminate).toBe(true);
+    await user.click(workBox);
+    await user.click(within(menu).getByRole("button", { name: "Apply" }));
+
+    expect(ipc.applyLabels).toHaveBeenCalledWith(["a", "b"], [1], []);
+    expect(screen.getAllByText("Work", { selector: ".label-chip" })).toHaveLength(2);
+
+    await user.selectOptions(screen.getByLabelText("Label"), "none");
+    expect(screen.getByText("No sessions match these filters.")).toBeInTheDocument();
+  });
+
+  it("creates a label from the menu and checks it", async () => {
+    const user = userEvent.setup();
+    vi.mocked(ipc.createLabel).mockResolvedValue({ id: 9, name: "Keep", color: "red", count: 0 });
+    vi.mocked(ipc.applyLabels).mockResolvedValue();
+    scanSessions.mockResolvedValue(scanOf(makeSession({ uid: "a", title: "Alpha" })));
+
+    render(<App />);
+    await user.click(await screen.findByRole("checkbox", { name: "Select Alpha" }));
+    await user.click(screen.getByRole("button", { name: "Labels ▾" }));
+    await user.type(screen.getByPlaceholderText("Find or create a label"), "Keep");
+    await user.click(screen.getByRole("button", { name: "Create “Keep”" }));
+
+    expect(ipc.createLabel).toHaveBeenCalledWith("Keep", expect.any(String));
+    const keep = screen.getByRole("checkbox", { name: "Keep" }) as HTMLInputElement;
+    expect(keep.checked).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(ipc.applyLabels).toHaveBeenCalledWith(["a"], [9], []);
   });
 
   it("applies the saved theme on startup", async () => {

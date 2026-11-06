@@ -28,7 +28,8 @@ Author is `Keegan Witt <keeganwitt@gmail.com>`, set in this repo's local git con
 - Run agent CLIs through `agents::cli::run_capture` (or `SystemBackend::run`), which reads output while the process runs; reading after exit deadlocks on large output.
 - Agent support is built from each agent's source and docs, with fixtures in tests, even when nobody on the project uses that agent.
 - `ScanResult.complete` must be false whenever part of an agent's storage couldn't be read. Future tag pruning depends on it.
-- `Session::key()` (`agent:id`) is the path-independent identity reserved for tags.
+- `Session::key()` (`agent:id`) is the path-independent identity labels are keyed by (`marduk_core::labels::LabelStore`). Label pruning (`reconcile`) only judges agents whose scan was complete, after `PRUNE_GRACE`.
+- Labels are solid, squared chips (`.label-chip`); status badges are tinted, round pills (`.badge`). Keep them visually distinct.
 - Links: `installExternalLinkHandler` (`src/lib/externalLinks.ts`) sends link clicks to `tauri-plugin-opener` (http, https and mailto only, scoped in `capabilities/default.json`). Tauri's webview ignores `target="_blank"`.
 
 ## Adding an adapter

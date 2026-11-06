@@ -27,6 +27,15 @@ export interface SessionRow {
   readOnlyReason: string | null;
   permanentDelete: boolean;
   canArchive: boolean;
+  labelIds: number[];
+}
+
+export interface Label {
+  id: number;
+  name: string;
+  color: string;
+  /** Sessions with this label. */
+  count: number;
 }
 
 export interface ScanProgress {

@@ -23,6 +23,7 @@ export function makeSession(overrides: Partial<SessionRow> = {}): SessionRow {
     readOnlyReason: null,
     permanentDelete: false,
     canArchive: false,
+    labelIds: [],
     ...overrides,
   };
 }
