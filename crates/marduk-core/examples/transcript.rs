@@ -8,7 +8,22 @@ use marduk_core::catalog::{self, Catalog};
 
 fn main() {
     let catalog = Catalog::new(marduk_core::default_adapters(Default::default()), RUNNING_WINDOW);
-    for scan in catalog.scan() {
+    let scans = catalog.scan();
+    let notes = scans
+        .iter()
+        .flat_map(|scan| &scan.sessions)
+        .filter_map(|session| catalog.transcript(&catalog::uid(session)).ok()?.note)
+        .fold(
+            std::collections::BTreeMap::<String, usize>::new(),
+            |mut counts, note| {
+                *counts.entry(note).or_default() += 1;
+                counts
+            },
+        );
+    for (note, count) in notes {
+        println!("{count} transcripts noted: {note}");
+    }
+    for scan in scans {
         let Some(largest) = scan.sessions.iter().max_by_key(|session| session.size_bytes) else {
             continue;
         };

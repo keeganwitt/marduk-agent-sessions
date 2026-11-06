@@ -174,6 +174,7 @@ struct Record<'a> {
 #[derive(Default)]
 struct Parsed {
     id: Option<String>,
+    parent_id: Option<String>,
     cwd: Option<String>,
     first_prompt: Option<String>,
     span: jsonl::Span,
@@ -200,6 +201,7 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
             if let Ok(meta) = serde_json::from_str::<Value>(payload.get()) {
                 parsed.id = meta["id"].as_str().map(str::to_string).or(parsed.id.take());
                 parsed.cwd = meta["cwd"].as_str().map(str::to_string).or(parsed.cwd.take());
+                parsed.parent_id = parent_thread(&meta).or(parsed.parent_id.take());
                 parsed
                     .span
                     .observe(meta["timestamp"].as_str().and_then(jsonl::parse_timestamp));
@@ -225,9 +227,25 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
     }
 }
 
+/// The thread that spawned this one: guardian reviews record `parent_thread_id` at the top
+/// level, spawned subagents under `source.subagent.thread_spawn`.
+fn parent_thread(meta: &Value) -> Option<String> {
+    [
+        &meta["parent_thread_id"],
+        &meta["source"]["subagent"]["thread_spawn"]["parent_thread_id"],
+    ]
+    .into_iter()
+    .find_map(|value| value.as_str().filter(|id| !id.is_empty()))
+    .map(str::to_string)
+}
+
+const ENCRYPTED_ONLY_NOTE: &str =
+    "This session only contains an encrypted context record from Codex, so there's nothing readable to show.";
+
 /// Uses `response_item` records only; `event_msg` repeats the same conversation.
 fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
     let mut builder = TranscriptBuilder::default();
+    let mut encrypted_context = false;
     jsonl::for_each_line(path, |line| {
         let Ok(record) = serde_json::from_str::<Value>(line) else {
             return;
@@ -264,10 +282,24 @@ fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
                 &transcript::tool_output_text(&item["output"]),
                 timestamp,
             ),
+            Some("compaction") => {
+                encrypted_context |= item["encrypted_content"]
+                    .as_str()
+                    .is_some_and(|value| !value.is_empty())
+            }
             _ => {}
         }
     })?;
-    Ok(builder.finish())
+    let mut transcript = builder.finish();
+    let readable = transcript
+        .head
+        .iter()
+        .chain(&transcript.tail)
+        .any(|message| message.role != Role::Context);
+    if encrypted_context && !readable {
+        transcript.note = Some(ENCRYPTED_ONLY_NOTE.to_string());
+    }
+    Ok(transcript)
 }
 
 /// `function_call.arguments` is a JSON document encoded as a string.
@@ -309,7 +341,7 @@ fn read_session(path: &Path, archived: bool, titles: &HashMap<String, String>) -
         primary_file: path.to_path_buf(),
         files: vec![path.to_path_buf()],
         fingerprint,
-        parent_id: None,
+        parent_id: parsed.parent_id,
     })
 }
 
@@ -459,6 +491,81 @@ mod tests {
         assert_eq!(tool.name, "exec_command");
         assert_eq!(tool.output.as_deref(), Some("ci.yml"));
         assert_eq!(messages[2].text, "{\n  \"cmd\": \"ls\"\n}");
+    }
+
+    #[test]
+    fn records_the_parent_thread_of_guardian_reviews_and_spawned_subagents() {
+        let home = tempfile::tempdir().unwrap();
+        let guardian = "01a1b21a-26bc-7700-ae31-919e0387ce69";
+        let spawned = "01a1b21a-26bc-7700-ae31-919e0387ce70";
+        write(
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-a-{guardian}.jsonl")),
+            &format!(
+                r#"{{"type":"session_meta","payload":{{"id":"{guardian}","parent_thread_id":"parent-1","thread_source":"guardian_review","source":{{"subagent":{{"other":"guardian"}}}}}}}}"#
+            ),
+        );
+        write(
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-b-{spawned}.jsonl")),
+            &format!(
+                r#"{{"type":"session_meta","payload":{{"id":"{spawned}","source":{{"subagent":{{"thread_spawn":{{"parent_thread_id":"parent-2","depth":1}}}}}}}}}}"#
+            ),
+        );
+        write(
+            &home.path().join(format!("sessions/2026/11/06/rollout-c-{ID}.jsonl")),
+            &rollout(ID),
+        );
+
+        let sessions = adapter(home.path(), None).scan().sessions;
+        let parent_of = |id: &str| sessions.iter().find(|s| s.id == id).unwrap().parent_id.clone();
+
+        assert_eq!(parent_of(guardian).as_deref(), Some("parent-1"));
+        assert_eq!(parent_of(spawned).as_deref(), Some("parent-2"));
+        assert_eq!(parent_of(ID), None);
+    }
+
+    #[test]
+    fn encrypted_only_sessions_explain_why_nothing_is_shown() {
+        let home = tempfile::tempdir().unwrap();
+        let content = [
+            format!(r#"{{"type":"session_meta","payload":{{"id":"{ID}"}}}}"#),
+            r#"{"type":"response_item","payload":{"type":"compaction","encrypted_content":"gAAAAABpZ..."}}"#
+                .to_string(),
+            r#"{"type":"event_msg","payload":{"type":"thread_settings_applied"}}"#.to_string(),
+        ]
+        .join("\n");
+        write(
+            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &content,
+        );
+        let codex = adapter(home.path(), None);
+        let session = codex.scan().sessions.remove(0);
+
+        let transcript = codex.transcript(&session).unwrap();
+
+        assert!(transcript.head.is_empty());
+        assert_eq!(transcript.note.as_deref(), Some(ENCRYPTED_ONLY_NOTE));
+    }
+
+    #[test]
+    fn readable_sessions_with_compaction_get_no_note() {
+        let home = tempfile::tempdir().unwrap();
+        let content = format!(
+            "{}\n{}\n{}",
+            rollout(ID),
+            r#"{"type":"response_item","payload":{"type":"compaction","encrypted_content":"gAAAA"}}"#,
+            r#"{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done"}]}}"#
+        );
+        write(
+            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &content,
+        );
+        let codex = adapter(home.path(), None);
+        let session = codex.scan().sessions.remove(0);
+        assert!(codex.transcript(&session).unwrap().note.is_none());
     }
 
     #[test]

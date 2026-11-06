@@ -26,6 +26,14 @@ describe("filterSessions", () => {
     expect(archivedUids("active")).toEqual(["old"]);
   });
 
+  it("hides subagent sessions unless asked to show them", () => {
+    const child = makeSession({ uid: "child", parentId: "parent" });
+    const childUids = (showSubagents: boolean) =>
+      filterSessions([old, child], { ...EMPTY_FILTER, showSubagents }, now).map((s) => s.uid);
+    expect(childUids(false)).toEqual(["old"]);
+    expect(childUids(true)).toEqual(["old", "child"]);
+  });
+
   it("filters by minimum age in days", () => {
     expect(uids({ ...EMPTY_FILTER, olderThanDays: 30 })).toEqual(["old"]);
   });

@@ -71,6 +71,24 @@ describe("TranscriptPanel", () => {
     expect(await screen.findByText(/Read through `opencode session export`/)).toBeInTheDocument();
   });
 
+  it("explains when everything in the session is hidden by the toggles", async () => {
+    loadTranscript.mockResolvedValue(transcriptOf([message("context", "# AGENTS.md")]));
+
+    render(<TranscriptPanel session={makeSession()} onClose={() => {}} />);
+
+    expect(await screen.findByText(/hidden by the filters above/)).toBeInTheDocument();
+    expect(screen.queryByText(/no messages to show/)).not.toBeInTheDocument();
+  });
+
+  it("shows only the note, not 'no messages', for sessions with nothing readable", async () => {
+    loadTranscript.mockResolvedValue(transcriptOf([], { note: "This session only contains an encrypted context record" }));
+
+    render(<TranscriptPanel session={makeSession()} onClose={() => {}} />);
+
+    expect(await screen.findByText(/encrypted context record/)).toBeInTheDocument();
+    expect(screen.queryByText(/no messages to show/)).not.toBeInTheDocument();
+  });
+
   it("lists prompts to jump to", async () => {
     loadTranscript.mockResolvedValue(
       transcriptOf([message("user", "first question"), message("assistant", "a"), message("user", "second\nquestion")]),

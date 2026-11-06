@@ -605,3 +605,10 @@ button.title-link {
   gap: 8px;
   margin-top: 8px;
 }
+
+.filters label.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+}

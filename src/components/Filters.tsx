@@ -3,6 +3,7 @@ import type { AgentSummary } from "../lib/types";
 
 interface Props {
   agents: AgentSummary[];
+  subagentCount: number;
   filter: SessionFilter;
   onChange: (filter: SessionFilter) => void;
 }
@@ -13,7 +14,7 @@ function parseOptionalNumber(value: string): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-export function Filters({ agents, filter, onChange }: Props) {
+export function Filters({ agents, subagentCount, filter, onChange }: Props) {
   return (
     <div className="filters" role="search">
       <label>
@@ -57,6 +58,14 @@ export function Filters({ agents, filter, onChange }: Props) {
           value={filter.minSizeMb ?? ""}
           onChange={(event) => onChange({ ...filter, minSizeMb: parseOptionalNumber(event.target.value) })}
         />
+      </label>
+      <label className="inline" title="Sessions an agent started on its own, such as Codex Guardian reviews">
+        <input
+          type="checkbox"
+          checked={filter.showSubagents}
+          onChange={(event) => onChange({ ...filter, showSubagents: event.target.checked })}
+        />
+        Show subagent sessions ({subagentCount})
       </label>
       <label className="grow">
         Search

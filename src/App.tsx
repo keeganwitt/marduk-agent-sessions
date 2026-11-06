@@ -244,7 +244,14 @@ export default function App() {
       ))}
       {notice && <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />}
 
-      {scan && <Filters agents={scan.agents} filter={filter} onChange={setFilter} />}
+      {scan && (
+        <Filters
+          agents={scan.agents}
+          subagentCount={scan.sessions.filter((session) => session.parentId !== null).length}
+          filter={filter}
+          onChange={setFilter}
+        />
+      )}
       {scan && (
         <div className="table-wrap">
           <SessionTable

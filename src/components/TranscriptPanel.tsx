@@ -151,9 +151,16 @@ export function TranscriptPanel({ session, onClose }: Props) {
           </div>
         )}
         {!transcript && !error && <p className="muted">Loading…</p>}
-        {transcript && transcript.head.length + transcript.tail.length === 0 && (
+        {transcript && transcript.head.length + transcript.tail.length === 0 && !transcript.note && (
           <p className="muted">This session has no messages to show.</p>
         )}
+        {transcript &&
+          transcript.head.length + transcript.tail.length > 0 &&
+          !transcript.head.concat(transcript.tail).some(visible) && (
+            <p className="muted">
+              Everything in this session is hidden by the filters above. Turn on Tool calls or Injected context to see it.
+            </p>
+          )}
         {transcript?.note && <p className="muted note">{transcript.note}</p>}
         {session.running && (
           <p className="muted note">This session is still running, so the transcript may be incomplete.</p>

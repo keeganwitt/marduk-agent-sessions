@@ -143,7 +143,10 @@ describe("App", () => {
     deleteSessions.mockResolvedValue([{ status: "deleted", uid: "o1", files: [], command: "opencode session delete ses_parent" }]);
 
     render(<App />);
-    expect(await screen.findByText("Subagent")).toBeInTheDocument();
+    expect(await screen.findByText("Parent")).toBeInTheDocument();
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText("Show subagent sessions (1)"));
+    expect(screen.getByText("Subagent")).toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "Select Parent" }));
     await user.click(screen.getByRole("button", { name: /Delete 1/ }));
 
