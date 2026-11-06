@@ -5,7 +5,7 @@ import { LabelMenu } from "./components/LabelMenu";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import { Filters } from "./components/Filters";
-import { SessionTable } from "./components/SessionTable";
+import { ColumnsMenu, SessionTable } from "./components/SessionTable";
 import { EMPTY_FILTER, sessionMatcher } from "./lib/filter";
 import { rangeBetween } from "./lib/selection";
 import { applyTheme, isTheme } from "./lib/theme";
@@ -395,7 +395,10 @@ export default function App() {
       {notice && <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />}
 
       {scan && (
-        <Filters agents={scan.agents} labels={labels} filter={filter} onChange={setFilter} />
+        <div className="filter-bar">
+          <Filters agents={scan.agents} labels={labels} filter={filter} onChange={setFilter} />
+          <ColumnsMenu columns={columns} onColumnsChange={setColumns} />
+        </div>
       )}
       {!scan && activity && <BusyIndicator label={activity} progress={progress} />}
       {scan && (

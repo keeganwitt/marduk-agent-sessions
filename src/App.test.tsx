@@ -500,7 +500,7 @@ describe("App", () => {
 
     const { unmount } = render(<App />);
     expect(await screen.findByRole("columnheader", { name: /Agent/ })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Columns" }));
+    await user.click(screen.getByRole("button", { name: "Columns ▾" }));
     await user.click(screen.getByRole("checkbox", { name: "Agent" }));
 
     expect(screen.queryByRole("columnheader", { name: /Agent/ })).not.toBeInTheDocument();

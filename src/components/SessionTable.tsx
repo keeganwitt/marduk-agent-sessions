@@ -101,8 +101,8 @@ const SORT_KEYS: Partial<Record<ColumnId, SortKey>> = {
   size: "size",
 };
 
-const CHECK_WIDTH = 34;
-const ACTIONS_WIDTH = 92;
+const CHECK_WIDTH = 36;
+const ACTIONS_WIDTH = 64;
 const KEYBOARD_STEP = 16;
 
 /** Drag to resize; double-click resets; arrow keys resize when focused. */
@@ -161,7 +161,7 @@ function ResizeHandle({
   );
 }
 
-function ColumnsMenu({ columns, onColumnsChange }: { columns: ColumnPrefs; onColumnsChange: Dispatch<SetStateAction<ColumnPrefs>> }) {
+export function ColumnsMenu({ columns, onColumnsChange }: { columns: ColumnPrefs; onColumnsChange: Dispatch<SetStateAction<ColumnPrefs>> }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
 
@@ -183,8 +183,8 @@ function ColumnsMenu({ columns, onColumnsChange }: { columns: ColumnPrefs; onCol
 
   return (
     <div className="menu-anchor columns-anchor" ref={anchor}>
-      <button type="button" className="link" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Columns
+      <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
+        Columns ▾
       </button>
       {open && (
         <div className="columns-menu" role="group" aria-label="Show columns">
@@ -375,7 +375,7 @@ export function SessionTable(props: Props) {
             );
           })}
           <th className="actions-col">
-            <ColumnsMenu columns={columns} onColumnsChange={onColumnsChange} />
+            <span className="visually-hidden">Actions</span>
           </th>
         </tr>
       </thead>

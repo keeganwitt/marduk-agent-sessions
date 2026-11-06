@@ -83,7 +83,14 @@ button.danger:not(:disabled) {
   color: white;
 }
 
+.filter-bar {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+}
+
 .filters {
+  flex: 1;
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
@@ -162,8 +169,12 @@ table.sessions {
   color: var(--muted);
 }
 
-.sessions th.actions-col {
-  overflow: visible;
+/* The checkbox and actions cells hold controls, never text, so they must not show an ellipsis. */
+.sessions .check,
+.sessions .actions-col {
+  text-overflow: clip;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .sessions th.num {
