@@ -134,6 +134,16 @@ async fn set_cli_path(
     .await?
 }
 
+#[tauri::command]
+fn get_theme(settings: tauri::State<'_, AppSettings>) -> settings::Theme {
+    settings.store.get().theme
+}
+
+#[tauri::command]
+fn set_theme(settings: tauri::State<'_, AppSettings>, theme: settings::Theme) -> Result<(), String> {
+    settings.store.update(|current| current.theme = theme).map(|_| ())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let overrides = Arc::new(CliOverrides::default());
@@ -160,7 +170,9 @@ pub fn run() {
             open_project_dir,
             load_transcript,
             cli_statuses,
-            set_cli_path
+            set_cli_path,
+            get_theme,
+            set_theme
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

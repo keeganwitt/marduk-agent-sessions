@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { cliStatuses, setCliPath } from "../lib/ipc";
+import { cliStatuses, saveTheme, setCliPath } from "../lib/ipc";
+import { applyTheme, cachedTheme, THEMES, type Theme } from "../lib/theme";
 import type { CliStatus } from "../lib/types";
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+const THEME_LABELS: Record<Theme, string> = { system: "System", light: "Light", dark: "Dark" };
 
 function CliRow({ status, busy, onChoose, onReset }: {
   status: CliStatus;
@@ -54,6 +57,7 @@ export function SettingsDialog({ onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [changed, setChanged] = useState(false);
+  const [theme, setTheme] = useState<Theme>(cachedTheme);
 
   useEffect(() => {
     cliStatuses().then(setStatuses, (caught: unknown) => setError(errorMessage(caught)));
@@ -82,6 +86,12 @@ export function SettingsDialog({ onClose }: Props) {
     }
   };
 
+  const chooseTheme = (next: Theme) => {
+    setTheme(next);
+    applyTheme(next);
+    saveTheme(next).catch((caught: unknown) => setError(errorMessage(caught)));
+  };
+
   const choose = async (status: CliStatus) => {
     const picked = await open({ multiple: false, directory: false, title: `Choose the ${status.program} CLI` });
     if (typeof picked === "string") await save(status.agent, picked);
@@ -91,6 +101,21 @@ export function SettingsDialog({ onClose }: Props) {
     <div className="overlay">
       <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <h2 id="settings-title">Settings</h2>
+        <h3>Appearance</h3>
+        <div className="segmented" role="radiogroup" aria-label="Theme">
+          {THEMES.map((option) => (
+            <label key={option} className={option === theme ? "active" : undefined}>
+              <input
+                type="radio"
+                name="theme"
+                value={option}
+                checked={option === theme}
+                onChange={() => chooseTheme(option)}
+              />
+              {THEME_LABELS[option]}
+            </label>
+          ))}
+        </div>
         <h3>Agent CLIs</h3>
         <p className="muted">
           Some agents can only be changed through their own command-line tool. Marduk finds them automatically; choose

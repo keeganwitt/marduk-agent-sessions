@@ -14,6 +14,7 @@ vi.mock("./lib/ipc", () => ({
   revealSessionFile: vi.fn(),
   openProjectDir: vi.fn(),
   loadTranscript: vi.fn(),
+  getTheme: vi.fn(),
 }));
 
 const scanSessions = vi.mocked(ipc.scanSessions);
@@ -23,6 +24,7 @@ const toggleArchive = vi.mocked(ipc.toggleArchive);
 const revealSessionFile = vi.mocked(ipc.revealSessionFile);
 const openProjectDir = vi.mocked(ipc.openProjectDir);
 const loadTranscript = vi.mocked(ipc.loadTranscript);
+const getTheme = vi.mocked(ipc.getTheme);
 
 function rowTitles(): string[] {
   return screen
@@ -55,6 +57,16 @@ function previewOf(overrides: Partial<PreviewItem> & { uid: string }): PreviewIt
 describe("App", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    getTheme.mockResolvedValue("system");
+  });
+
+  it("applies the saved theme on startup", async () => {
+    getTheme.mockResolvedValue("light");
+    scanSessions.mockResolvedValue(scanOf());
+
+    render(<App />);
+
+    await vi.waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
   });
 
   it("previews and trashes selected sessions, then removes them from the list", async () => {

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { Theme } from "./theme";
 import type { ArchiveResult, CliStatus, DeleteResult, PreviewItem, ScanResponse, Transcript } from "./types";
 
 export function scanSessions(): Promise<ScanResponse> {
@@ -35,4 +36,12 @@ export function cliStatuses(): Promise<CliStatus[]> {
 
 export function setCliPath(agent: string, path: string | null): Promise<CliStatus[]> {
   return invoke("set_cli_path", { agent, path });
+}
+
+export function getTheme(): Promise<Theme> {
+  return invoke("get_theme");
+}
+
+export function saveTheme(theme: Theme): Promise<void> {
+  return invoke("set_theme", { theme });
 }

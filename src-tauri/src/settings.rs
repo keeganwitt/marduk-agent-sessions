@@ -4,12 +4,23 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Eq, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     /// User-chosen CLI locations, keyed by agent id.
     #[serde(default)]
     pub cli_paths: BTreeMap<String, PathBuf>,
+    #[serde(default)]
+    pub theme: Theme,
 }
 
 /// Settings persisted as JSON in the app's config folder.
@@ -75,6 +86,20 @@ mod tests {
             SettingsStore::load(path).get().cli_paths.get("codex"),
             Some(&PathBuf::from("/opt/codex"))
         );
+    }
+
+    #[test]
+    fn theme_defaults_to_system_and_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"cliPaths":{}}"#).unwrap();
+        let store = SettingsStore::load(path.clone());
+        assert_eq!(store.get().theme, Theme::System);
+
+        store.update(|settings| settings.theme = Theme::Dark).unwrap();
+
+        assert_eq!(SettingsStore::load(path.clone()).get().theme, Theme::Dark);
+        assert!(std::fs::read_to_string(path).unwrap().contains(r#""theme": "dark""#));
     }
 
     #[test]

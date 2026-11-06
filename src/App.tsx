@@ -7,9 +7,10 @@ import { Filters } from "./components/Filters";
 import { SessionTable } from "./components/SessionTable";
 import { EMPTY_FILTER, sessionMatcher } from "./lib/filter";
 import { rangeBetween } from "./lib/selection";
+import { applyTheme, isTheme } from "./lib/theme";
 import { buildTree } from "./lib/tree";
 import { formatBytes } from "./lib/format";
-import { deleteSessions, openProjectDir, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
+import { deleteSessions, getTheme, openProjectDir, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
 import { nextSort, type SortKey, type SortState } from "./lib/sort";
 import {
   isArchivable,
@@ -123,6 +124,13 @@ export default function App() {
   useEffect(() => {
     void rescan();
   }, [rescan]);
+
+  useEffect(() => {
+    getTheme().then(
+      (theme) => isTheme(theme) && applyTheme(theme),
+      () => {},
+    );
+  }, []);
 
   const matcher = useMemo(() => sessionMatcher(filter, scannedAt), [filter, scannedAt]);
   const matching = useMemo(() => (scan ? scan.sessions.filter(matcher) : []), [scan, matcher]);

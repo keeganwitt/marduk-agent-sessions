@@ -6,12 +6,13 @@ import * as ipc from "../lib/ipc";
 import type { CliStatus } from "../lib/types";
 import { SettingsDialog } from "./SettingsDialog";
 
-vi.mock("../lib/ipc", () => ({ cliStatuses: vi.fn(), setCliPath: vi.fn() }));
+vi.mock("../lib/ipc", () => ({ cliStatuses: vi.fn(), setCliPath: vi.fn(), saveTheme: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 const cliStatuses = vi.mocked(ipc.cliStatuses);
 const setCliPath = vi.mocked(ipc.setCliPath);
 const openDialog = vi.mocked(open);
+const saveTheme = vi.mocked(ipc.saveTheme);
 
 function status(overrides: Partial<CliStatus>): CliStatus {
   return {
@@ -30,6 +31,22 @@ function status(overrides: Partial<CliStatus>): CliStatus {
 describe("SettingsDialog", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    saveTheme.mockResolvedValue();
+    localStorage.clear();
+  });
+
+  it("defaults to the system theme and applies and saves a chosen one", async () => {
+    const user = userEvent.setup();
+    cliStatuses.mockResolvedValue([]);
+
+    render(<SettingsDialog onClose={() => {}} />);
+
+    expect(screen.getByRole("radio", { name: "System" })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: "Dark" }));
+
+    expect(screen.getByRole("radio", { name: "Dark" })).toBeChecked();
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(saveTheme).toHaveBeenCalledWith("dark");
   });
 
   it("shows found and missing CLIs with an install link for the missing one", async () => {
