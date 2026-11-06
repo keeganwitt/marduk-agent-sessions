@@ -26,7 +26,14 @@ pub fn default_adapters(overrides: std::sync::Arc<agents::cli::CliOverrides>) ->
         Box::new(agents::claude::ClaudeAdapter::from_env()),
         Box::new(agents::codex::CodexAdapter::from_env(overrides.clone())),
         Box::new(agents::copilot::CopilotAdapter::from_env()),
-        Box::new(agents::opencode::OpenCodeAdapter::from_env(overrides)),
+        Box::new(agents::opencode::OpenCodeAdapter::from_env(
+            &agents::opencode::OPENCODE,
+            overrides.clone(),
+        )),
+        Box::new(agents::opencode::OpenCodeAdapter::from_env(
+            &agents::opencode::KILO,
+            overrides,
+        )),
         Box::new(agents::pi::PiAdapter::from_env()),
     ]
 }

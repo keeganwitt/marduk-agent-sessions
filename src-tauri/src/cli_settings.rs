@@ -106,7 +106,7 @@ mod tests {
     fn lists_only_agents_that_need_a_cli() {
         let (_dir, _overrides, catalog, _store) = setup();
         let agents: Vec<&str> = catalog.cli_status().iter().map(|(id, _, _)| *id).collect();
-        assert_eq!(agents, vec!["codex", "opencode"]);
+        assert_eq!(agents, vec!["codex", "opencode", "kilo"]);
     }
 
     #[test]

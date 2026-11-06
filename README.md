@@ -12,9 +12,10 @@ It scans the transcripts that coding agents keep on disk and shows them in one l
 | Codex | `~/.codex/sessions` and `~/.codex/archived_sessions` (or `$CODEX_HOME`) | **Permanent**, through `codex delete --force <id>`; needs the Codex CLI | `codex archive` / `codex unarchive` |
 | GitHub Copilot CLI | `~/.copilot/session-state/<id>/` (or `$COPILOT_HOME/session-state`) | Moves the session folder to the Trash; Copilot's own delete is only an in-session slash command. Run `/chronicle reindex` in Copilot afterwards to update its search index | — (Copilot CLI has no archive) |
 | OpenCode | `~/.local/share/opencode/opencode*.db` (or `$XDG_DATA_HOME/opencode`, `$OPENCODE_DB`) | **Permanent**, through `opencode session delete <id>`, which also deletes the session's child sessions; needs the OpenCode CLI | Shows OpenCode's archived state; OpenCode has no archive command |
+| Kilo | `~/.local/share/kilo/kilo*.db` (or `$XDG_DATA_HOME/kilo`, `$KILO_DB`) | **Permanent**, through `kilo session delete <id>`, which also deletes child sessions; needs the Kilo CLI | Shows Kilo's archived state; Kilo has no archive command |
 | Pi | `~/.pi/agent/sessions` (or `$PI_CODING_AGENT_DIR/sessions`) | Moves the transcript to the Trash | — |
 
-OpenCode keeps every session in one SQLite database. Marduk opens it read-only, reads both OpenCode's current (`session_v2`) and older (`session`) tables, and never writes to it. If a session's messages are stored in a shape Marduk doesn't recognize (a newer OpenCode, say), the transcript is read through `opencode session export` instead.
+OpenCode and Kilo (an OpenCode fork) keep every session in one SQLite database. Marduk opens it read-only, reads both OpenCode's current (`session_v2`) and older (`session`) tables, and never writes to it. If a session's messages are stored in a shape Marduk doesn't recognize (a newer OpenCode, say), the transcript is read through the agent's export command (`opencode session export`, `kilo export`) instead.
 
 When an agent has its own delete or archive command, Marduk uses it, so the agent's own indexes stay consistent. Otherwise sessions go to the system Trash. Claude Code and Pi have no per-session delete command; Pi's own session picker also uses the Trash.
 

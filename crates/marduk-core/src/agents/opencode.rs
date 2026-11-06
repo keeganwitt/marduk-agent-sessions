@@ -13,22 +13,71 @@ use crate::jsonl;
 use crate::session::{Fingerprint, Session};
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
-/// OpenCode keeps every session in one SQLite database. Newer versions use `session_v2` /
-/// `session_message` / `session_part`; older ones `session` / `message` / `part`, which
-/// OpenCode migrates forward. Marduk only ever opens the database read-only.
+/// What differs between OpenCode and its forks (Kilo); storage and CLI are otherwise shared.
+pub struct Flavor {
+    pub id: &'static str,
+    pub name: &'static str,
+    /// Folder under `$XDG_DATA_HOME`.
+    data_dir: &'static str,
+    /// Database file name prefixes: `<prefix>.db` and `<prefix>-<channel>.db`.
+    db_prefixes: &'static [&'static str],
+    db_env: &'static str,
+    program: &'static str,
+    install_url: &'static str,
+    export_args: &'static [&'static str],
+}
+
+pub const OPENCODE: Flavor = Flavor {
+    id: "opencode",
+    name: "OpenCode",
+    data_dir: "opencode",
+    db_prefixes: &["opencode"],
+    db_env: "OPENCODE_DB",
+    program: "opencode",
+    install_url: "https://opencode.ai/docs/",
+    export_args: &["session", "export"],
+};
+
+/// Kilo dev channels fall back to an older `opencode-<channel>.db` in Kilo's own folder.
+pub const KILO: Flavor = Flavor {
+    id: "kilo",
+    name: "Kilo",
+    data_dir: "kilo",
+    db_prefixes: &["kilo", "opencode"],
+    db_env: "KILO_DB",
+    program: "kilo",
+    install_url: "https://kilo.ai/cli/install",
+    export_args: &["export"],
+};
+
+/// OpenCode-family agents keep every session in one SQLite database. Sessions are rows of
+/// `session_v2` (newer OpenCode) or `session` (older OpenCode, Kilo); messages are in
+/// `session_message`/`session_part` or the older `message`/`part`, chosen per session by
+/// where its messages actually are. Marduk only ever opens the database read-only.
 pub struct OpenCodeAdapter {
+    flavor: &'static Flavor,
     data_dir: PathBuf,
     explicit_db: Option<PathBuf>,
     cli: Cli,
 }
 
-const PROGRAM: &str = "opencode";
-const INSTALL_URL: &str = "https://opencode.ai/docs/";
+const SESSION_TABLES: [&str; 2] = ["session_v2", "session"];
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Layout {
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum Store {
+    /// `session_message` + `session_part`.
     V2,
+    /// `message` + `part`.
     V1,
+}
+
+impl Store {
+    fn tables(self) -> (&'static str, &'static str) {
+        match self {
+            Store::V2 => ("session_message", "session_part"),
+            Store::V1 => ("message", "part"),
+        }
+    }
 }
 
 struct Row {
@@ -40,8 +89,6 @@ struct Row {
     updated_ms: i64,
     archived: bool,
 }
-
-type LayoutRows = (Vec<Row>, HashMap<String, Totals>);
 
 #[derive(Default, Clone, Copy)]
 struct Totals {
@@ -88,33 +135,47 @@ fn has_column(connection: &Connection, table: &str, column: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// OpenCode ids look like `ses_01J…`; anything else is refused before it reaches the CLI.
+/// OpenCode-family ids look like `ses_01J…`; anything else is refused before it reaches the CLI.
 fn is_safe_id(id: &str) -> bool {
     !id.is_empty() && !id.starts_with('-') && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+fn plural(count: i64, word: &str) -> String {
+    format!("{count} {word}{}", if count == 1 { "" } else { "s" })
+}
+
 impl OpenCodeAdapter {
     pub fn new(data_dir: PathBuf, explicit_db: Option<PathBuf>, cli: Option<PathBuf>) -> Self {
+        Self::with_flavor(&OPENCODE, data_dir, explicit_db, cli)
+    }
+
+    pub fn with_flavor(
+        flavor: &'static Flavor,
+        data_dir: PathBuf,
+        explicit_db: Option<PathBuf>,
+        cli: Option<PathBuf>,
+    ) -> Self {
         Self {
+            flavor,
             data_dir,
             explicit_db,
-            cli: Cli::fixed(PROGRAM, INSTALL_URL, cli),
+            cli: Cli::fixed(flavor.program, flavor.install_url, cli),
         }
     }
 
-    pub fn from_env(overrides: std::sync::Arc<CliOverrides>) -> Self {
+    pub fn from_env(flavor: &'static Flavor, overrides: std::sync::Arc<CliOverrides>) -> Self {
         let data_dir = env_dir("XDG_DATA_HOME")
             .unwrap_or_else(|| home_dir().join(".local").join("share"))
-            .join("opencode");
-        let explicit_db = env_dir("OPENCODE_DB").map(|db| if db.is_absolute() { db } else { data_dir.join(db) });
+            .join(flavor.data_dir);
+        let explicit_db = env_dir(flavor.db_env).map(|db| if db.is_absolute() { db } else { data_dir.join(db) });
         Self {
+            flavor,
+            cli: Cli::detect(flavor.id, flavor.program, flavor.install_url, overrides),
             data_dir,
             explicit_db,
-            cli: Cli::detect("opencode", PROGRAM, INSTALL_URL, overrides),
         }
     }
 
-    /// `opencode.db`, plus `opencode-<channel>.db` for non-release channels.
     fn databases(&self) -> Vec<PathBuf> {
         let mut databases: Vec<PathBuf> = std::fs::read_dir(&self.data_dir)
             .into_iter()
@@ -122,9 +183,14 @@ impl OpenCodeAdapter {
             .flatten()
             .map(|entry| entry.path())
             .filter(|path| {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("opencode") && name.ends_with(".db"))
+                path.file_name().and_then(|name| name.to_str()).is_some_and(|name| {
+                    name.ends_with(".db")
+                        && self
+                            .flavor
+                            .db_prefixes
+                            .iter()
+                            .any(|prefix| name == format!("{prefix}.db") || name.starts_with(&format!("{prefix}-")))
+                })
             })
             .collect();
         if let Some(db) = &self.explicit_db
@@ -148,69 +214,172 @@ impl OpenCodeAdapter {
             result.record_error(format!("{}: {error}", db.display()));
             return;
         }
+        let stores: Vec<Store> = [Store::V2, Store::V1]
+            .into_iter()
+            .filter(|store| has_table(&connection, store.tables().0))
+            .collect();
+        let tables: Vec<&str> = SESSION_TABLES
+            .into_iter()
+            .filter(|table| has_table(&connection, table))
+            .collect();
+        if stores.is_empty() || tables.is_empty() {
+            result.record_error(format!(
+                "{}: no {} session tables Marduk recognizes; this {} version may be newer than Marduk supports.",
+                db.display(),
+                self.flavor.name,
+                self.flavor.name
+            ));
+            return;
+        }
+        let totals = match all_totals(&connection, &stores) {
+            Ok(totals) => totals,
+            Err(error) => {
+                result.record_error(format!("{}: {error}", db.display()));
+                return;
+            }
+        };
         let mut seen = HashSet::new();
-        let mut recognized = false;
-        for layout in [Layout::V2, Layout::V1] {
-            match read_layout(&connection, layout) {
-                Ok(None) => {}
-                Ok(Some((rows, totals))) => {
-                    recognized = true;
+        for table in tables {
+            match read_rows(&connection, table) {
+                Ok(rows) => {
                     for row in rows {
                         if !seen.insert(row.id.clone()) {
                             continue;
                         }
-                        let totals = totals.get(&row.id).copied().unwrap_or_default();
+                        let (store, totals) = pick_store(&totals, &row.id);
                         let first_prompt = if row.title.as_deref().is_none_or(|title| title.trim().is_empty()) {
-                            first_user_text(&connection, layout, &row.id)
+                            first_user_text(&connection, store, &row.id)
                         } else {
                             None
                         };
-                        result.sessions.push(session_from_row(db, row, totals, first_prompt));
+                        result
+                            .sessions
+                            .push(self.session_from_row(db, row, totals, first_prompt));
                     }
                 }
                 Err(error) => result.record_error(format!("{}: {error}", db.display())),
             }
         }
-        if !recognized {
-            result.record_error(format!(
-                "{}: no OpenCode session tables Marduk recognizes; this OpenCode version may be newer than Marduk supports.",
-                db.display()
-            ));
+    }
+
+    fn session_from_row(&self, db: &Path, row: Row, totals: Totals, first_prompt: Option<String>) -> Session {
+        let fingerprint = fingerprint_of(row.updated_ms, totals);
+        let title = [row.title, first_prompt]
+            .into_iter()
+            .flatten()
+            .find_map(|text| jsonl::to_title(&text));
+        Session {
+            agent: self.flavor.id,
+            id: row.id,
+            project_dir: row.directory.filter(|dir| !dir.is_empty()),
+            title,
+            created: millis_to_datetime(row.created_ms),
+            last_activity: fingerprint.modified.into(),
+            size_bytes: totals.bytes,
+            archived: row.archived,
+            primary_file: db.to_path_buf(),
+            files: Vec::new(),
+            fingerprint,
+            parent_id: row.parent_id,
         }
+    }
+
+    fn unsafe_id_reason(&self) -> String {
+        format!(
+            "This session id can't be passed to the {} CLI safely.",
+            self.flavor.name
+        )
     }
 
     fn delete_command(&self, session: &Session) -> Result<AgentCommand, String> {
         if !is_safe_id(&session.id) {
-            return Err("This OpenCode session id can't be passed to the OpenCode CLI safely.".to_string());
+            return Err(self.unsafe_id_reason());
         }
-        let program = self
-            .cli
-            .path()
-            .ok_or_else(|| self.cli.missing_reason("OpenCode", "delete OpenCode sessions"))?;
+        let program = self.cli.path().ok_or_else(|| {
+            self.cli
+                .missing_reason(self.flavor.name, &format!("delete {} sessions", self.flavor.name))
+        })?;
         Ok(AgentCommand {
             program,
             args: vec!["session".into(), "delete".into(), session.id.clone()],
         })
     }
+
+    /// `<cli> session delete` also deletes the session's child (subagent) sessions.
+    fn child_warning(&self, db: &Path, session_id: &str) -> Option<String> {
+        let connection = open(db).ok()?;
+        let children: i64 = SESSION_TABLES
+            .into_iter()
+            .filter(|table| has_table(&connection, table))
+            .map(|table| {
+                connection
+                    .query_row(
+                        &format!("select count(*) from {table} where parent_id = ?1"),
+                        [session_id],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .unwrap_or(0)
+            })
+            .sum();
+        (children > 0).then(|| {
+            format!(
+                "{} also deletes this session's {}.",
+                self.flavor.name,
+                plural(children, "child session")
+            )
+        })
+    }
+
+    /// Reads a session through the CLI's export, which returns the agent's own decoded
+    /// messages and so keeps working when its tables change shape.
+    fn export_transcript(&self, cli: &Path, session_id: &str) -> Result<Transcript, String> {
+        let mut args: Vec<&str> = self.flavor.export_args.to_vec();
+        args.push(session_id);
+        let output = super::cli::run_capture(cli, &args, EXPORT_TIMEOUT)?;
+        let export: Value =
+            serde_json::from_str(&output).map_err(|error| format!("Unexpected export output: {error}"))?;
+        let messages = export["messages"]
+            .as_array()
+            .ok_or("The export had no messages list.")?;
+        let mut builder = TranscriptBuilder::default();
+        for message in messages {
+            if message.get("parts").is_some() {
+                append_v1_message(
+                    &mut builder,
+                    &message["info"],
+                    message["parts"].as_array().unwrap_or(&Vec::new()),
+                );
+            } else {
+                append_v2_message(
+                    &mut builder,
+                    message["id"].as_str().unwrap_or_default(),
+                    message["type"].as_str().unwrap_or_default(),
+                    message["time"]["created"].as_i64().unwrap_or_default(),
+                    message,
+                    Vec::new(),
+                );
+            }
+        }
+        let mut transcript = builder.finish();
+        transcript.note = Some(format!(
+            "Read through `{} {}`, because Marduk didn't recognize how this session is stored.",
+            self.flavor.program,
+            self.flavor.export_args.join(" ")
+        ));
+        Ok(transcript)
+    }
 }
 
-fn read_layout(connection: &Connection, layout: Layout) -> rusqlite::Result<Option<LayoutRows>> {
-    let (sessions, messages) = match layout {
-        Layout::V2 => ("session_v2", "session_message"),
-        Layout::V1 => ("session", "message"),
-    };
-    if !has_table(connection, sessions) || !has_table(connection, messages) {
-        return Ok(None);
-    }
-    let archived = if has_column(connection, sessions, "time_archived") {
+fn read_rows(connection: &Connection, table: &str) -> rusqlite::Result<Vec<Row>> {
+    let archived = if has_column(connection, table, "time_archived") {
         "time_archived"
     } else {
         "null"
     };
     let mut statement = connection.prepare(&format!(
-        "select id, parent_id, directory, title, time_created, time_updated, {archived} from {sessions}"
+        "select id, parent_id, directory, title, time_created, time_updated, {archived} from {table}"
     ))?;
-    let rows = statement
+    statement
         .query_map([], |row| {
             Ok(Row {
                 id: row.get(0)?,
@@ -222,15 +391,37 @@ fn read_layout(connection: &Connection, layout: Layout) -> rusqlite::Result<Opti
                 archived: row.get::<_, Option<i64>>(6)?.is_some(),
             })
         })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(Some((rows, totals(connection, layout)?)))
+        .collect()
 }
 
-fn totals(connection: &Connection, layout: Layout) -> rusqlite::Result<HashMap<String, Totals>> {
-    let (messages, parts) = match layout {
-        Layout::V2 => ("session_message", "session_part"),
-        Layout::V1 => ("message", "part"),
+type StoreTotals = HashMap<Store, HashMap<String, Totals>>;
+
+fn all_totals(connection: &Connection, stores: &[Store]) -> rusqlite::Result<StoreTotals> {
+    stores
+        .iter()
+        .map(|store| Ok((*store, totals(connection, *store)?)))
+        .collect()
+}
+
+/// Sessions OpenCode has migrated forward can have messages in both stores; the newer wins.
+fn pick_store(totals: &StoreTotals, session_id: &str) -> (Store, Totals) {
+    for store in [Store::V2, Store::V1] {
+        if let Some(found) = totals.get(&store).and_then(|by_session| by_session.get(session_id))
+            && found.messages > 0
+        {
+            return (store, *found);
+        }
+    }
+    let fallback = if totals.contains_key(&Store::V2) {
+        Store::V2
+    } else {
+        Store::V1
     };
+    (fallback, Totals::default())
+}
+
+fn totals(connection: &Connection, store: Store) -> rusqlite::Result<HashMap<String, Totals>> {
+    let (messages, parts) = store.tables();
     let mut totals: HashMap<String, Totals> = HashMap::new();
     let mut statement = connection.prepare(&format!(
         "select session_id, count(*), coalesce(sum(length(data)), 0), coalesce(max(time_updated), 0) from {messages} group by session_id"
@@ -276,32 +467,13 @@ fn fingerprint_of(row_updated_ms: i64, totals: Totals) -> Fingerprint {
     }
 }
 
-fn session_from_row(db: &Path, row: Row, totals: Totals, first_prompt: Option<String>) -> Session {
-    let fingerprint = fingerprint_of(row.updated_ms, totals);
-    let title = [row.title, first_prompt]
-        .into_iter()
-        .flatten()
-        .find_map(|text| jsonl::to_title(&text));
-    Session {
-        agent: "opencode",
-        id: row.id,
-        project_dir: row.directory.filter(|dir| !dir.is_empty()),
-        title,
-        created: millis_to_datetime(row.created_ms),
-        last_activity: fingerprint.modified.into(),
-        size_bytes: totals.bytes,
-        archived: row.archived,
-        primary_file: db.to_path_buf(),
-        files: Vec::new(),
-        fingerprint,
-        parent_id: row.parent_id,
-    }
-}
-
-fn first_user_text(connection: &Connection, layout: Layout, session_id: &str) -> Option<String> {
-    let sql = match layout {
-        Layout::V2 => "select data from session_message where session_id = ?1 and type = 'user' order by seq limit 1",
-        Layout::V1 => {
+fn first_user_text(connection: &Connection, store: Store, session_id: &str) -> Option<String> {
+    let sql = match store {
+        Store::V2 => {
+            "select data from session_message where session_id = ?1 and type = 'user' \
+             order by seq, time_created, id limit 1"
+        }
+        Store::V1 => {
             "select p.data from part p join message m on m.id = p.message_id \
              where m.session_id = ?1 and json_extract(m.data, '$.role') = 'user' \
              and json_extract(p.data, '$.type') = 'text' order by m.time_created, m.id, p.id limit 1"
@@ -312,30 +484,39 @@ fn first_user_text(connection: &Connection, layout: Layout, session_id: &str) ->
     value["text"].as_str().map(str::to_string)
 }
 
-fn current_state(connection: &Connection, session_id: &str) -> rusqlite::Result<Option<(Layout, i64, Totals)>> {
-    for layout in [Layout::V2, Layout::V1] {
-        let (sessions, messages, parts) = match layout {
-            Layout::V2 => ("session_v2", "session_message", "session_part"),
-            Layout::V1 => ("session", "message", "part"),
-        };
-        if !has_table(connection, sessions) {
+/// The session row's update time and its messages' totals, or `None` when the row is gone.
+fn current_state(connection: &Connection, session_id: &str) -> rusqlite::Result<Option<(Store, i64, Totals)>> {
+    let mut updated = None;
+    for table in SESSION_TABLES {
+        if has_table(connection, table) {
+            updated = connection
+                .query_row(
+                    &format!("select time_updated from {table} where id = ?1"),
+                    [session_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?;
+            if updated.is_some() {
+                break;
+            }
+        }
+    }
+    let Some(updated) = updated else {
+        return Ok(None);
+    };
+    for store in [Store::V2, Store::V1] {
+        let (messages, parts) = store.tables();
+        if !has_table(connection, messages) {
             continue;
         }
-        let updated: Option<i64> = connection
-            .query_row(
-                &format!("select time_updated from {sessions} where id = ?1"),
-                [session_id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        let Some(updated) = updated else {
-            continue;
-        };
         let (count, message_updated): (i64, i64) = connection.query_row(
             &format!("select count(*), coalesce(max(time_updated), 0) from {messages} where session_id = ?1"),
             [session_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
+        if count == 0 {
+            continue;
+        }
         let part_updated: i64 = if has_table(connection, parts) {
             connection.query_row(
                 &format!("select coalesce(max(time_updated), 0) from {parts} where session_id = ?1"),
@@ -350,18 +531,23 @@ fn current_state(connection: &Connection, session_id: &str) -> rusqlite::Result<
             bytes: 0,
             updated_ms: message_updated.max(part_updated),
         };
-        return Ok(Some((layout, updated, totals)));
+        return Ok(Some((store, updated, totals)));
     }
-    Ok(None)
+    let store = if has_table(connection, "session_message") {
+        Store::V2
+    } else {
+        Store::V1
+    };
+    Ok(Some((store, updated, Totals::default())))
 }
 
 impl AgentAdapter for OpenCodeAdapter {
     fn id(&self) -> &'static str {
-        "opencode"
+        self.flavor.id
     }
 
     fn display_name(&self) -> &'static str {
-        "OpenCode"
+        self.flavor.name
     }
 
     fn roots(&self) -> Vec<PathBuf> {
@@ -384,7 +570,7 @@ impl AgentAdapter for OpenCodeAdapter {
             Ok(command) => DeletePlan::AgentCommand {
                 command,
                 files: Vec::new(),
-                warning: child_warning(&session.primary_file, &session.id),
+                warning: self.child_warning(&session.primary_file, &session.id),
             },
             Err(reason) => DeletePlan::ReadOnly { reason },
         }
@@ -402,11 +588,11 @@ impl AgentAdapter for OpenCodeAdapter {
             return direct.map_err(std::io::Error::other);
         }
         let fallback = match self.cli.path() {
-            Some(cli) if is_safe_id(&session.id) => export_transcript(&cli, &session.id),
-            Some(_) => Err("This session id can't be passed to the OpenCode CLI safely.".to_string()),
+            Some(cli) if is_safe_id(&session.id) => self.export_transcript(&cli, &session.id),
+            Some(_) => Err(self.unsafe_id_reason()),
             None => Err(self
                 .cli
-                .missing_reason("OpenCode", "read sessions it can't read directly")),
+                .missing_reason(self.flavor.name, "read sessions it can't read directly")),
         };
         match (direct, fallback) {
             (_, Ok(transcript)) => Ok(transcript),
@@ -441,34 +627,11 @@ impl AgentAdapter for OpenCodeAdapter {
     }
 }
 
-/// `opencode session delete` also deletes the session's child (subagent) sessions.
-fn child_warning(db: &Path, session_id: &str) -> Option<String> {
-    let connection = open(db).ok()?;
-    let mut children = 0i64;
-    for table in ["session_v2", "session"] {
-        if has_table(&connection, table) {
-            children += connection
-                .query_row(
-                    &format!("select count(*) from {table} where parent_id = ?1"),
-                    [session_id],
-                    |row| row.get::<_, i64>(0),
-                )
-                .unwrap_or(0);
-        }
-    }
-    (children > 0).then(|| {
-        format!(
-            "OpenCode also deletes this session's {children} child {}.",
-            if children == 1 { "session" } else { "sessions" }
-        )
-    })
-}
-
 fn read_transcript(connection: &Connection, session_id: &str) -> rusqlite::Result<Transcript> {
     let mut builder = TranscriptBuilder::default();
-    match current_state(connection, session_id)?.map(|(layout, _, _)| layout) {
-        Some(Layout::V2) => read_v2(connection, session_id, &mut builder)?,
-        Some(Layout::V1) => read_v1(connection, session_id, &mut builder)?,
+    match current_state(connection, session_id)?.map(|(store, _, _)| store) {
+        Some(Store::V2) => read_v2(connection, session_id, &mut builder)?,
+        Some(Store::V1) => read_v1(connection, session_id, &mut builder)?,
         None => {}
     }
     Ok(builder.finish())
@@ -499,8 +662,10 @@ fn read_v2(connection: &Connection, session_id: &str, builder: &mut TranscriptBu
             parts.entry(message_id).or_default().push(part);
         }
     }
-    let mut statement = connection
-        .prepare("select id, type, time_created, data from session_message where session_id = ?1 order by seq")?;
+    let mut statement = connection.prepare(
+        "select id, type, time_created, data from session_message where session_id = ?1 \
+         order by seq, time_created, id",
+    )?;
     for row in statement.query_map([session_id], |row| {
         Ok((
             row.get::<_, String>(0)?,
@@ -516,8 +681,8 @@ fn read_v2(connection: &Connection, session_id: &str, builder: &mut TranscriptBu
     Ok(())
 }
 
-/// One `session_message` row, or one message of `opencode session export` (same shape).
-/// `parts` are the assistant's `session_part` rows, which come before any inline content.
+/// One `session_message` row, or one message of a v2 export (same shape). `parts` are the
+/// assistant's `session_part` rows, which come before any inline content.
 fn append_v2_message(
     builder: &mut TranscriptBuilder,
     id: &str,
@@ -555,33 +720,6 @@ fn append_v2_message(
 
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Reads a session through `opencode session export`, which returns OpenCode's own decoded
-/// `{ info, messages }` and so keeps working when its tables change shape.
-fn export_transcript(cli: &Path, session_id: &str) -> Result<Transcript, String> {
-    let output = super::cli::run_capture(cli, &["session", "export", session_id], EXPORT_TIMEOUT)?;
-    let export: Value = serde_json::from_str(&output).map_err(|error| format!("Unexpected export output: {error}"))?;
-    let messages = export["messages"]
-        .as_array()
-        .ok_or("The export had no messages list.")?;
-    let mut builder = TranscriptBuilder::default();
-    for message in messages {
-        append_v2_message(
-            &mut builder,
-            message["id"].as_str().unwrap_or_default(),
-            message["type"].as_str().unwrap_or_default(),
-            message["time"]["created"].as_i64().unwrap_or_default(),
-            message,
-            Vec::new(),
-        );
-    }
-    let mut transcript = builder.finish();
-    transcript.note = Some(
-        "Read through `opencode session export`, because Marduk didn't recognize how this session is stored."
-            .to_string(),
-    );
-    Ok(transcript)
-}
-
 fn append_v2_block(builder: &mut TranscriptBuilder, block: &Value, timestamp: Option<DateTime<Utc>>) {
     match block["type"].as_str() {
         Some("text") => builder.text(Role::Assistant, block["text"].as_str().unwrap_or_default(), timestamp),
@@ -612,20 +750,55 @@ fn append_v2_block(builder: &mut TranscriptBuilder, block: &Value, timestamp: Op
 
 fn read_v1(connection: &Connection, session_id: &str, builder: &mut TranscriptBuilder) -> rusqlite::Result<()> {
     let mut statement = connection.prepare(
-        "select m.data, p.data, coalesce(p.time_created, m.time_created) from part p join message m on m.id = p.message_id \
-         where m.session_id = ?1 order by m.time_created, m.id, p.id",
+        "select m.id, m.data, m.time_created from message m where m.session_id = ?1 order by m.time_created, m.id",
     )?;
-    for row in statement.query_map([session_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, i64>(2)?,
-        ))
-    })? {
-        let (message, part, created) = row?;
-        let (message, part) = (parse(&message), parse(&part));
+    let messages = statement
+        .query_map([session_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut parts_statement =
+        connection.prepare("select data, time_created from part where message_id = ?1 order by id")?;
+    for (id, data, created) in messages {
+        let mut info = parse(&data);
+        if info["time"]["created"].is_null()
+            && let Value::Object(fields) = &mut info
+        {
+            fields.insert("time".into(), serde_json::json!({ "created": created }));
+        }
+        let parts = parts_statement
+            .query_map([&id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .into_iter()
+            .map(|(data, part_created)| {
+                let mut part = parse(&data);
+                if let Value::Object(fields) = &mut part {
+                    fields.entry("time_created").or_insert(Value::from(part_created));
+                }
+                part
+            })
+            .collect::<Vec<_>>();
+        append_v1_message(builder, &info, &parts);
+    }
+    Ok(())
+}
+
+/// One older-format message: `info` has the role, `parts` hold the text and tool calls.
+/// Kilo's export uses this shape (`{ info, parts }`).
+fn append_v1_message(builder: &mut TranscriptBuilder, info: &Value, parts: &[Value]) {
+    let user = info["role"] == "user";
+    let message_created = info["time"]["created"].as_i64();
+    for part in parts {
+        let created = part["time"]["start"]
+            .as_i64()
+            .or_else(|| part["time_created"].as_i64())
+            .or(message_created)
+            .unwrap_or_default();
         let timestamp = millis_to_datetime(created);
-        let user = message["role"] == "user";
         match part["type"].as_str() {
             Some("text") if part["ignored"] == true => {}
             Some("text") => {
@@ -656,7 +829,6 @@ fn read_v1(connection: &Connection, session_id: &str, builder: &mut TranscriptBu
             _ => {}
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -905,6 +1077,151 @@ mod tests {
         let transcript = opencode.transcript(&session).unwrap();
 
         assert!(transcript.note.is_none());
+    }
+
+    /// Kilo: sessions in `session`, messages in either `message`/`part` or `session_message`.
+    fn kilo_db(dir: &Path, name: &str) -> Connection {
+        let connection = Connection::open(dir.join(name)).unwrap();
+        connection
+            .execute_batch(
+                "create table session (id text primary key, parent_id text, directory text not null, title text not null,
+                   time_created integer not null, time_updated integer not null, time_archived integer);
+                 create table message (id text primary key, session_id text not null, time_created integer not null,
+                   time_updated integer not null, data text not null);
+                 create table part (id text primary key, message_id text not null, session_id text not null,
+                   time_created integer not null, time_updated integer not null, data text not null);
+                 create table session_message (id text primary key, session_id text not null, type text not null,
+                   seq integer, time_created integer not null, time_updated integer not null, data text not null);",
+            )
+            .unwrap();
+        connection
+    }
+
+    fn kilo(dir: &Path, cli: Option<PathBuf>) -> OpenCodeAdapter {
+        OpenCodeAdapter::with_flavor(&KILO, dir.to_path_buf(), None, cli)
+    }
+
+    #[test]
+    fn kilo_reads_each_session_from_the_store_its_messages_are_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let connection = kilo_db(dir.path(), "kilo.db");
+        connection
+            .execute_batch(
+                r#"insert into session values ('ses_v1', null, '/w', '', 1, 2, null);
+                   insert into session values ('ses_v2', 'ses_v1', '/w', 'Newer', 1, 2, 5);
+                   insert into message values ('m1', 'ses_v1', 10, 10, '{"role":"user"}');
+                   insert into part values ('p1', 'm1', 'ses_v1', 10, 10, '{"type":"text","text":"old style prompt"}');
+                   insert into session_message values ('msg_1', 'ses_v2', 'user', null, 20, 20, '{"text":"new style prompt"}');"#,
+            )
+            .unwrap();
+        let adapter = kilo(dir.path(), Some(PathBuf::from("/bin/kilo")));
+
+        let result = adapter.scan();
+
+        assert!(result.complete, "{:?}", result.errors);
+        let by_id = |id: &str| result.sessions.iter().find(|session| session.id == id).unwrap();
+        let old = by_id("ses_v1");
+        assert_eq!(old.agent, "kilo");
+        assert_eq!(old.key(), "kilo:ses_v1");
+        assert_eq!(old.title.as_deref(), Some("old style prompt"));
+        let new = by_id("ses_v2");
+        assert!(new.archived);
+        assert_eq!(new.parent_id.as_deref(), Some("ses_v1"));
+        assert_eq!(adapter.transcript(old).unwrap().head[0].text, "old style prompt");
+        assert_eq!(adapter.transcript(new).unwrap().head[0].text, "new style prompt");
+        assert_eq!(adapter.fingerprint(new).unwrap(), new.fingerprint);
+
+        let DeletePlan::AgentCommand { command, warning, .. } = adapter.delete_plan(old) else {
+            panic!("expected an agent command");
+        };
+        assert_eq!(command.args, vec!["session", "delete", "ses_v1"]);
+        assert_eq!(
+            warning.as_deref(),
+            Some("Kilo also deletes this session's 1 child session.")
+        );
+    }
+
+    #[test]
+    fn kilo_finds_channel_databases_including_the_opencode_named_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["kilo.db", "kilo-dev.db", "opencode-beta.db"] {
+            kilo_db(dir.path(), name)
+                .execute("insert into session values (?1, null, '/w', 't', 1, 2, null)", [name])
+                .unwrap();
+        }
+        std::fs::write(dir.path().join("kilo.db-wal"), "").unwrap();
+        std::fs::write(dir.path().join("other.db"), "").unwrap();
+
+        let ids: HashSet<String> = kilo(dir.path(), None)
+            .scan()
+            .sessions
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+
+        assert_eq!(
+            ids,
+            HashSet::from(["kilo.db".into(), "kilo-dev.db".into(), "opencode-beta.db".into()])
+        );
+    }
+
+    #[test]
+    fn kilo_without_cli_names_kilo_in_the_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        kilo_db(dir.path(), "kilo.db")
+            .execute("insert into session values ('ses_a', null, '/w', 't', 1, 2, null)", [])
+            .unwrap();
+        let adapter = kilo(dir.path(), None);
+        let session = adapter.scan().sessions.remove(0);
+        let DeletePlan::ReadOnly { reason } = adapter.delete_plan(&session) else {
+            panic!("expected read-only");
+        };
+        assert!(reason.contains("Kilo CLI (`kilo`)"), "{reason}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn kilo_export_fallback_reads_the_older_message_shape() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        kilo_db(dir.path(), "kilo.db")
+            .execute_batch(
+                "insert into session values ('ses_x', null, '/w', 't', 1, 2, null);
+                 insert into session_message values ('msg_1', 'ses_x', 'from-the-future', null, 1, 1, '{}');",
+            )
+            .unwrap();
+        let export = dir.path().join("export.json");
+        std::fs::write(
+            &export,
+            r#"{"info":{"id":"ses_x"},"messages":[
+                {"info":{"role":"user","time":{"created":1}},"parts":[{"type":"text","text":"from export"}]},
+                {"info":{"role":"assistant","time":{"created":2}},"parts":[
+                  {"type":"tool","tool":"read","callID":"c","state":{"status":"completed","input":{},"output":"body"}},
+                  {"type":"text","text":"Done"}]}]}"#,
+        )
+        .unwrap();
+        let script = dir.path().join("kilo");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\n[ \"$1 $2\" = \"export ses_x\" ] || exit 9\ncat '{}'\n",
+                export.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let adapter = kilo(dir.path(), Some(script));
+        let session = adapter.scan().sessions.remove(0);
+
+        let transcript = adapter.transcript(&session).unwrap();
+
+        assert_eq!(transcript.head[0].text, "from export");
+        assert_eq!(
+            transcript.head[1].tool.as_ref().unwrap().output.as_deref(),
+            Some("body")
+        );
+        assert_eq!(transcript.head[2].text, "Done");
+        assert!(transcript.note.unwrap().contains("`kilo export`"));
     }
 
     #[test]
