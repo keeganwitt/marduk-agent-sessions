@@ -2,25 +2,29 @@
 
 Marduk is a cross-platform desktop app for finding and cleaning up old AI coding-agent sessions.
 
-It scans the transcripts that coding agents keep on disk and shows them in one list. You can filter by agent, age, size or project, then move the sessions you don't need to the system Trash.
+It scans the transcripts that coding agents keep on disk and shows them in one list. You can filter by agent, age, size or project, then delete the sessions you don't need, or archive them when the agent supports archiving.
 
 ## Supported agents
 
-| Agent | Location | Delete |
-|---|---|---|
-| Claude Code | `~/.claude/projects` (or `$CLAUDE_CONFIG_DIR/projects`) | Moves the transcript, its `<id>.*` sidecar files and its `<id>/` folder (subagents, tool results) to the Trash |
-| Pi | `~/.pi/agent/sessions` (or `$PI_CODING_AGENT_DIR/sessions`) | Moves the transcript to the Trash |
+| Agent | Location | Delete | Archive |
+|---|---|---|---|
+| Claude Code | `~/.claude/projects` (or `$CLAUDE_CONFIG_DIR/projects`) | Moves the transcript, its `<id>.*` sidecar files and its `<id>/` folder (subagents, tool results) to the Trash | — |
+| Codex | `~/.codex/sessions` and `~/.codex/archived_sessions` (or `$CODEX_HOME`) | **Permanent**, through `codex delete --force <id>`; needs the Codex CLI | `codex archive` / `codex unarchive` |
+| Pi | `~/.pi/agent/sessions` (or `$PI_CODING_AGENT_DIR/sessions`) | Moves the transcript to the Trash | — |
 
-Codex and OpenCode are next.
+OpenCode is next.
+
+When an agent has its own delete or archive command, Marduk uses it, so the agent's own indexes stay consistent. Otherwise sessions go to the system Trash. Claude Code and Pi have no per-session delete command; Pi's own session picker also uses the Trash.
 
 ## Safety rules
 
-- **Trash only.** Sessions go to the system Trash (Recycle Bin on Windows). If that fails, Marduk reports the error and does not delete the session permanently instead.
-- **Running sessions are never deleted.** A session whose transcript changed in the last 5 minutes is marked *Running* and refused.
+- **Trash, unless the agent deletes natively.** Sessions without a native delete command go to the system Trash (Recycle Bin on Windows). If that fails, Marduk reports the error rather than deleting permanently. Native deletes that can't be undone (Codex) are labeled *Permanent* in the confirmation dialog, which also shows the exact command.
+- **Running sessions are never changed.** A session whose transcript changed in the last 5 minutes is marked *Running* and can't be deleted or archived.
 - **Changed since scan is refused.** If a transcript's size or modification time changed after the scan, Marduk refuses to delete it and asks you to rescan.
 - **Confined to agent folders.** Every path is resolved (following `..` and symlinks) and must sit inside the agent's session folder.
 - **Agent databases are never written to.** For agents that keep sessions in a database, Marduk will only delete through the agent's own CLI.
-- **No invented archives.** Marduk doesn't create archive folders that agents don't know about.
+- **No invented archives.** Marduk only archives through an agent's own archive command, and doesn't create archive folders that agents don't know about.
+- **Agent CLIs are found outside your shell too.** Apps opened from the Dock don't get your shell's `PATH`, so Marduk also looks in `~/.local/bin`, Homebrew and other common install folders.
 
 ## Development
 
@@ -39,6 +43,13 @@ The repo layout:
 - `crates/marduk-core`: agent adapters, scanning and delete safety checks. It has no Tauri dependency, so you can test it with plain `cargo test`.
 - `src-tauri`: the Tauri app. It contains thin commands over `marduk-core::catalog`.
 - `src`: the React + TypeScript UI.
+
+## Installing unsigned builds
+
+Release builds are not code-signed yet, so the OS warns the first time you open them:
+
+- **macOS:** Control-click the app, choose **Open**, then confirm. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/Marduk.app`.
+- **Windows:** in the SmartScreen prompt, choose **More info**, then **Run anyway**.
 
 ## License
 

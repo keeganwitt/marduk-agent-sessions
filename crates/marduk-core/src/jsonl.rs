@@ -37,7 +37,7 @@ pub fn content_text(content: &Value) -> Option<String> {
         Value::String(text) => text.clone(),
         Value::Array(blocks) => blocks
             .iter()
-            .filter(|block| block["type"] == "text")
+            .filter(|block| matches!(block["type"].as_str(), Some("text" | "input_text" | "output_text")))
             .filter_map(|block| block["text"].as_str())
             .collect::<Vec<_>>()
             .join("\n"),
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn content_text_handles_strings_and_blocks() {
         assert_eq!(content_text(&json!("hi")), Some("hi".into()));
-        let blocks = json!([{"type": "text", "text": "a"}, {"type": "image"}, {"type": "text", "text": "b"}]);
+        let blocks = json!([{"type": "text", "text": "a"}, {"type": "image"}, {"type": "input_text", "text": "b"}]);
         assert_eq!(content_text(&blocks), Some("a\nb".into()));
         assert_eq!(content_text(&json!([{"type": "tool_result"}])), None);
         assert_eq!(content_text(&json!("   ")), None);

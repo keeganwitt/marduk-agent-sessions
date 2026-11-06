@@ -1,0 +1,400 @@
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use chrono::{DateTime, Utc};
+use serde::Deserialize;
+use serde_json::Value;
+use serde_json::value::RawValue;
+
+use super::{env_dir, find_program, home_dir};
+use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanResult};
+use crate::fs_util;
+use crate::jsonl;
+use crate::session::Session;
+
+/// Codex keeps rollouts at `sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl` and moves them to
+/// `archived_sessions/` with `codex archive`. Thread names live in `session_index.jsonl`.
+pub struct CodexAdapter {
+    home: PathBuf,
+    cli: Option<PathBuf>,
+}
+
+impl CodexAdapter {
+    pub fn new(home: PathBuf, cli: Option<PathBuf>) -> Self {
+        Self { home, cli }
+    }
+
+    pub fn from_env() -> Self {
+        Self::new(
+            env_dir("CODEX_HOME").unwrap_or_else(|| home_dir().join(".codex")),
+            find_program("codex"),
+        )
+    }
+
+    fn sessions_dir(&self) -> PathBuf {
+        self.home.join("sessions")
+    }
+
+    fn archive_dir(&self) -> PathBuf {
+        self.home.join("archived_sessions")
+    }
+
+    fn command(&self, session: &Session, args: &[&str]) -> Result<AgentCommand, String> {
+        if !fs_util::looks_like_uuid(&session.id) {
+            return Err("Codex can only manage sessions that have a UUID id.".to_string());
+        }
+        let program = self.cli.clone().ok_or_else(|| {
+            "Install the Codex CLI (`codex`) so Marduk can delete and archive Codex sessions.".to_string()
+        })?;
+        let mut args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+        args.push(session.id.clone());
+        Ok(AgentCommand { program, args })
+    }
+}
+
+impl AgentAdapter for CodexAdapter {
+    fn id(&self) -> &'static str {
+        "codex"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Codex"
+    }
+
+    fn roots(&self) -> Vec<PathBuf> {
+        vec![self.sessions_dir(), self.archive_dir()]
+    }
+
+    fn scan(&self) -> ScanResult {
+        let mut result = ScanResult::empty_complete();
+        let titles = read_thread_names(&self.home.join("session_index.jsonl"));
+        let mut compressed = 0usize;
+        for (root, archived) in [(self.sessions_dir(), false), (self.archive_dir(), true)] {
+            let mut files = Vec::new();
+            collect_rollouts(&root, &mut files, &mut compressed, &mut result);
+            for path in files {
+                match read_session(&path, archived, &titles) {
+                    Ok(session) => result.sessions.push(session),
+                    Err(error) => result.record_error(format!("{}: {error}", path.display())),
+                }
+            }
+        }
+        if compressed > 0 {
+            result.record_error(format!(
+                "{compressed} compressed rollouts (.jsonl.zst) were skipped; Marduk can't read them yet."
+            ));
+        }
+        result
+    }
+
+    fn delete_plan(&self, session: &Session) -> DeletePlan {
+        match self.command(session, &["delete", "--force"]) {
+            Ok(command) => DeletePlan::AgentCommand {
+                command,
+                files: session.files.clone(),
+            },
+            Err(reason) => DeletePlan::ReadOnly { reason },
+        }
+    }
+
+    fn archive_command(&self, session: &Session) -> Option<AgentCommand> {
+        let verb = if session.archived { "unarchive" } else { "archive" };
+        self.command(session, &[verb]).ok()
+    }
+}
+
+fn collect_rollouts(dir: &Path, files: &mut Vec<PathBuf>, compressed: &mut usize, result: &mut ScanResult) {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+        Err(error) => {
+            result.record_error(format!("{}: {error}", dir.display()));
+            return;
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if file_type.is_dir() {
+            collect_rollouts(&path, files, compressed, result);
+        } else if name.starts_with("rollout-") && name.ends_with(".jsonl") {
+            files.push(path);
+        } else if name.starts_with("rollout-") && name.ends_with(".jsonl.zst") {
+            *compressed += 1;
+        }
+    }
+}
+
+fn read_thread_names(index: &Path) -> HashMap<String, String> {
+    let mut names = HashMap::new();
+    let _ = jsonl::for_each_line(index, |line| {
+        if let Ok(entry) = serde_json::from_str::<Value>(line)
+            && let (Some(id), Some(name)) = (entry["id"].as_str(), entry["thread_name"].as_str())
+        {
+            names.insert(id.to_string(), name.to_string());
+        }
+    });
+    names
+}
+
+#[derive(Deserialize)]
+struct Record<'a> {
+    #[serde(borrow)]
+    timestamp: Option<Cow<'a, str>>,
+    #[serde(rename = "type", borrow)]
+    kind: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    payload: Option<&'a RawValue>,
+}
+
+#[derive(Default)]
+struct Parsed {
+    id: Option<String>,
+    cwd: Option<String>,
+    first_prompt: Option<String>,
+    last_timestamp: Option<DateTime<Utc>>,
+}
+
+/// Codex injects `<environment_context>` blocks and AGENTS.md contents as user messages.
+fn is_injected(text: &str) -> bool {
+    let text = text.trim_start();
+    text.starts_with('<') || text.starts_with("# AGENTS.md")
+}
+
+fn parse_line(parsed: &mut Parsed, line: &str) {
+    let Ok(record) = serde_json::from_str::<Record>(line) else {
+        return;
+    };
+    if let Some(timestamp) = record.timestamp.as_deref() {
+        parsed.last_timestamp = jsonl::later(parsed.last_timestamp, jsonl::parse_timestamp(timestamp));
+    }
+    let Some(payload) = record.payload else {
+        return;
+    };
+    match record.kind.as_deref() {
+        Some("session_meta") => {
+            if let Ok(meta) = serde_json::from_str::<Value>(payload.get()) {
+                parsed.id = meta["id"].as_str().map(str::to_string).or(parsed.id.take());
+                parsed.cwd = meta["cwd"].as_str().map(str::to_string).or(parsed.cwd.take());
+            }
+        }
+        Some("event_msg") if parsed.first_prompt.is_none() && payload.get().contains("\"user_message\"") => {
+            if let Ok(event) = serde_json::from_str::<Value>(payload.get())
+                && event["type"] == "user_message"
+                && let Some(text) = event["message"].as_str().filter(|text| !is_injected(text))
+            {
+                parsed.first_prompt = Some(text.to_string());
+            }
+        }
+        Some("response_item") if parsed.first_prompt.is_none() && payload.get().contains("\"user\"") => {
+            if let Ok(item) = serde_json::from_str::<Value>(payload.get())
+                && item["type"] == "message"
+                && item["role"] == "user"
+            {
+                parsed.first_prompt = jsonl::content_text(&item["content"]).filter(|text| !is_injected(text));
+            }
+        }
+        _ => {}
+    }
+}
+
+fn id_from_file_name(path: &Path) -> String {
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+    let tail = stem.len().saturating_sub(36);
+    match stem.get(tail..) {
+        Some(id) if fs_util::looks_like_uuid(id) => id.to_string(),
+        _ => stem.into_owned(),
+    }
+}
+
+fn read_session(path: &Path, archived: bool, titles: &HashMap<String, String>) -> std::io::Result<Session> {
+    let mut parsed = Parsed::default();
+    jsonl::for_each_line(path, |line| parse_line(&mut parsed, line))?;
+    let fingerprint = fs_util::fingerprint(path)?;
+    let id = parsed.id.unwrap_or_else(|| id_from_file_name(path));
+    let indexed_name = titles.get(&id).filter(|name| !is_injected(name)).cloned();
+    let title = [indexed_name, parsed.first_prompt]
+        .into_iter()
+        .flatten()
+        .find_map(|text| jsonl::to_title(&text));
+    Ok(Session {
+        agent: "codex",
+        id,
+        project_dir: parsed.cwd,
+        title,
+        last_activity: parsed.last_timestamp.unwrap_or_else(|| fingerprint.modified.into()),
+        size_bytes: fingerprint.len,
+        archived,
+        primary_file: path.to_path_buf(),
+        files: vec![path.to_path_buf()],
+        fingerprint,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ID: &str = "01a1b209-2d68-7e51-bd0c-2954bbab717e";
+
+    fn rollout(id: &str) -> String {
+        [
+            format!(
+                r#"{{"timestamp":"2026-11-06T18:05:32.095Z","type":"session_meta","payload":{{"id":"{id}","cwd":"/work/api","originator":"codex_cli_rs"}}}}"#
+            ),
+            r##"{"timestamp":"2026-11-06T18:05:33.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions for /work/api"}]}}"##.to_string(),
+            r#"{"timestamp":"2026-11-06T18:05:34.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>cwd</environment_context>"}]}}"#.to_string(),
+            r#"{"timestamp":"2026-11-06T18:05:35.000Z","type":"event_msg","payload":{"type":"user_message","message":"Add pagination to the users endpoint"}}"#.to_string(),
+            r#"{"timestamp":"2026-11-06T19:00:00.000Z","type":"event_msg","payload":{"type":"task_complete"}}"#.to_string(),
+        ]
+        .join("\n")
+    }
+
+    fn write(path: &Path, content: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, content).unwrap();
+    }
+
+    fn adapter(home: &Path, cli: Option<&str>) -> CodexAdapter {
+        CodexAdapter::new(home.to_path_buf(), cli.map(PathBuf::from))
+    }
+
+    #[test]
+    fn scans_active_and_archived_rollouts() {
+        let home = tempfile::tempdir().unwrap();
+        let active = home
+            .path()
+            .join(format!("sessions/2026/11/06/rollout-2026-11-06T18-05-08-{ID}.jsonl"));
+        write(&active, &rollout(ID));
+        let archived_id = "019e98e4-15db-7de3-af03-a2b011ccb8d5";
+        write(
+            &home.path().join(format!(
+                "archived_sessions/rollout-2026-06-05T17-45-50-{archived_id}.jsonl"
+            )),
+            &rollout(archived_id),
+        );
+
+        let result = adapter(home.path(), None).scan();
+
+        assert!(result.complete, "{:?}", result.errors);
+        let mut sessions = result.sessions;
+        sessions.sort_by_key(|session| session.archived);
+        assert_eq!(sessions.len(), 2);
+        let session = &sessions[0];
+        assert_eq!(session.key(), format!("codex:{ID}"));
+        assert!(!session.archived);
+        assert_eq!(session.project_dir.as_deref(), Some("/work/api"));
+        assert_eq!(session.title.as_deref(), Some("Add pagination to the users endpoint"));
+        assert_eq!(session.last_activity.to_rfc3339(), "2026-11-06T19:00:00+00:00");
+        assert_eq!(session.files, vec![active]);
+        assert!(sessions[1].archived);
+    }
+
+    #[test]
+    fn thread_name_from_index_wins_unless_it_is_injected() {
+        let home = tempfile::tempdir().unwrap();
+        write(
+            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &rollout(ID),
+        );
+        let other = "019e98e4-29fd-7f63-8cae-b345db610f8c";
+        write(
+            &home.path().join(format!("sessions/2026/11/06/rollout-y-{other}.jsonl")),
+            &rollout(other),
+        );
+        write(
+            &home.path().join("session_index.jsonl"),
+            &[
+                format!(r#"{{"id":"{ID}","thread_name":"old-name"}}"#),
+                format!(r#"{{"id":"{ID}","thread_name":"pagination-work"}}"#),
+                format!(r#"{{"id":"{other}","thread_name":"<command-name>/clear</command-name>"}}"#),
+            ]
+            .join("\n"),
+        );
+
+        let sessions = adapter(home.path(), None).scan().sessions;
+        let title_of = |id: &str| sessions.iter().find(|s| s.id == id).unwrap().title.clone();
+
+        assert_eq!(title_of(ID).as_deref(), Some("pagination-work"));
+        assert_eq!(title_of(other).as_deref(), Some("Add pagination to the users endpoint"));
+    }
+
+    #[test]
+    fn compressed_rollouts_make_the_scan_incomplete() {
+        let home = tempfile::tempdir().unwrap();
+        write(
+            &home
+                .path()
+                .join(format!("sessions/2026/01/01/rollout-x-{ID}.jsonl.zst")),
+            "",
+        );
+
+        let result = adapter(home.path(), None).scan();
+
+        assert!(!result.complete);
+        assert!(result.errors[0].contains("compressed"));
+    }
+
+    #[test]
+    fn id_falls_back_to_uuid_suffix_of_file_name() {
+        let home = tempfile::tempdir().unwrap();
+        write(
+            &home
+                .path()
+                .join(format!("sessions/2026/01/01/rollout-2026-01-01T00-00-00-{ID}.jsonl")),
+            "",
+        );
+        assert_eq!(adapter(home.path(), None).scan().sessions[0].id, ID);
+    }
+
+    #[test]
+    fn delete_and_archive_use_the_codex_cli() {
+        let home = tempfile::tempdir().unwrap();
+        write(
+            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &rollout(ID),
+        );
+        let codex = adapter(home.path(), Some("/bin/codex"));
+        let mut session = codex.scan().sessions.remove(0);
+
+        assert_eq!(
+            codex.delete_plan(&session),
+            DeletePlan::AgentCommand {
+                command: AgentCommand {
+                    program: PathBuf::from("/bin/codex"),
+                    args: vec!["delete".into(), "--force".into(), ID.into()]
+                },
+                files: session.files.clone(),
+            }
+        );
+        assert_eq!(codex.archive_command(&session).unwrap().args, vec!["archive", ID]);
+        session.archived = true;
+        assert_eq!(codex.archive_command(&session).unwrap().args, vec!["unarchive", ID]);
+    }
+
+    #[test]
+    fn read_only_without_cli_or_uuid() {
+        let home = tempfile::tempdir().unwrap();
+        write(
+            &home.path().join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &rollout(ID),
+        );
+        let without_cli = adapter(home.path(), None);
+        let mut session = without_cli.scan().sessions.remove(0);
+
+        assert!(
+            matches!(without_cli.delete_plan(&session), DeletePlan::ReadOnly { reason } if reason.contains("Install the Codex CLI"))
+        );
+        assert!(without_cli.archive_command(&session).is_none());
+
+        session.id = "not-a-uuid".into();
+        let with_cli = adapter(home.path(), Some("/bin/codex"));
+        assert!(matches!(with_cli.delete_plan(&session), DeletePlan::ReadOnly { reason } if reason.contains("UUID")));
+    }
+}

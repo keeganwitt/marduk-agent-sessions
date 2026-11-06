@@ -4,27 +4,57 @@ import { Filters } from "./components/Filters";
 import { SessionTable } from "./components/SessionTable";
 import { EMPTY_FILTER, filterSessions } from "./lib/filter";
 import { formatBytes } from "./lib/format";
-import { deleteSessions, previewDelete, scanSessions } from "./lib/ipc";
-import type { DeleteResult, PreviewItem, ScanResponse } from "./lib/types";
+import { deleteSessions, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
+import { isArchivable, isDeletable, type ArchiveResult, type DeleteResult, type PreviewItem, type ScanResponse } from "./lib/types";
 import "./App.css";
+
+interface Notice {
+  text: string;
+  problems: string[];
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function ResultSummary({ results, onDismiss }: { results: DeleteResult[]; onDismiss: () => void }) {
+function plural(count: number, word: string): string {
+  return `${count} ${count === 1 ? word : `${word}s`}`;
+}
+
+function deleteNotice(results: DeleteResult[]): Notice {
   const trashed = results.filter((result) => result.status === "trashed").length;
-  const problems = results.filter((result) => result.status !== "trashed");
+  const deleted = results.filter((result) => result.status === "deleted").length;
+  const problems = results.flatMap((result) =>
+    result.status === "refused" || result.status === "failed" ? [result.message] : [],
+  );
+  const parts = [
+    trashed > 0 && `Moved ${plural(trashed, "session")} to the Trash.`,
+    deleted > 0 && `Permanently deleted ${plural(deleted, "session")}.`,
+    problems.length > 0 && `${plural(problems.length, "session")} couldn't be deleted.`,
+  ].filter(Boolean);
+  return { text: parts.join(" ") || "Nothing was deleted.", problems };
+}
+
+function archiveNotice(results: ArchiveResult[]): Notice {
+  const archived = results.filter((result) => result.status === "done" && result.archived).length;
+  const restored = results.filter((result) => result.status === "done" && !result.archived).length;
+  const problems = results.flatMap((result) => (result.status === "done" ? [] : [result.message]));
+  const parts = [
+    archived > 0 && `Archived ${plural(archived, "session")}.`,
+    restored > 0 && `Unarchived ${plural(restored, "session")}.`,
+    problems.length > 0 && `${plural(problems.length, "session")} couldn't be changed.`,
+  ].filter(Boolean);
+  return { text: parts.join(" ") || "Nothing was changed.", problems };
+}
+
+function NoticeBanner({ notice, onDismiss }: { notice: Notice; onDismiss: () => void }) {
   return (
-    <div className={problems.length > 0 ? "banner warn" : "banner"} role="status">
-      <span>
-        Moved {trashed} {trashed === 1 ? "session" : "sessions"} to the Trash.
-        {problems.length > 0 && ` ${problems.length} could not be moved.`}
-      </span>
-      {problems.length > 0 && (
+    <div className={notice.problems.length > 0 ? "banner warn" : "banner"} role="status">
+      <span>{notice.text}</span>
+      {notice.problems.length > 0 && (
         <ul>
-          {problems.map((problem) => (
-            <li key={problem.uid}>{problem.message}</li>
+          {notice.problems.map((problem, index) => (
+            <li key={index}>{problem}</li>
           ))}
         </ul>
       )}
@@ -38,16 +68,16 @@ function ResultSummary({ results, onDismiss }: { results: DeleteResult[]; onDism
 export default function App() {
   const [scan, setScan] = useState<ScanResponse | null>(null);
   const [scannedAt, setScannedAt] = useState(() => new Date());
-  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState(EMPTY_FILTER);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [results, setResults] = useState<DeleteResult[] | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
 
   const rescan = useCallback(async () => {
-    setLoading(true);
+    setBusy(true);
     setError(null);
     try {
       setScan(await scanSessions());
@@ -56,7 +86,7 @@ export default function App() {
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }, []);
 
@@ -69,7 +99,10 @@ export default function App() {
     [scan, filter, scannedAt],
   );
   const selectedVisible = visible.filter((session) => selected.has(session.uid));
-  const selectedBytes = selectedVisible.reduce((total, session) => total + session.sizeBytes, 0);
+  const toDelete = selectedVisible.filter(isDeletable);
+  const toArchive = selectedVisible.filter((session) => isArchivable(session) && !session.archived);
+  const toUnarchive = selectedVisible.filter((session) => isArchivable(session) && session.archived);
+  const deleteBytes = toDelete.reduce((total, session) => total + session.sizeBytes, 0);
   const visibleBytes = visible.reduce((total, session) => total + session.sizeBytes, 0);
   const incompleteAgents = scan?.agents.filter((agent) => !agent.complete) ?? [];
 
@@ -94,7 +127,7 @@ export default function App() {
   const openPreview = async () => {
     setError(null);
     try {
-      setPreview(await previewDelete(selectedVisible.map((session) => session.uid)));
+      setPreview(await previewDelete(toDelete.map((session) => session.uid)));
     } catch (caught) {
       setError(errorMessage(caught));
     }
@@ -104,12 +137,14 @@ export default function App() {
     setDeleting(true);
     try {
       const outcome = await deleteSessions(uids);
-      const trashed = new Set(outcome.filter((result) => result.status === "trashed").map((result) => result.uid));
+      const removed = new Set(
+        outcome.filter((result) => result.status === "trashed" || result.status === "deleted").map((r) => r.uid),
+      );
       setScan((current) =>
-        current && { ...current, sessions: current.sessions.filter((session) => !trashed.has(session.uid)) },
+        current && { ...current, sessions: current.sessions.filter((session) => !removed.has(session.uid)) },
       );
       setSelected(new Set());
-      setResults(outcome);
+      setNotice(deleteNotice(outcome));
       setPreview(null);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -118,7 +153,25 @@ export default function App() {
     }
   };
 
-  const selectedCount = selectedVisible.length;
+  const runArchive = async (uids: string[]) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const outcome = await toggleArchive(uids);
+      setNotice(archiveNotice(outcome));
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+    await rescan();
+  };
+
+  const reveal = async (path: string) => {
+    try {
+      await revealSessionFile(path);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  };
 
   return (
     <main className="app">
@@ -127,18 +180,21 @@ export default function App() {
         <span className="summary">
           {scan ? `${visible.length} of ${scan.sessions.length} sessions · ${formatBytes(visibleBytes)}` : ""}
         </span>
-        <button type="button" onClick={() => void rescan()} disabled={loading}>
-          {loading ? "Scanning…" : "Rescan"}
+        <button type="button" onClick={() => void rescan()} disabled={busy}>
+          {busy ? "Working…" : "Rescan"}
         </button>
-        <button
-          type="button"
-          className="danger"
-          disabled={selectedCount === 0 || loading}
-          onClick={() => void openPreview()}
-        >
-          {selectedCount === 0
-            ? "Move to Trash…"
-            : `Move ${selectedCount} to Trash (${formatBytes(selectedBytes)})…`}
+        {toArchive.length > 0 && (
+          <button type="button" disabled={busy} onClick={() => void runArchive(toArchive.map((s) => s.uid))}>
+            Archive {toArchive.length}
+          </button>
+        )}
+        {toUnarchive.length > 0 && (
+          <button type="button" disabled={busy} onClick={() => void runArchive(toUnarchive.map((s) => s.uid))}>
+            Unarchive {toUnarchive.length}
+          </button>
+        )}
+        <button type="button" className="danger" disabled={toDelete.length === 0 || busy} onClick={() => void openPreview()}>
+          {toDelete.length === 0 ? "Delete…" : `Delete ${toDelete.length} (${formatBytes(deleteBytes)})…`}
         </button>
       </header>
 
@@ -153,7 +209,7 @@ export default function App() {
           {agent.errors.length > 3 && ` (and ${agent.errors.length - 3} more)`}
         </div>
       ))}
-      {results && <ResultSummary results={results} onDismiss={() => setResults(null)} />}
+      {notice && <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />}
 
       {scan && <Filters agents={scan.agents} filter={filter} onChange={setFilter} />}
       {scan && (
@@ -168,6 +224,7 @@ export default function App() {
           busy={deleting}
           onConfirm={(uids) => void confirmDelete(uids)}
           onCancel={() => setPreview(null)}
+          onReveal={(path) => void reveal(path)}
         />
       )}
     </main>

@@ -1,5 +1,5 @@
 import { formatAge, formatBytes } from "../lib/format";
-import { isDeletable, type SessionRow } from "../lib/types";
+import { isSelectable, type SessionRow } from "../lib/types";
 
 interface Props {
   sessions: SessionRow[];
@@ -13,7 +13,7 @@ function StatusBadges({ session }: { session: SessionRow }) {
   return (
     <>
       {session.running && (
-        <span className="badge running" title="Written to in the last few minutes, so it can't be deleted.">
+        <span className="badge running" title="Written to in the last few minutes, so it can't be changed.">
           Running
         </span>
       )}
@@ -28,8 +28,8 @@ function StatusBadges({ session }: { session: SessionRow }) {
 }
 
 export function SessionTable({ sessions, selected, now, onToggle, onSetMany }: Props) {
-  const deletable = sessions.filter(isDeletable).map((session) => session.uid);
-  const allSelected = deletable.length > 0 && deletable.every((uid) => selected.has(uid));
+  const selectable = sessions.filter(isSelectable).map((session) => session.uid);
+  const allSelected = selectable.length > 0 && selectable.every((uid) => selected.has(uid));
 
   if (sessions.length === 0) {
     return <p className="empty">No sessions match these filters.</p>;
@@ -42,10 +42,10 @@ export function SessionTable({ sessions, selected, now, onToggle, onSetMany }: P
           <th className="check">
             <input
               type="checkbox"
-              aria-label="Select all deletable sessions shown"
+              aria-label="Select all sessions shown"
               checked={allSelected}
-              disabled={deletable.length === 0}
-              onChange={() => onSetMany(deletable, !allSelected)}
+              disabled={selectable.length === 0}
+              onChange={() => onSetMany(selectable, !allSelected)}
             />
           </th>
           <th>Session</th>
@@ -57,7 +57,6 @@ export function SessionTable({ sessions, selected, now, onToggle, onSetMany }: P
       </thead>
       <tbody>
         {sessions.map((session) => {
-          const canDelete = isDeletable(session);
           const label = session.title ?? session.id;
           return (
             <tr key={session.uid} className={selected.has(session.uid) ? "selected" : undefined}>
@@ -66,7 +65,7 @@ export function SessionTable({ sessions, selected, now, onToggle, onSetMany }: P
                   type="checkbox"
                   aria-label={`Select ${label}`}
                   checked={selected.has(session.uid)}
-                  disabled={!canDelete}
+                  disabled={!isSelectable(session)}
                   onChange={() => onToggle(session.uid)}
                 />
               </td>

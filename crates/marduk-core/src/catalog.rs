@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 use crate::adapter::{AgentAdapter, DeletePlan};
-use crate::delete::{self, DeleteOutcome, Trasher};
+use crate::delete::{self, ArchiveOutcome, DeleteBackend, DeleteOutcome, PlannedDelete};
 use crate::session::Session;
 
 pub struct AgentScan {
@@ -18,7 +17,7 @@ pub struct AgentScan {
 pub struct Preview {
     pub uid: String,
     pub session: Option<Session>,
-    pub result: Result<Vec<PathBuf>, String>,
+    pub result: Result<PlannedDelete, String>,
 }
 
 /// Holds the adapters and the most recent scan. Deletes are resolved by uid against that
@@ -78,12 +77,20 @@ impl Catalog {
             .map_or("Unknown", |adapter| adapter.display_name())
     }
 
-    pub fn read_only_reason(&self, session: &Session) -> Option<String> {
-        let adapter = self.adapters.iter().find(|adapter| adapter.id() == session.agent)?;
-        match adapter.delete_plan(session) {
-            DeletePlan::ReadOnly { reason } => Some(reason),
-            DeletePlan::Trash { .. } => None,
-        }
+    fn adapter_for(&self, session: &Session) -> Option<&dyn AgentAdapter> {
+        self.adapters
+            .iter()
+            .find(|adapter| adapter.id() == session.agent)
+            .map(|adapter| adapter.as_ref())
+    }
+
+    pub fn delete_plan(&self, session: &Session) -> Option<DeletePlan> {
+        self.adapter_for(session).map(|adapter| adapter.delete_plan(session))
+    }
+
+    pub fn can_archive(&self, session: &Session) -> bool {
+        self.adapter_for(session)
+            .is_some_and(|adapter| adapter.archive_command(session).is_some())
     }
 
     pub fn preview(&self, uids: &[String], now: SystemTime) -> Vec<Preview> {
@@ -104,7 +111,12 @@ impl Catalog {
             .collect()
     }
 
-    pub fn delete(&self, uids: &[String], trasher: &dyn Trasher, now: SystemTime) -> Vec<(String, DeleteOutcome)> {
+    pub fn delete(
+        &self,
+        uids: &[String],
+        backend: &dyn DeleteBackend,
+        now: SystemTime,
+    ) -> Vec<(String, DeleteOutcome)> {
         let mut snapshot = self.snapshot.lock().unwrap();
         uids.iter()
             .map(|uid| {
@@ -113,12 +125,54 @@ impl Catalog {
                     Some((index, session)) => delete::execute(
                         self.adapters[*index].as_ref(),
                         session,
-                        trasher,
+                        backend,
                         now,
                         self.running_window,
                     ),
                 };
-                if matches!(outcome, DeleteOutcome::Trashed { .. }) {
+                if matches!(
+                    outcome,
+                    DeleteOutcome::Trashed { .. } | DeleteOutcome::DeletedByAgent { .. }
+                ) {
+                    snapshot.remove(uid);
+                }
+                (uid.clone(), outcome)
+            })
+            .collect()
+    }
+
+    /// True when `path` is one of the files of a session in the current scan. Lets the UI
+    /// reveal session files without being able to point at arbitrary paths.
+    pub fn owns_path(&self, path: &std::path::Path) -> bool {
+        self.snapshot
+            .lock()
+            .unwrap()
+            .values()
+            .any(|(_, session)| session.files.iter().any(|file| file == path))
+    }
+
+    /// Archives or unarchives each session with its agent's own command. Moved sessions
+    /// leave the snapshot, so callers should rescan to see them at their new location.
+    pub fn toggle_archive(
+        &self,
+        uids: &[String],
+        backend: &dyn DeleteBackend,
+        now: SystemTime,
+    ) -> Vec<(String, ArchiveOutcome)> {
+        let mut snapshot = self.snapshot.lock().unwrap();
+        uids.iter()
+            .map(|uid| {
+                let outcome = match snapshot.get(uid) {
+                    None => ArchiveOutcome::Refused { reason: not_found() },
+                    Some((index, session)) => delete::toggle_archive(
+                        self.adapters[*index].as_ref(),
+                        session,
+                        backend,
+                        now,
+                        self.running_window,
+                    ),
+                };
+                if matches!(outcome, ArchiveOutcome::Done { .. }) {
                     snapshot.remove(uid);
                 }
                 (uid.clone(), outcome)
@@ -139,8 +193,11 @@ mod tests {
     use crate::agents::pi::PiAdapter;
 
     struct NoopTrash;
-    impl Trasher for NoopTrash {
-        fn trash(&self, _paths: &[PathBuf]) -> Result<(), String> {
+    impl DeleteBackend for NoopTrash {
+        fn trash(&self, _paths: &[std::path::PathBuf]) -> Result<(), String> {
+            Ok(())
+        }
+        fn run(&self, _command: &crate::adapter::AgentCommand) -> Result<(), String> {
             Ok(())
         }
     }
@@ -185,11 +242,31 @@ mod tests {
     }
 
     #[test]
+    fn owns_only_scanned_session_files() {
+        let (root, catalog) = catalog_with_old_pi_session();
+        let scans = catalog.scan();
+        let file = scans[0].sessions[0].primary_file.clone();
+        assert!(catalog.owns_path(&file));
+        assert!(!catalog.owns_path(root.path()));
+        assert!(!catalog.owns_path(std::path::Path::new("/etc/passwd")));
+    }
+
+    #[test]
+    fn pi_sessions_cannot_be_archived() {
+        let (_root, catalog) = catalog_with_old_pi_session();
+        let scans = catalog.scan();
+        let session = &scans[0].sessions[0];
+        assert!(!catalog.can_archive(session));
+        let outcome = catalog.toggle_archive(&[uid(session)], &NoopTrash, SystemTime::now());
+        assert!(matches!(&outcome[0].1, ArchiveOutcome::Refused { reason } if reason.contains("can't archive")));
+    }
+
+    #[test]
     fn preview_lists_files_for_known_uid() {
         let (_root, catalog) = catalog_with_old_pi_session();
         let scans = catalog.scan();
         let session = &scans[0].sessions[0];
         let preview = catalog.preview(&[uid(session)], SystemTime::now());
-        assert_eq!(preview[0].result.as_ref().unwrap(), &session.files);
+        assert_eq!(&preview[0].result.as_ref().unwrap().files, &session.files);
     }
 }

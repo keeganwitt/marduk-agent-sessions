@@ -9,6 +9,26 @@ pub trait AgentAdapter: Send + Sync {
     fn roots(&self) -> Vec<PathBuf>;
     fn scan(&self) -> ScanResult;
     fn delete_plan(&self, session: &Session) -> DeletePlan;
+    /// The agent's own command to archive this session, or to unarchive it when it is
+    /// already archived. `None` when the agent has no native archive.
+    fn archive_command(&self, _session: &Session) -> Option<AgentCommand> {
+        None
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgentCommand {
+    pub program: PathBuf,
+    pub args: Vec<String>,
+}
+
+impl AgentCommand {
+    pub fn command_line(&self) -> String {
+        std::iter::once(self.program.display().to_string())
+            .chain(self.args.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
 
 #[derive(Debug, Default)]
@@ -36,6 +56,15 @@ impl ScanResult {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeletePlan {
-    Trash { files: Vec<PathBuf> },
-    ReadOnly { reason: String },
+    Trash {
+        files: Vec<PathBuf>,
+    },
+    /// Delete through the agent's own CLI, which also cleans up its indexes. Permanent.
+    AgentCommand {
+        command: AgentCommand,
+        files: Vec<PathBuf>,
+    },
+    ReadOnly {
+        reason: String,
+    },
 }

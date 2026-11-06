@@ -1,4 +1,4 @@
-import { ALL_AGENTS, type SessionFilter } from "../lib/filter";
+import { ALL_AGENTS, type ArchiveFilter, type SessionFilter } from "../lib/filter";
 import type { AgentSummary } from "../lib/types";
 
 interface Props {
@@ -25,6 +25,17 @@ export function Filters({ agents, filter, onChange }: Props) {
               {agent.name} ({agent.sessionCount})
             </option>
           ))}
+        </select>
+      </label>
+      <label>
+        Status
+        <select
+          value={filter.archive}
+          onChange={(event) => onChange({ ...filter, archive: event.target.value as ArchiveFilter })}
+        >
+          <option value="all">Active and archived</option>
+          <option value="active">Active</option>
+          <option value="archived">Archived</option>
         </select>
       </label>
       <label>

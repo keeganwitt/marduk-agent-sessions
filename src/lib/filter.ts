@@ -1,8 +1,11 @@
 import { ageInDays } from "./format";
 import type { SessionRow } from "./types";
 
+export type ArchiveFilter = "all" | "active" | "archived";
+
 export interface SessionFilter {
   agent: string;
+  archive: ArchiveFilter;
   olderThanDays: number | null;
   minSizeMb: number | null;
   query: string;
@@ -10,7 +13,13 @@ export interface SessionFilter {
 
 export const ALL_AGENTS = "all";
 
-export const EMPTY_FILTER: SessionFilter = { agent: ALL_AGENTS, olderThanDays: null, minSizeMb: null, query: "" };
+export const EMPTY_FILTER: SessionFilter = {
+  agent: ALL_AGENTS,
+  archive: "all",
+  olderThanDays: null,
+  minSizeMb: null,
+  query: "",
+};
 
 export function filterSessions(sessions: SessionRow[], filter: SessionFilter, now: Date): SessionRow[] {
   const query = filter.query.trim().toLowerCase();
@@ -18,6 +27,7 @@ export function filterSessions(sessions: SessionRow[], filter: SessionFilter, no
   return sessions.filter(
     (session) =>
       (filter.agent === ALL_AGENTS || session.agent === filter.agent) &&
+      (filter.archive === "all" || session.archived === (filter.archive === "archived")) &&
       (filter.olderThanDays === null || ageInDays(session.lastActivity, now) >= filter.olderThanDays) &&
       (minBytes === null || session.sizeBytes >= minBytes) &&
       (query === "" ||

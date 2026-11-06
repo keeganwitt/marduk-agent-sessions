@@ -15,6 +15,8 @@ export function makeSession(overrides: Partial<SessionRow> = {}): SessionRow {
     archived: false,
     running: false,
     readOnlyReason: null,
+    permanentDelete: false,
+    canArchive: false,
     ...overrides,
   };
 }

@@ -18,6 +18,14 @@ describe("filterSessions", () => {
     expect(uids({ ...EMPTY_FILTER, agent: "pi" })).toEqual(["recent"]);
   });
 
+  it("filters by archive state", () => {
+    const archived = makeSession({ uid: "arch", archived: true });
+    const archivedUids = (archive: "active" | "archived") =>
+      filterSessions([old, archived], { ...EMPTY_FILTER, archive }, now).map((s) => s.uid);
+    expect(archivedUids("archived")).toEqual(["arch"]);
+    expect(archivedUids("active")).toEqual(["old"]);
+  });
+
   it("filters by minimum age in days", () => {
     expect(uids({ ...EMPTY_FILTER, olderThanDays: 30 })).toEqual(["old"]);
   });

@@ -1,17 +1,22 @@
+use std::io::Read;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant, SystemTime};
 
-use crate::adapter::{AgentAdapter, DeletePlan};
+use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan};
 use crate::fs_util;
 use crate::session::Session;
 
-pub trait Trasher {
+const AGENT_COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
+
+pub trait DeleteBackend {
     fn trash(&self, paths: &[PathBuf]) -> Result<(), String>;
+    fn run(&self, command: &AgentCommand) -> Result<(), String>;
 }
 
-pub struct SystemTrash;
+pub struct SystemBackend;
 
-impl Trasher for SystemTrash {
+impl DeleteBackend for SystemBackend {
     fn trash(&self, paths: &[PathBuf]) -> Result<(), String> {
         #[allow(unused_mut)]
         let mut context = trash::TrashContext::default();
@@ -25,36 +30,91 @@ impl Trasher for SystemTrash {
             .delete_all(paths)
             .map_err(|error| format!("Could not move to Trash: {error}"))
     }
+
+    fn run(&self, command: &AgentCommand) -> Result<(), String> {
+        let program = &command.program;
+        let mut child = Command::new(program)
+            .args(&command.args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("Could not run {}: {error}", program.display()))?;
+        let started = Instant::now();
+        let status = loop {
+            if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+                break status;
+            }
+            if started.elapsed() > AGENT_COMMAND_TIMEOUT {
+                let _ = child.kill();
+                return Err(format!(
+                    "{} did not finish within {:?}",
+                    program.display(),
+                    AGENT_COMMAND_TIMEOUT
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        if status.success() {
+            return Ok(());
+        }
+        let mut stderr = String::new();
+        if let Some(mut pipe) = child.stderr.take() {
+            let _ = pipe.read_to_string(&mut stderr);
+        }
+        let detail: String = stderr.trim().chars().take(300).collect();
+        Err(format!("{} failed ({status}): {detail}", program.display()))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Method {
+    Trash,
+    AgentCommand(AgentCommand),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlannedDelete {
+    pub files: Vec<PathBuf>,
+    pub method: Method,
+}
+
+impl PlannedDelete {
+    pub fn is_permanent(&self) -> bool {
+        matches!(self.method, Method::AgentCommand { .. })
+    }
+
+    pub fn command_line(&self) -> Option<String> {
+        match &self.method {
+            Method::Trash => None,
+            Method::AgentCommand(command) => Some(command.command_line()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DeleteOutcome {
     Trashed { files: Vec<PathBuf> },
+    DeletedByAgent { files: Vec<PathBuf>, command: String },
     Refused { reason: String },
     Failed { error: String },
 }
 
-/// Checks everything that must hold before a session may be deleted and returns the
-/// files that would be moved to the Trash.
+/// Checks everything that must hold before a session may be deleted and returns how it
+/// would be deleted.
 pub fn preflight(
     adapter: &dyn AgentAdapter,
     session: &Session,
     now: SystemTime,
     running_window: Duration,
-) -> Result<Vec<PathBuf>, String> {
-    let files = match adapter.delete_plan(session) {
+) -> Result<PlannedDelete, String> {
+    let (files, method) = match adapter.delete_plan(session) {
         DeletePlan::ReadOnly { reason } => return Err(reason),
-        DeletePlan::Trash { files } => files,
+        DeletePlan::Trash { files } => (files, Method::Trash),
+        DeletePlan::AgentCommand { command, files } => (files, Method::AgentCommand(command)),
     };
 
-    let current = fs_util::fingerprint(&session.primary_file)
-        .map_err(|_| "The session no longer exists. Rescan to refresh the list.".to_string())?;
-    if current != session.fingerprint {
-        return Err("The session changed since it was scanned. Rescan and try again.".to_string());
-    }
-    if current.is_recent(now, running_window) {
-        return Err("The session looks like it is still running.".to_string());
-    }
+    check_unchanged_and_idle(session, now, running_window)?;
 
     let roots = adapter.roots();
     let existing: Vec<PathBuf> = files
@@ -68,21 +128,93 @@ pub fn preflight(
             adapter.display_name()
         ));
     }
-    Ok(existing)
+    Ok(PlannedDelete {
+        files: existing,
+        method,
+    })
+}
+
+fn check_unchanged_and_idle(session: &Session, now: SystemTime, running_window: Duration) -> Result<(), String> {
+    let current = fs_util::fingerprint(&session.primary_file)
+        .map_err(|_| "The session no longer exists. Rescan to refresh the list.".to_string())?;
+    if current != session.fingerprint {
+        return Err("The session changed since it was scanned. Rescan and try again.".to_string());
+    }
+    if current.is_recent(now, running_window) {
+        return Err("The session looks like it is still running.".to_string());
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ArchiveOutcome {
+    Done { command: String, archived: bool },
+    Refused { reason: String },
+    Failed { error: String },
+}
+
+/// Archives an active session, or unarchives an archived one, with the agent's own command.
+pub fn toggle_archive(
+    adapter: &dyn AgentAdapter,
+    session: &Session,
+    backend: &dyn DeleteBackend,
+    now: SystemTime,
+    running_window: Duration,
+) -> ArchiveOutcome {
+    let Some(command) = adapter.archive_command(session) else {
+        return ArchiveOutcome::Refused {
+            reason: format!("{} can't archive this session.", adapter.display_name()),
+        };
+    };
+    if let Err(reason) = check_unchanged_and_idle(session, now, running_window) {
+        return ArchiveOutcome::Refused { reason };
+    }
+    match backend.run(&command) {
+        Err(error) => ArchiveOutcome::Failed { error },
+        Ok(()) if session.primary_file.exists() => ArchiveOutcome::Failed {
+            error: format!(
+                "{} reported success but {} did not move.",
+                adapter.display_name(),
+                session.primary_file.display()
+            ),
+        },
+        Ok(()) => ArchiveOutcome::Done {
+            command: command.command_line(),
+            archived: !session.archived,
+        },
+    }
 }
 
 pub fn execute(
     adapter: &dyn AgentAdapter,
     session: &Session,
-    trasher: &dyn Trasher,
+    backend: &dyn DeleteBackend,
     now: SystemTime,
     running_window: Duration,
 ) -> DeleteOutcome {
-    match preflight(adapter, session, now, running_window) {
-        Err(reason) => DeleteOutcome::Refused { reason },
-        Ok(files) => match trasher.trash(&files) {
-            Ok(()) => DeleteOutcome::Trashed { files },
+    let plan = match preflight(adapter, session, now, running_window) {
+        Err(reason) => return DeleteOutcome::Refused { reason },
+        Ok(plan) => plan,
+    };
+    let command = plan.command_line();
+    match plan.method {
+        Method::Trash => match backend.trash(&plan.files) {
+            Ok(()) => DeleteOutcome::Trashed { files: plan.files },
             Err(error) => DeleteOutcome::Failed { error },
+        },
+        Method::AgentCommand(agent_command) => match backend.run(&agent_command) {
+            Err(error) => DeleteOutcome::Failed { error },
+            Ok(()) if session.primary_file.exists() => DeleteOutcome::Failed {
+                error: format!(
+                    "{} reported success but {} still exists.",
+                    adapter.display_name(),
+                    session.primary_file.display()
+                ),
+            },
+            Ok(()) => DeleteOutcome::DeletedByAgent {
+                files: plan.files,
+                command: command.unwrap_or_default(),
+            },
         },
     }
 }
@@ -101,6 +233,7 @@ mod tests {
     struct FakeAdapter {
         root: PathBuf,
         plan: DeletePlan,
+        archive: Option<AgentCommand>,
     }
 
     impl AgentAdapter for FakeAdapter {
@@ -119,18 +252,34 @@ mod tests {
         fn delete_plan(&self, _session: &Session) -> DeletePlan {
             self.plan.clone()
         }
+        fn archive_command(&self, _session: &Session) -> Option<AgentCommand> {
+            self.archive.clone()
+        }
     }
 
     #[derive(Default)]
-    struct RecordingTrash {
-        calls: RefCell<Vec<Vec<PathBuf>>>,
+    struct FakeBackend {
+        trashed: RefCell<Vec<Vec<PathBuf>>>,
+        ran: RefCell<Vec<AgentCommand>>,
         fail: bool,
+        command_removes: Option<PathBuf>,
     }
 
-    impl Trasher for RecordingTrash {
+    impl DeleteBackend for FakeBackend {
         fn trash(&self, paths: &[PathBuf]) -> Result<(), String> {
-            self.calls.borrow_mut().push(paths.to_vec());
+            self.trashed.borrow_mut().push(paths.to_vec());
             if self.fail { Err("no trash here".into()) } else { Ok(()) }
+        }
+
+        fn run(&self, command: &AgentCommand) -> Result<(), String> {
+            self.ran.borrow_mut().push(command.clone());
+            if self.fail {
+                return Err("exit 1".into());
+            }
+            if let Some(path) = &self.command_removes {
+                fs::remove_file(path).unwrap();
+            }
+            Ok(())
         }
     }
 
@@ -166,6 +315,34 @@ mod tests {
         }
     }
 
+    fn command_plan(file: &Path) -> DeletePlan {
+        DeletePlan::AgentCommand {
+            command: agent_command("delete"),
+            files: vec![file.to_path_buf()],
+        }
+    }
+
+    fn agent_command(verb: &str) -> AgentCommand {
+        AgentCommand {
+            program: PathBuf::from("/bin/agent"),
+            args: vec![verb.into(), "s1".into()],
+        }
+    }
+
+    #[cfg(unix)]
+    fn sh(script: &str) -> AgentCommand {
+        AgentCommand {
+            program: PathBuf::from("/bin/sh"),
+            args: vec!["-c".into(), script.into()],
+        }
+    }
+
+    fn now() -> SystemTime {
+        SystemTime::now()
+    }
+
+    const WINDOW: Duration = Duration::from_secs(60);
+
     #[test]
     fn trashes_existing_files() {
         let (_dir, root, file) = setup();
@@ -173,10 +350,11 @@ mod tests {
         let adapter = FakeAdapter {
             plan: trash_plan(&[&file, &root.join("gone")]),
             root,
+            archive: None,
         };
-        let trash = RecordingTrash::default();
+        let backend = FakeBackend::default();
 
-        let outcome = execute(&adapter, &session, &trash, SystemTime::now(), Duration::from_secs(60));
+        let outcome = execute(&adapter, &session, &backend, now(), WINDOW);
 
         assert_eq!(
             outcome,
@@ -184,7 +362,7 @@ mod tests {
                 files: vec![file.clone()]
             }
         );
-        assert_eq!(*trash.calls.borrow(), vec![vec![file]]);
+        assert_eq!(*backend.trashed.borrow(), vec![vec![file]]);
     }
 
     #[test]
@@ -194,13 +372,14 @@ mod tests {
         let adapter = FakeAdapter {
             root,
             plan: DeletePlan::ReadOnly { reason: "nope".into() },
+            archive: None,
         };
-        let trash = RecordingTrash::default();
+        let backend = FakeBackend::default();
 
-        let outcome = execute(&adapter, &session, &trash, SystemTime::now(), Duration::from_secs(60));
+        let outcome = execute(&adapter, &session, &backend, now(), WINDOW);
 
         assert_eq!(outcome, DeleteOutcome::Refused { reason: "nope".into() });
-        assert!(trash.calls.borrow().is_empty());
+        assert!(backend.trashed.borrow().is_empty());
     }
 
     #[test]
@@ -211,9 +390,10 @@ mod tests {
         let adapter = FakeAdapter {
             plan: trash_plan(&[&file]),
             root,
+            archive: None,
         };
 
-        let result = preflight(&adapter, &session, SystemTime::now(), Duration::from_secs(60));
+        let result = preflight(&adapter, &session, now(), WINDOW);
 
         assert!(result.unwrap_err().contains("changed since it was scanned"));
     }
@@ -225,9 +405,10 @@ mod tests {
         let adapter = FakeAdapter {
             plan: trash_plan(&[&file]),
             root,
+            archive: None,
         };
 
-        let result = preflight(&adapter, &session, SystemTime::now(), Duration::from_secs(7200));
+        let result = preflight(&adapter, &session, now(), Duration::from_secs(7200));
 
         assert!(result.unwrap_err().contains("still running"));
     }
@@ -240,9 +421,10 @@ mod tests {
         let adapter = FakeAdapter {
             plan: trash_plan(&[&file]),
             root,
+            archive: None,
         };
 
-        let result = preflight(&adapter, &session, SystemTime::now(), Duration::from_secs(60));
+        let result = preflight(&adapter, &session, now(), WINDOW);
 
         assert!(result.unwrap_err().contains("no longer exists"));
     }
@@ -256,13 +438,14 @@ mod tests {
         let adapter = FakeAdapter {
             plan: trash_plan(&[&file, &outside]),
             root,
+            archive: None,
         };
-        let trash = RecordingTrash::default();
+        let backend = FakeBackend::default();
 
-        let outcome = execute(&adapter, &session, &trash, SystemTime::now(), Duration::from_secs(60));
+        let outcome = execute(&adapter, &session, &backend, now(), WINDOW);
 
         assert!(matches!(outcome, DeleteOutcome::Refused { reason } if reason.contains("outside")));
-        assert!(trash.calls.borrow().is_empty());
+        assert!(backend.trashed.borrow().is_empty());
     }
 
     #[test]
@@ -272,13 +455,14 @@ mod tests {
         let adapter = FakeAdapter {
             plan: trash_plan(&[&file]),
             root,
+            archive: None,
         };
-        let trash = RecordingTrash {
+        let backend = FakeBackend {
             fail: true,
             ..Default::default()
         };
 
-        let outcome = execute(&adapter, &session, &trash, SystemTime::now(), Duration::from_secs(60));
+        let outcome = execute(&adapter, &session, &backend, now(), WINDOW);
 
         assert_eq!(
             outcome,
@@ -290,12 +474,155 @@ mod tests {
     }
 
     #[test]
+    fn agent_command_plan_is_permanent_and_runs_command() {
+        let (_dir, root, file) = setup();
+        let session = old_session(&file);
+        let adapter = FakeAdapter {
+            plan: command_plan(&file),
+            root,
+            archive: None,
+        };
+        let backend = FakeBackend {
+            command_removes: Some(file.clone()),
+            ..Default::default()
+        };
+
+        let plan = preflight(&adapter, &session, now(), WINDOW).unwrap();
+        assert!(plan.is_permanent());
+        assert_eq!(plan.command_line().as_deref(), Some("/bin/agent delete s1"));
+
+        let outcome = execute(&adapter, &session, &backend, now(), WINDOW);
+
+        assert_eq!(
+            outcome,
+            DeleteOutcome::DeletedByAgent {
+                files: vec![file],
+                command: "/bin/agent delete s1".into()
+            }
+        );
+        assert!(backend.trashed.borrow().is_empty());
+        assert_eq!(backend.ran.borrow().len(), 1);
+    }
+
+    #[test]
+    fn agent_command_that_leaves_file_behind_is_a_failure() {
+        let (_dir, root, file) = setup();
+        let session = old_session(&file);
+        let adapter = FakeAdapter {
+            plan: command_plan(&file),
+            root,
+            archive: None,
+        };
+
+        let outcome = execute(&adapter, &session, &FakeBackend::default(), now(), WINDOW);
+
+        assert!(matches!(outcome, DeleteOutcome::Failed { error } if error.contains("still exists")));
+    }
+
+    #[test]
+    fn agent_command_failure_is_reported() {
+        let (_dir, root, file) = setup();
+        let session = old_session(&file);
+        let adapter = FakeAdapter {
+            plan: command_plan(&file),
+            root,
+            archive: None,
+        };
+        let backend = FakeBackend {
+            fail: true,
+            ..Default::default()
+        };
+
+        let outcome = execute(&adapter, &session, &backend, now(), WINDOW);
+
+        assert_eq!(outcome, DeleteOutcome::Failed { error: "exit 1".into() });
+    }
+
+    #[test]
+    fn archive_runs_agent_command_and_verifies_the_move() {
+        let (_dir, root, file) = setup();
+        let session = old_session(&file);
+        let adapter = FakeAdapter {
+            plan: trash_plan(&[&file]),
+            root,
+            archive: Some(agent_command("archive")),
+        };
+        let backend = FakeBackend {
+            command_removes: Some(file.clone()),
+            ..Default::default()
+        };
+
+        let outcome = toggle_archive(&adapter, &session, &backend, now(), WINDOW);
+
+        assert_eq!(
+            outcome,
+            ArchiveOutcome::Done {
+                command: "/bin/agent archive s1".into(),
+                archived: true
+            }
+        );
+    }
+
+    #[test]
+    fn archive_refused_without_native_support_or_while_running() {
+        let (_dir, root, file) = setup();
+        let session = old_session(&file);
+        let unsupported = FakeAdapter {
+            plan: trash_plan(&[&file]),
+            root: root.clone(),
+            archive: None,
+        };
+        assert!(matches!(
+            toggle_archive(&unsupported, &session, &FakeBackend::default(), now(), WINDOW),
+            ArchiveOutcome::Refused { reason } if reason.contains("can't archive")
+        ));
+
+        let supported = FakeAdapter {
+            plan: trash_plan(&[&file]),
+            root,
+            archive: Some(agent_command("archive")),
+        };
+        let backend = FakeBackend::default();
+        let outcome = toggle_archive(&supported, &session, &backend, now(), Duration::from_secs(7200));
+        assert!(matches!(outcome, ArchiveOutcome::Refused { reason } if reason.contains("still running")));
+        assert!(backend.ran.borrow().is_empty());
+    }
+
+    #[test]
+    fn archive_that_leaves_file_in_place_is_a_failure() {
+        let (_dir, root, file) = setup();
+        let session = old_session(&file);
+        let adapter = FakeAdapter {
+            plan: trash_plan(&[&file]),
+            root,
+            archive: Some(agent_command("archive")),
+        };
+
+        let outcome = toggle_archive(&adapter, &session, &FakeBackend::default(), now(), WINDOW);
+
+        assert!(matches!(outcome, ArchiveOutcome::Failed { error } if error.contains("did not move")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_backend_reports_nonzero_exit_with_stderr() {
+        let error = SystemBackend.run(&sh("echo bad thing >&2; exit 3")).unwrap_err();
+        assert!(error.contains("bad thing"), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_backend_runs_successful_command() {
+        SystemBackend.run(&sh("exit 0")).unwrap();
+    }
+
+    #[test]
     #[ignore = "moves a temp file to the real system Trash"]
     fn system_trash_moves_file() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("marduk-trash-test.txt");
         fs::write(&file, b"x").unwrap();
-        SystemTrash.trash(std::slice::from_ref(&file)).unwrap();
+        SystemBackend.trash(std::slice::from_ref(&file)).unwrap();
         assert!(!file.exists());
     }
 }

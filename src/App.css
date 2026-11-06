@@ -244,8 +244,6 @@ table.sessions {
 .dialog .files {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 12px;
-  max-height: 200px;
-  overflow: auto;
 }
 
 .dialog .actions {
@@ -253,4 +251,69 @@ table.sessions {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.badge.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.permanent-warning {
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  color: var(--danger);
+}
+
+.preview-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.preview-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.command {
+  display: block;
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dialog .files {
+  list-style: none;
+  padding-left: 0;
+  margin: 4px 0 0;
+}
+
+.dialog .files li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.dialog .files .path {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+button.link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
 }

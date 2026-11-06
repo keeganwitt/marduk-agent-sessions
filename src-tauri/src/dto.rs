@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 use marduk_core::catalog::{self, AgentScan, Catalog, Preview};
-use marduk_core::{DeleteOutcome, Session};
+use marduk_core::{ArchiveOutcome, DeleteOutcome, DeletePlan, Session};
 use serde::Serialize;
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -30,6 +30,8 @@ pub struct SessionRow {
     pub archived: bool,
     pub running: bool,
     pub read_only_reason: Option<String>,
+    pub permanent_delete: bool,
+    pub can_archive: bool,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -46,15 +48,49 @@ pub struct PreviewItem {
     pub title: Option<String>,
     pub agent_name: Option<&'static str>,
     pub files: Vec<String>,
+    pub permanent: bool,
+    pub command: Option<String>,
     pub refused_reason: Option<String>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "status")]
 pub enum DeleteResult {
-    Trashed { uid: String, files: Vec<String> },
-    Refused { uid: String, message: String },
-    Failed { uid: String, message: String },
+    Trashed {
+        uid: String,
+        files: Vec<String>,
+    },
+    Deleted {
+        uid: String,
+        files: Vec<String>,
+        command: String,
+    },
+    Refused {
+        uid: String,
+        message: String,
+    },
+    Failed {
+        uid: String,
+        message: String,
+    },
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", tag = "status")]
+pub enum ArchiveResult {
+    Done {
+        uid: String,
+        archived: bool,
+        command: String,
+    },
+    Refused {
+        uid: String,
+        message: String,
+    },
+    Failed {
+        uid: String,
+        message: String,
+    },
 }
 
 fn paths(files: Vec<PathBuf>) -> Vec<String> {
@@ -65,6 +101,7 @@ fn paths(files: Vec<PathBuf>) -> Vec<String> {
 }
 
 fn session_row(catalog: &Catalog, session: &Session, now: SystemTime) -> SessionRow {
+    let plan = catalog.delete_plan(session);
     SessionRow {
         uid: catalog::uid(session),
         key: session.key(),
@@ -77,7 +114,12 @@ fn session_row(catalog: &Catalog, session: &Session, now: SystemTime) -> Session
         size_bytes: session.size_bytes,
         archived: session.archived,
         running: session.is_running(now, catalog.running_window()),
-        read_only_reason: catalog.read_only_reason(session),
+        read_only_reason: match &plan {
+            Some(DeletePlan::ReadOnly { reason }) => Some(reason.clone()),
+            _ => None,
+        },
+        permanent_delete: matches!(plan, Some(DeletePlan::AgentCommand { .. })),
+        can_archive: catalog.can_archive(session),
     }
 }
 
@@ -101,9 +143,13 @@ pub fn scan_response(catalog: &Catalog, scans: Vec<AgentScan>, now: SystemTime) 
 }
 
 pub fn preview_item(catalog: &Catalog, preview: Preview) -> PreviewItem {
-    let (files, refused_reason) = match preview.result {
-        Ok(files) => (paths(files), None),
-        Err(reason) => (Vec::new(), Some(reason)),
+    let (files, permanent, command, refused_reason) = match preview.result {
+        Ok(plan) => {
+            let permanent = plan.is_permanent();
+            let command = plan.command_line();
+            (paths(plan.files), permanent, command, None)
+        }
+        Err(reason) => (Vec::new(), false, None, Some(reason)),
     };
     PreviewItem {
         uid: preview.uid,
@@ -113,6 +159,8 @@ pub fn preview_item(catalog: &Catalog, preview: Preview) -> PreviewItem {
             .as_ref()
             .map(|session| catalog.display_name(session.agent)),
         files,
+        permanent,
+        command,
         refused_reason,
     }
 }
@@ -123,37 +171,69 @@ pub fn delete_result(uid: String, outcome: DeleteOutcome) -> DeleteResult {
             uid,
             files: paths(files),
         },
+        DeleteOutcome::DeletedByAgent { files, command } => DeleteResult::Deleted {
+            uid,
+            files: paths(files),
+            command,
+        },
         DeleteOutcome::Refused { reason } => DeleteResult::Refused { uid, message: reason },
         DeleteOutcome::Failed { error } => DeleteResult::Failed { uid, message: error },
     }
 }
 
+pub fn archive_result(uid: String, outcome: ArchiveOutcome) -> ArchiveResult {
+    match outcome {
+        ArchiveOutcome::Done { command, archived } => ArchiveResult::Done { uid, archived, command },
+        ArchiveOutcome::Refused { reason } => ArchiveResult::Refused { uid, message: reason },
+        ArchiveOutcome::Failed { error } => ArchiveResult::Failed { uid, message: error },
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     #[test]
     fn delete_result_serializes_with_status_tag() {
         let json =
             serde_json::to_value(delete_result("u".into(), DeleteOutcome::Refused { reason: "r".into() })).unwrap();
-        assert_eq!(
-            json,
-            serde_json::json!({"status": "refused", "uid": "u", "message": "r"})
-        );
+        assert_eq!(json, json!({"status": "refused", "uid": "u", "message": "r"}));
     }
 
     #[test]
     fn trashed_result_lists_files() {
-        let json = serde_json::to_value(delete_result(
-            "u".into(),
-            DeleteOutcome::Trashed {
-                files: vec![PathBuf::from("/a")],
-            },
-        ))
-        .unwrap();
+        let outcome = DeleteOutcome::Trashed {
+            files: vec![PathBuf::from("/a")],
+        };
+        let json = serde_json::to_value(delete_result("u".into(), outcome)).unwrap();
+        assert_eq!(json, json!({"status": "trashed", "uid": "u", "files": ["/a"]}));
+    }
+
+    #[test]
+    fn agent_delete_result_includes_command() {
+        let outcome = DeleteOutcome::DeletedByAgent {
+            files: vec![PathBuf::from("/a")],
+            command: "codex delete --force x".into(),
+        };
+        let json = serde_json::to_value(delete_result("u".into(), outcome)).unwrap();
         assert_eq!(
             json,
-            serde_json::json!({"status": "trashed", "uid": "u", "files": ["/a"]})
+            json!({"status": "deleted", "uid": "u", "files": ["/a"], "command": "codex delete --force x"})
+        );
+    }
+
+    #[test]
+    fn archive_result_serializes_with_status_tag() {
+        let outcome = ArchiveOutcome::Done {
+            command: "codex archive x".into(),
+            archived: true,
+        };
+        let json = serde_json::to_value(archive_result("u".into(), outcome)).unwrap();
+        assert_eq!(
+            json,
+            json!({"status": "done", "uid": "u", "archived": true, "command": "codex archive x"})
         );
     }
 }

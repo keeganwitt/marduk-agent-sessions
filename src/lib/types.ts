@@ -19,6 +19,8 @@ export interface SessionRow {
   archived: boolean;
   running: boolean;
   readOnlyReason: string | null;
+  permanentDelete: boolean;
+  canArchive: boolean;
 }
 
 export interface ScanResponse {
@@ -31,14 +33,30 @@ export interface PreviewItem {
   title: string | null;
   agentName: string | null;
   files: string[];
+  permanent: boolean;
+  command: string | null;
   refusedReason: string | null;
 }
 
 export type DeleteResult =
   | { status: "trashed"; uid: string; files: string[] }
+  | { status: "deleted"; uid: string; files: string[]; command: string }
+  | { status: "refused"; uid: string; message: string }
+  | { status: "failed"; uid: string; message: string };
+
+export type ArchiveResult =
+  | { status: "done"; uid: string; archived: boolean; command: string }
   | { status: "refused"; uid: string; message: string }
   | { status: "failed"; uid: string; message: string };
 
 export function isDeletable(session: SessionRow): boolean {
   return !session.running && session.readOnlyReason === null;
+}
+
+export function isArchivable(session: SessionRow): boolean {
+  return !session.running && session.canArchive;
+}
+
+export function isSelectable(session: SessionRow): boolean {
+  return isDeletable(session) || isArchivable(session);
 }
