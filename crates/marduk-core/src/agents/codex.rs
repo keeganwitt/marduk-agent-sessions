@@ -58,19 +58,17 @@ impl CodexAdapter {
         (rollouts, compressed)
     }
 
-    fn read_session(
-        &self,
-        path: &Path,
-        archived: bool,
-        titles: &HashMap<String, String>,
-        progress: &dyn ScanProgress,
-    ) -> std::io::Result<Session> {
+    fn read_segment(&self, path: &Path, progress: &dyn ScanProgress) -> std::io::Result<Segment> {
         let fingerprint = fs_util::fingerprint(path)?;
         let parsed = self
             .cache
             .get_or_parse(path, fingerprint, || parse_file(path))?;
         progress.advance(fingerprint.len);
-        Ok(session_from(path, archived, titles, parsed, fingerprint))
+        Ok(Segment {
+            path: path.to_path_buf(),
+            fingerprint,
+            parsed,
+        })
     }
 
     fn sessions_dir(&self) -> PathBuf {
@@ -113,11 +111,24 @@ impl AgentAdapter for CodexAdapter {
         let mut result = ScanResult::empty_complete();
         let titles = read_thread_names(&self.home.join("session_index.jsonl"));
         let (rollouts, compressed) = self.rollouts(&mut result);
+        let mut threads: HashMap<(String, bool), Vec<Segment>> = HashMap::new();
         for (path, archived) in &rollouts {
-            match self.read_session(path, *archived, &titles, progress) {
-                Ok(session) => result.sessions.push(session),
+            match self.read_segment(path, progress) {
+                Ok(segment) => {
+                    let id = segment
+                        .parsed
+                        .id
+                        .clone()
+                        .unwrap_or_else(|| id_from_file_name(path));
+                    threads.entry((id, *archived)).or_default().push(segment);
+                }
                 Err(error) => result.record_error(format!("{}: {error}", path.display())),
             }
+        }
+        for ((id, archived), segments) in threads {
+            result
+                .sessions
+                .push(session_from(id, archived, &titles, segments));
         }
         self.cache
             .retain(&rollouts.into_iter().map(|(path, _)| path).collect());
@@ -151,7 +162,21 @@ impl AgentAdapter for CodexAdapter {
     }
 
     fn transcript(&self, session: &Session) -> std::io::Result<Transcript> {
-        read_transcript(&session.primary_file)
+        read_transcript(&session.files)
+    }
+
+    /// A thread can span several files (paginated history), so all of them count.
+    fn fingerprint(&self, session: &Session) -> std::io::Result<Fingerprint> {
+        let fingerprints = session
+            .files
+            .iter()
+            .map(|file| fs_util::fingerprint(file))
+            .collect::<std::io::Result<Vec<_>>>()?;
+        Ok(combined_fingerprint(&fingerprints))
+    }
+
+    fn still_present(&self, session: &Session) -> bool {
+        session.files.iter().any(|file| file.exists())
     }
 
     fn cli(&self) -> Option<&Cli> {
@@ -215,6 +240,7 @@ fn read_thread_names(index: &Path) -> HashMap<String, String> {
 struct Record<'a> {
     #[serde(borrow)]
     timestamp: Option<Cow<'a, str>>,
+    ordinal: Option<u64>,
     #[serde(rename = "type", borrow)]
     kind: Option<Cow<'a, str>>,
     #[serde(borrow)]
@@ -231,6 +257,39 @@ struct Parsed {
     cwd: Option<String>,
     first_prompt: Option<String>,
     span: jsonl::Span,
+    /// Forked subagents start with a copy of their parent's history; records numbered
+    /// below this ordinal are that copy.
+    history_start: Option<u64>,
+    /// Ordinal of the first record, which orders a paginated thread's files.
+    first_ordinal: Option<u64>,
+    agent_path: Option<String>,
+    agent_nickname: Option<String>,
+    agent_role: Option<String>,
+}
+
+impl Parsed {
+    fn inherited(&self, ordinal: Option<u64>) -> bool {
+        matches!((self.history_start, ordinal), (Some(start), Some(ordinal)) if ordinal < start)
+    }
+
+    /// "review_consent · Volta" from a spawned subagent's task name and nickname.
+    fn subagent_title(&self) -> Option<String> {
+        let task = self
+            .agent_path
+            .as_deref()
+            .and_then(|path| path.rsplit('/').find(|part| !part.is_empty()));
+        let who = match (self.agent_nickname.as_deref(), self.agent_role.as_deref()) {
+            (Some(nickname), Some(role)) => Some(format!("{nickname} ({role})")),
+            (Some(nickname), None) => Some(nickname.to_string()),
+            (None, Some(role)) => Some(role.to_string()),
+            (None, None) => None,
+        };
+        match (task, who) {
+            (Some(task), Some(who)) => Some(format!("{task} · {who}")),
+            (Some(task), None) => Some(task.to_string()),
+            (None, who) => who,
+        }
+    }
 }
 
 /// Codex injects `<environment_context>` blocks and AGENTS.md contents as user messages.
@@ -246,6 +305,14 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
     if let Some(timestamp) = record.timestamp.as_deref() {
         parsed.span.observe(jsonl::parse_timestamp(timestamp));
     }
+    if let Some(ordinal) = record.ordinal {
+        parsed.first_ordinal = Some(
+            parsed
+                .first_ordinal
+                .map_or(ordinal, |first| first.min(ordinal)),
+        );
+    }
+    let inherited = parsed.inherited(record.ordinal);
     let Some(payload) = record.payload else {
         return;
     };
@@ -259,13 +326,27 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
                 parsed.cwd = meta["cwd"].as_str().map(str::to_string);
                 parsed.parent_id = parent_thread(&meta);
                 parsed.spawned = meta["source"]["subagent"]["thread_spawn"].is_object();
+                parsed.history_start = meta["subagent_history_start_ordinal"].as_u64();
+                let spawn = &meta["source"]["subagent"]["thread_spawn"];
+                let field = |name: &str| {
+                    meta[name]
+                        .as_str()
+                        .or_else(|| spawn[name].as_str())
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string)
+                };
+                parsed.agent_path = field("agent_path");
+                parsed.agent_nickname = field("agent_nickname");
+                parsed.agent_role = field("agent_role");
                 parsed
                     .span
                     .observe(meta["timestamp"].as_str().and_then(jsonl::parse_timestamp));
             }
         }
         Some("event_msg")
-            if parsed.first_prompt.is_none() && payload.get().contains("\"user_message\"") =>
+            if parsed.first_prompt.is_none()
+                && !inherited
+                && payload.get().contains("\"user_message\"") =>
         {
             if let Ok(event) = serde_json::from_str::<Value>(payload.get())
                 && event["type"] == "user_message"
@@ -275,7 +356,9 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
             }
         }
         Some("response_item")
-            if parsed.first_prompt.is_none() && payload.get().contains("\"user\"") =>
+            if parsed.first_prompt.is_none()
+                && !inherited
+                && payload.get().contains("\"user\"") =>
         {
             if let Ok(item) = serde_json::from_str::<Value>(payload.get())
                 && item["type"] == "message"
@@ -303,56 +386,71 @@ fn parent_thread(meta: &Value) -> Option<String> {
 
 const ENCRYPTED_ONLY_NOTE: &str = "This session only contains an encrypted context record from Codex, so there's nothing readable to show.";
 
-/// Uses `response_item` records only; `event_msg` repeats the same conversation.
-fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
+const FORK_NOTE: &str = "This subagent started from a copy of its parent's conversation; those earlier messages are in the parent session.";
+
+/// Uses `response_item` records only; `event_msg` repeats the same conversation. A forked
+/// subagent's copied parent history is skipped.
+fn read_transcript(files: &[PathBuf]) -> std::io::Result<Transcript> {
     let mut builder = TranscriptBuilder::default();
     let mut encrypted_context = false;
-    jsonl::for_each_line(path, |line| {
-        let Ok(record) = serde_json::from_str::<Value>(line) else {
-            return;
-        };
-        if record["type"] != "response_item" {
-            return;
-        }
-        let timestamp = record["timestamp"]
-            .as_str()
-            .and_then(jsonl::parse_timestamp);
-        let item = &record["payload"];
-        match item["type"].as_str() {
-            Some("message") => {
-                let text = jsonl::content_text(&item["content"]).unwrap_or_default();
-                let role = match item["role"].as_str() {
-                    Some("assistant") => Role::Assistant,
-                    Some("user") if !is_injected(&text) => Role::User,
-                    _ => Role::Context,
-                };
-                builder.text(role, &text, timestamp);
+    let mut header = Parsed::default();
+    let mut skipped = false;
+    for path in files {
+        jsonl::for_each_line(path, |line| {
+            let Ok(record) = serde_json::from_str::<Value>(line) else {
+                return;
+            };
+            if record["type"] == "session_meta" {
+                parse_line(&mut header, line);
+                return;
             }
-            Some("function_call") => builder.tool_call(
-                item["call_id"].as_str(),
-                item["name"].as_str().unwrap_or("tool"),
-                &pretty_arguments(&item["arguments"]),
-                timestamp,
-            ),
-            Some("custom_tool_call") => builder.tool_call(
-                item["call_id"].as_str(),
-                item["name"].as_str().unwrap_or("tool"),
-                &transcript::tool_input_text(&item["input"]),
-                timestamp,
-            ),
-            Some("function_call_output" | "custom_tool_call_output") => builder.tool_result(
-                item["call_id"].as_str(),
-                &transcript::tool_output_text(&item["output"]),
-                timestamp,
-            ),
-            Some("compaction") => {
-                encrypted_context |= item["encrypted_content"]
-                    .as_str()
-                    .is_some_and(|value| !value.is_empty())
+            if header.inherited(record["ordinal"].as_u64()) {
+                skipped = true;
+                return;
             }
-            _ => {}
-        }
-    })?;
+            if record["type"] != "response_item" {
+                return;
+            }
+            let timestamp = record["timestamp"]
+                .as_str()
+                .and_then(jsonl::parse_timestamp);
+            let item = &record["payload"];
+            match item["type"].as_str() {
+                Some("message") => {
+                    let text = jsonl::content_text(&item["content"]).unwrap_or_default();
+                    let role = match item["role"].as_str() {
+                        Some("assistant") => Role::Assistant,
+                        Some("user") if !is_injected(&text) => Role::User,
+                        _ => Role::Context,
+                    };
+                    builder.text(role, &text, timestamp);
+                }
+                Some("function_call") => builder.tool_call(
+                    item["call_id"].as_str(),
+                    item["name"].as_str().unwrap_or("tool"),
+                    &pretty_arguments(&item["arguments"]),
+                    timestamp,
+                ),
+                Some("custom_tool_call") => builder.tool_call(
+                    item["call_id"].as_str(),
+                    item["name"].as_str().unwrap_or("tool"),
+                    &transcript::tool_input_text(&item["input"]),
+                    timestamp,
+                ),
+                Some("function_call_output" | "custom_tool_call_output") => builder.tool_result(
+                    item["call_id"].as_str(),
+                    &transcript::tool_output_text(&item["output"]),
+                    timestamp,
+                ),
+                Some("compaction") => {
+                    encrypted_context |= item["encrypted_content"]
+                        .as_str()
+                        .is_some_and(|value| !value.is_empty())
+                }
+                _ => {}
+            }
+        })?;
+    }
     let mut transcript = builder.finish();
     let readable = transcript
         .head
@@ -361,6 +459,8 @@ fn read_transcript(path: &Path) -> std::io::Result<Transcript> {
         .any(|message| message.role != Role::Context);
     if encrypted_context && !readable {
         transcript.note = Some(ENCRYPTED_ONLY_NOTE.to_string());
+    } else if skipped {
+        transcript.note = Some(FORK_NOTE.to_string());
     }
     Ok(transcript)
 }
@@ -388,36 +488,74 @@ fn parse_file(path: &Path) -> std::io::Result<Parsed> {
     Ok(parsed)
 }
 
+/// One rollout file of a thread.
+struct Segment {
+    path: PathBuf,
+    fingerprint: Fingerprint,
+    parsed: Parsed,
+}
+
+fn combined_fingerprint(fingerprints: &[Fingerprint]) -> Fingerprint {
+    Fingerprint {
+        len: fingerprints.iter().map(|fingerprint| fingerprint.len).sum(),
+        modified: fingerprints
+            .iter()
+            .map(|fingerprint| fingerprint.modified)
+            .max()
+            .unwrap_or(std::time::UNIX_EPOCH),
+    }
+}
+
+/// Builds one session from a thread's files, ordered by their first record ordinal (a
+/// paginated thread continues in files named `rollout-…-<id>_<page>.jsonl`).
 fn session_from(
-    path: &Path,
+    id: String,
     archived: bool,
     titles: &HashMap<String, String>,
-    parsed: Parsed,
-    fingerprint: Fingerprint,
+    mut segments: Vec<Segment>,
 ) -> Session {
-    let id = parsed.id.unwrap_or_else(|| id_from_file_name(path));
+    segments.sort_by(|a, b| {
+        (a.parsed.first_ordinal.unwrap_or(0), &a.path)
+            .cmp(&(b.parsed.first_ordinal.unwrap_or(0), &b.path))
+    });
+    let first = &segments[0].parsed;
+    let first_prompt = segments
+        .iter()
+        .find_map(|segment| segment.parsed.first_prompt.clone());
+    let mut span = jsonl::Span::default();
+    for segment in &segments {
+        span.observe(segment.parsed.span.first);
+        span.observe(segment.parsed.span.last);
+    }
+    let fingerprint = combined_fingerprint(
+        &segments
+            .iter()
+            .map(|segment| segment.fingerprint)
+            .collect::<Vec<_>>(),
+    );
     let indexed_name = titles.get(&id).filter(|name| !is_injected(name)).cloned();
-    let title = [indexed_name, parsed.first_prompt]
+    let title = [indexed_name, first.subagent_title(), first_prompt]
         .into_iter()
         .flatten()
         .find_map(|text| jsonl::to_title(&text));
+    let primary = segments[0].path.clone();
     Session {
         agent: "codex",
         id,
-        project_dir: parsed.cwd,
+        project_dir: first.cwd.clone(),
         title,
-        created: parsed.span.first.or_else(|| fs_util::created(path)),
-        last_activity: parsed
-            .span
-            .last
-            .unwrap_or_else(|| fingerprint.modified.into()),
+        created: span.first.or_else(|| fs_util::created(&primary)),
+        last_activity: span.last.unwrap_or_else(|| fingerprint.modified.into()),
         size_bytes: fingerprint.len,
         archived,
-        primary_file: path.to_path_buf(),
-        files: vec![path.to_path_buf()],
+        files: segments
+            .iter()
+            .map(|segment| segment.path.clone())
+            .collect(),
+        primary_file: primary,
         fingerprint,
-        parent_id: parsed.parent_id,
-        deleted_with_parent: parsed.spawned,
+        parent_id: first.parent_id.clone(),
+        deleted_with_parent: first.spawned,
     }
 }
 
@@ -674,6 +812,120 @@ mod tests {
         assert_eq!(session.parent_id.as_deref(), Some(parent));
         assert_eq!(session.project_dir.as_deref(), Some("/child"));
         assert!(session.deleted_with_parent);
+    }
+
+    #[test]
+    fn forked_subagents_are_titled_by_task_and_skip_the_copied_history() {
+        let home = tempfile::tempdir().unwrap();
+        let parent = "01a1b209-2d68-7e51-bd0c-2954bbab717e";
+        let child = "01a1b219-0bdd-7943-9859-dc596e56a148";
+        let content = [
+            format!(
+                r#"{{"ordinal":5,"type":"session_meta","payload":{{"id":"{child}","forked_from_id":"{parent}","subagent_history_start_ordinal":3,"agent_path":"/root/review_consent","agent_nickname":"Volta","source":{{"subagent":{{"thread_spawn":{{"parent_thread_id":"{parent}"}}}}}}}}}}"#
+            ),
+            format!(r#"{{"ordinal":0,"type":"session_meta","payload":{{"id":"{parent}"}}}}"#),
+            r#"{"ordinal":1,"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"The parent's question"}]}}"#.to_string(),
+            r#"{"ordinal":2,"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The parent's answer"}]}}"#.to_string(),
+            r#"{"ordinal":3,"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Review the consent flow"}]}}"#.to_string(),
+            r#"{"ordinal":4,"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Reviewed."}]}}"#.to_string(),
+        ]
+        .join("\n");
+        write(
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-x-{child}.jsonl")),
+            &content,
+        );
+        let codex = adapter(home.path(), None);
+        let session = codex.scan().sessions.remove(0);
+
+        assert_eq!(session.title.as_deref(), Some("review_consent · Volta"));
+        let transcript = codex.transcript(&session).unwrap();
+        let texts: Vec<&str> = transcript
+            .head
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect();
+        assert_eq!(texts, vec!["Review the consent flow", "Reviewed."]);
+        assert_eq!(transcript.note.as_deref(), Some(FORK_NOTE));
+    }
+
+    #[test]
+    fn subagents_without_a_task_name_use_nickname_and_role_or_their_own_prompt() {
+        let parsed = Parsed {
+            agent_nickname: Some("Kepler".into()),
+            agent_role: Some("explorer".into()),
+            ..Parsed::default()
+        };
+        assert_eq!(
+            parsed.subagent_title().as_deref(),
+            Some("Kepler (explorer)")
+        );
+        assert_eq!(Parsed::default().subagent_title(), None);
+    }
+
+    #[test]
+    fn paginated_threads_are_one_session_across_their_files() {
+        let home = tempfile::tempdir().unwrap();
+        let day = home.path().join("sessions/2026/09/18");
+        let header = |ordinal: u32| {
+            format!(
+                r#"{{"ordinal":{ordinal},"timestamp":"2026-09-18T0{}:00:00Z","type":"session_meta","payload":{{"id":"{ID}","cwd":"/w","history_mode":"paginated"}}}}"#,
+                ordinal / 100
+            )
+        };
+        let message = |ordinal: u32, text: &str| {
+            format!(
+                r#"{{"ordinal":{ordinal},"type":"response_item","payload":{{"type":"message","role":"user","content":[{{"type":"input_text","text":"{text}"}}]}}}}"#
+            )
+        };
+        write(
+            &day.join(format!(
+                "rollout-2026-09-18T11-39-28-{ID}_01a0b52c-341a-7111-86d8-3ca6756e56fd.jsonl"
+            )),
+            &[header(600), message(601, "second page")].join("\n"),
+        );
+        write(
+            &day.join(format!("rollout-2026-09-18T00-20-09-{ID}.jsonl")),
+            &[header(100), message(101, "first page")].join("\n"),
+        );
+        let codex = adapter(home.path(), Some("/bin/codex"));
+
+        let sessions = codex.scan().sessions;
+
+        assert_eq!(sessions.len(), 1);
+        let session = &sessions[0];
+        assert_eq!(session.files.len(), 2);
+        assert!(
+            session
+                .primary_file
+                .ends_with(format!("rollout-2026-09-18T00-20-09-{ID}.jsonl"))
+        );
+        assert_eq!(session.title.as_deref(), Some("first page"));
+        assert_eq!(
+            session.created.unwrap().to_rfc3339(),
+            "2026-09-18T01:00:00+00:00"
+        );
+        assert_eq!(
+            session.last_activity.to_rfc3339(),
+            "2026-09-18T06:00:00+00:00"
+        );
+        let texts: Vec<String> = codex
+            .transcript(session)
+            .unwrap()
+            .head
+            .into_iter()
+            .map(|m| m.text)
+            .collect();
+        assert_eq!(texts, vec!["first page", "second page"]);
+        assert_eq!(codex.fingerprint(session).unwrap(), session.fingerprint);
+        let DeletePlan::AgentCommand { files, .. } = codex.delete_plan(session) else {
+            panic!("expected codex delete");
+        };
+        assert_eq!(files, session.files);
+
+        std::fs::remove_file(&session.files[0]).unwrap();
+        assert!(codex.still_present(session), "a page is still on disk");
     }
 
     #[test]
