@@ -316,48 +316,50 @@ export function SessionTable(props: Props) {
             className="title"
             style={{ paddingLeft: 10 + depth * 18 }}
           >
-            {childCount > 0 ? (
+            <div className="title-cell">
+              {childCount > 0 ? (
+                <button
+                  type="button"
+                  className="expander"
+                  aria-expanded={expanded}
+                  aria-label={`${expanded ? "Hide" : "Show"} ${childCount} subagent ${childCount === 1 ? "session" : "sessions"} of ${label}`}
+                  onClick={() => onToggleExpand(session.uid)}
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path
+                      d="M6 3.5 10.5 8 6 12.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              ) : (
+                <span className="expander-spacer" aria-hidden="true" />
+              )}
               <button
                 type="button"
-                className="expander"
-                aria-expanded={expanded}
-                aria-label={`${expanded ? "Hide" : "Show"} ${childCount} subagent ${childCount === 1 ? "session" : "sessions"} of ${label}`}
-                onClick={() => onToggleExpand(session.uid)}
+                className="link title-link"
+                title={`${label}\nRead transcript (${session.id})`}
+                onClick={() => onOpenTranscript(session)}
               >
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <path
-                    d="M6 3.5 10.5 8 6 12.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                {label}
               </button>
-            ) : (
-              <span className="expander-spacer" aria-hidden="true" />
-            )}
-            <button
-              type="button"
-              className="link title-link"
-              title={`${label}\nRead transcript (${session.id})`}
-              onClick={() => onOpenTranscript(session)}
-            >
-              {label}
-            </button>{" "}
-            <StatusBadges session={session} nested={depth > 0} />
-            {childCount > 0 && (
-              <button
-                type="button"
-                className="child-count"
-                tabIndex={-1}
-                aria-hidden="true"
-                onClick={() => onToggleExpand(session.uid)}
-              >
-                {childCount} {childCount === 1 ? "subagent" : "subagents"}
-              </button>
-            )}
+              <StatusBadges session={session} nested={depth > 0} />
+              {childCount > 0 && (
+                <button
+                  type="button"
+                  className="child-count"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  onClick={() => onToggleExpand(session.uid)}
+                >
+                  {childCount} {childCount === 1 ? "subagent" : "subagents"}
+                </button>
+              )}
+            </div>
           </td>
         );
       case "labels":

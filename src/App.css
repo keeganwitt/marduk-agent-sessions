@@ -1093,3 +1093,29 @@ progress.scan-progress::-moz-progress-bar {
   flex: none;
   font-size: 12px;
 }
+
+/* Buttons are atomic inline boxes: when one overflows a cell, text-overflow replaces the
+   whole button with "…". A flex row lets the title itself shrink and be truncated. */
+.title-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.title-cell > * {
+  flex: none;
+}
+
+.title-cell > button.title-link {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title-cell .badge,
+.title-cell button.child-count {
+  margin-left: 0;
+}

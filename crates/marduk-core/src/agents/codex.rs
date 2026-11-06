@@ -227,6 +227,7 @@ struct Parsed {
     parent_id: Option<String>,
     /// Spawned subagents are deleted with their parent; guardian reviews are not.
     spawned: bool,
+    seen_header: bool,
     cwd: Option<String>,
     first_prompt: Option<String>,
     span: jsonl::Span,
@@ -249,15 +250,15 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
         return;
     };
     match record.kind.as_deref() {
-        Some("session_meta") => {
+        // Forked subagents copy their parent's history, header included, after their own
+        // header; only the first header describes this session.
+        Some("session_meta") if !parsed.seen_header => {
             if let Ok(meta) = serde_json::from_str::<Value>(payload.get()) {
-                parsed.id = meta["id"].as_str().map(str::to_string).or(parsed.id.take());
-                parsed.cwd = meta["cwd"]
-                    .as_str()
-                    .map(str::to_string)
-                    .or(parsed.cwd.take());
-                parsed.parent_id = parent_thread(&meta).or(parsed.parent_id.take());
-                parsed.spawned |= meta["source"]["subagent"]["thread_spawn"].is_object();
+                parsed.seen_header = true;
+                parsed.id = meta["id"].as_str().map(str::to_string);
+                parsed.cwd = meta["cwd"].as_str().map(str::to_string);
+                parsed.parent_id = parent_thread(&meta);
+                parsed.spawned = meta["source"]["subagent"]["thread_spawn"].is_object();
                 parsed
                     .span
                     .observe(meta["timestamp"].as_str().and_then(jsonl::parse_timestamp));
@@ -646,6 +647,33 @@ mod tests {
         );
         assert!(cascades(spawned));
         assert_eq!(parent_of(ID), None);
+    }
+
+    #[test]
+    fn forked_subagents_use_their_own_header_not_the_copied_parent_one() {
+        let home = tempfile::tempdir().unwrap();
+        let parent = "01a1b209-2d68-7e51-bd0c-2954bbab717e";
+        let child = "01a1b219-0bdd-7943-9859-dc596e56a148";
+        let content = [
+            format!(
+                r#"{{"type":"session_meta","payload":{{"id":"{child}","forked_from_id":"{parent}","cwd":"/child","source":{{"subagent":{{"thread_spawn":{{"parent_thread_id":"{parent}"}}}}}}}}}}"#
+            ),
+            format!(r#"{{"type":"session_meta","payload":{{"id":"{parent}","cwd":"/parent","source":"vscode"}}}}"#),
+        ]
+        .join("\n");
+        write(
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-x-{child}.jsonl")),
+            &content,
+        );
+
+        let session = adapter(home.path(), None).scan().sessions.remove(0);
+
+        assert_eq!(session.id, child);
+        assert_eq!(session.parent_id.as_deref(), Some(parent));
+        assert_eq!(session.project_dir.as_deref(), Some("/child"));
+        assert!(session.deleted_with_parent);
     }
 
     #[test]
