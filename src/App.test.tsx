@@ -256,6 +256,7 @@ describe("App", () => {
     render(<App />);
     const sessionHeader = await screen.findByRole("button", { name: /^Session/ });
     expect(rowTitles()).toEqual(["Beta", "alpha", "Gamma"]);
+    expect(screen.getByRole("columnheader", { name: /Last activity/ })).toHaveAttribute("aria-sort", "descending");
 
     await user.click(sessionHeader);
     expect(rowTitles()).toEqual(["alpha", "Beta", "Gamma"]);
@@ -267,6 +268,7 @@ describe("App", () => {
     await user.click(sessionHeader);
     expect(rowTitles()).toEqual(["Beta", "alpha", "Gamma"]);
     expect(screen.getByRole("columnheader", { name: /Session/ })).toHaveAttribute("aria-sort", "none");
+    expect(screen.getByRole("columnheader", { name: /Last activity/ })).toHaveAttribute("aria-sort", "descending");
 
     await user.click(screen.getByRole("button", { name: /^Size/ }));
     expect(rowTitles()).toEqual(["alpha", "Gamma", "Beta"]);

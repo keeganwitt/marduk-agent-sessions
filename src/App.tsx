@@ -11,7 +11,7 @@ import { applyTheme, isTheme } from "./lib/theme";
 import { buildTree } from "./lib/tree";
 import { formatBytes } from "./lib/format";
 import { deleteSessions, getTheme, openProjectDir, previewDelete, revealSessionFile, scanSessions, toggleArchive } from "./lib/ipc";
-import { nextSort, type SortKey, type SortState } from "./lib/sort";
+import { DEFAULT_SORT, nextSort, type SortKey, type SortState } from "./lib/sort";
 import {
   isArchivable,
   isDeletable,
@@ -119,7 +119,7 @@ export default function App() {
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [sort, setSort] = useState<SortState | null>(null);
+  const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [filesFor, setFilesFor] = useState<SessionRow | null>(null);
   const [transcriptFor, setTranscriptFor] = useState<SessionRow | null>(null);

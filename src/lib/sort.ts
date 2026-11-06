@@ -14,12 +14,18 @@ function firstDirection(key: SortKey): SortDirection {
   return NEWEST_OR_LARGEST_FIRST.has(key) ? "desc" : "asc";
 }
 
-/** Clicking a column sorts by it, clicking again reverses, and a third click clears the sort. */
-export function nextSort(current: SortState | null, key: SortKey): SortState | null {
+/** The order sessions are shown in until the user picks another column. */
+export const DEFAULT_SORT: SortState = { key: "lastActivity", direction: "desc" };
+
+/**
+ * Clicking a column sorts by it, clicking again reverses, and a third click returns to the
+ * default order. The default column itself just switches direction.
+ */
+export function nextSort(current: SortState, key: SortKey): SortState {
   const first = firstDirection(key);
-  if (current?.key !== key) return { key, direction: first };
+  if (current.key !== key) return { key, direction: first };
   if (current.direction === first) return { key, direction: first === "asc" ? "desc" : "asc" };
-  return null;
+  return key === DEFAULT_SORT.key ? { key, direction: first } : DEFAULT_SORT;
 }
 
 function sortValue(session: SessionRow, key: SortKey): string | number | null {

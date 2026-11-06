@@ -1,21 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { nextSort, sortSessions } from "./sort";
+import { DEFAULT_SORT, nextSort, sortSessions } from "./sort";
 import { makeSession } from "../test/factories";
 
 describe("nextSort", () => {
-  it("cycles text columns ascending, descending, then off", () => {
-    const first = nextSort(null, "title");
+  it("cycles text columns ascending, descending, then back to the default order", () => {
+    const first = nextSort(DEFAULT_SORT, "title");
     expect(first).toEqual({ key: "title", direction: "asc" });
     const second = nextSort(first, "title");
     expect(second).toEqual({ key: "title", direction: "desc" });
-    expect(nextSort(second, "title")).toBeNull();
+    expect(nextSort(second, "title")).toEqual(DEFAULT_SORT);
   });
 
   it("starts date and size columns newest or largest first", () => {
-    const first = nextSort(null, "size");
+    const first = nextSort(DEFAULT_SORT, "size");
     expect(first).toEqual({ key: "size", direction: "desc" });
     expect(nextSort(first, "size")).toEqual({ key: "size", direction: "asc" });
-    expect(nextSort(nextSort(first, "size"), "size")).toBeNull();
+    expect(nextSort(nextSort(first, "size"), "size")).toEqual(DEFAULT_SORT);
+  });
+
+  it("the default column switches between newest and oldest first", () => {
+    const oldest = nextSort(DEFAULT_SORT, "lastActivity");
+    expect(oldest).toEqual({ key: "lastActivity", direction: "asc" });
+    expect(nextSort(oldest, "lastActivity")).toEqual(DEFAULT_SORT);
   });
 
   it("switching columns starts the new column fresh", () => {
