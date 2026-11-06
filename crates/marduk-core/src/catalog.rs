@@ -482,11 +482,8 @@ mod tests {
             ("t_a.jsonl", project.path().to_str().unwrap()),
             ("t_b.jsonl", "/does/not/exist"),
         ] {
-            fs::write(
-                dir.join(name),
-                format!(r#"{{"type":"session","id":"{name}","cwd":"{cwd}"}}"#),
-            )
-            .unwrap();
+            let header = serde_json::json!({ "type": "session", "id": name, "cwd": cwd });
+            fs::write(dir.join(name), header.to_string()).unwrap();
         }
         let catalog = Catalog::new(
             vec![Box::new(PiAdapter::new(root.path().to_path_buf()))],
