@@ -77,6 +77,7 @@ pub enum Method {
 pub struct PlannedDelete {
     pub files: Vec<PathBuf>,
     pub method: Method,
+    pub warning: Option<String>,
 }
 
 impl PlannedDelete {
@@ -108,13 +109,17 @@ pub fn preflight(
     now: SystemTime,
     running_window: Duration,
 ) -> Result<PlannedDelete, String> {
-    let (files, method) = match adapter.delete_plan(session) {
+    let (files, method, warning) = match adapter.delete_plan(session) {
         DeletePlan::ReadOnly { reason } => return Err(reason),
-        DeletePlan::Trash { files } => (files, Method::Trash),
-        DeletePlan::AgentCommand { command, files } => (files, Method::AgentCommand(command)),
+        DeletePlan::Trash { files } => (files, Method::Trash, None),
+        DeletePlan::AgentCommand {
+            command,
+            files,
+            warning,
+        } => (files, Method::AgentCommand(command), warning),
     };
 
-    check_unchanged_and_idle(session, now, running_window)?;
+    check_unchanged_and_idle(adapter, session, now, running_window)?;
 
     let roots = adapter.roots();
     let existing: Vec<PathBuf> = files
@@ -131,11 +136,18 @@ pub fn preflight(
     Ok(PlannedDelete {
         files: existing,
         method,
+        warning,
     })
 }
 
-fn check_unchanged_and_idle(session: &Session, now: SystemTime, running_window: Duration) -> Result<(), String> {
-    let current = fs_util::fingerprint(&session.primary_file)
+fn check_unchanged_and_idle(
+    adapter: &dyn AgentAdapter,
+    session: &Session,
+    now: SystemTime,
+    running_window: Duration,
+) -> Result<(), String> {
+    let current = adapter
+        .fingerprint(session)
         .map_err(|_| "The session no longer exists. Rescan to refresh the list.".to_string())?;
     if current != session.fingerprint {
         return Err("The session changed since it was scanned. Rescan and try again.".to_string());
@@ -166,12 +178,12 @@ pub fn toggle_archive(
             reason: format!("{} can't archive this session.", adapter.display_name()),
         };
     };
-    if let Err(reason) = check_unchanged_and_idle(session, now, running_window) {
+    if let Err(reason) = check_unchanged_and_idle(adapter, session, now, running_window) {
         return ArchiveOutcome::Refused { reason };
     }
     match backend.run(&command) {
         Err(error) => ArchiveOutcome::Failed { error },
-        Ok(()) if session.primary_file.exists() => ArchiveOutcome::Failed {
+        Ok(()) if adapter.still_present(session) => ArchiveOutcome::Failed {
             error: format!(
                 "{} reported success but {} did not move.",
                 adapter.display_name(),
@@ -204,7 +216,7 @@ pub fn execute(
         },
         Method::AgentCommand(agent_command) => match backend.run(&agent_command) {
             Err(error) => DeleteOutcome::Failed { error },
-            Ok(()) if session.primary_file.exists() => DeleteOutcome::Failed {
+            Ok(()) if adapter.still_present(session) => DeleteOutcome::Failed {
                 error: format!(
                     "{} reported success but {} still exists.",
                     adapter.display_name(),
@@ -301,6 +313,7 @@ mod tests {
             primary_file: path.to_path_buf(),
             files: vec![path.to_path_buf()],
             fingerprint: fs_util::fingerprint(path).unwrap(),
+            parent_id: None,
         }
     }
 
@@ -323,6 +336,7 @@ mod tests {
         DeletePlan::AgentCommand {
             command: agent_command("delete"),
             files: vec![file.to_path_buf()],
+            warning: None,
         }
     }
 

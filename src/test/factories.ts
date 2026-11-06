@@ -14,6 +14,8 @@ export function makeSession(overrides: Partial<SessionRow> = {}): SessionRow {
     lastActivity: "2026-09-01T00:00:00Z",
     sizeBytes: 2048,
     files: [`/sessions/${uid}.jsonl`],
+    database: null,
+    parentId: null,
     archived: false,
     running: false,
     readOnlyReason: null,

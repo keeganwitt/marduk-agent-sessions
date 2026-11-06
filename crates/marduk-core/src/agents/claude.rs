@@ -240,6 +240,7 @@ fn read_session(path: &Path) -> std::io::Result<Session> {
         primary_file: path.to_path_buf(),
         files,
         fingerprint,
+        parent_id: None,
     })
 }
 

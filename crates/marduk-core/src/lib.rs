@@ -24,6 +24,7 @@ pub fn default_adapters() -> Vec<Box<dyn AgentAdapter>> {
     vec![
         Box::new(agents::claude::ClaudeAdapter::from_env()),
         Box::new(agents::codex::CodexAdapter::from_env()),
+        Box::new(agents::opencode::OpenCodeAdapter::from_env()),
         Box::new(agents::pi::PiAdapter::from_env()),
     ]
 }

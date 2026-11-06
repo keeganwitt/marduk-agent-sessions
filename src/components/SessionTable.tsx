@@ -24,6 +24,11 @@ function StatusBadges({ session }: { session: SessionRow }) {
           Running
         </span>
       )}
+      {session.parentId && (
+        <span className="badge muted" title={`Spawned by session ${session.parentId}`}>
+          Subagent
+        </span>
+      )}
       {session.archived && <span className="badge">Archived</span>}
       {session.readOnlyReason && (
         <span className="badge muted" title={session.readOnlyReason}>

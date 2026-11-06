@@ -11,6 +11,16 @@ pub trait AgentAdapter: Send + Sync {
     fn scan(&self) -> ScanResult;
     fn delete_plan(&self, session: &Session) -> DeletePlan;
     fn transcript(&self, session: &Session) -> std::io::Result<Transcript>;
+    /// What "unchanged since the scan" and "still running" are judged by. File-based agents
+    /// use the transcript file; database-backed agents use the session's own row.
+    fn fingerprint(&self, session: &Session) -> std::io::Result<crate::session::Fingerprint> {
+        crate::fs_util::fingerprint(&session.primary_file)
+    }
+    /// Whether the session is still where the scan found it, used to confirm that an agent's
+    /// delete or archive command really took effect.
+    fn still_present(&self, session: &Session) -> bool {
+        session.primary_file.exists()
+    }
     /// The agent's own command to archive this session, or to unarchive it when it is
     /// already archived. `None` when the agent has no native archive.
     fn archive_command(&self, _session: &Session) -> Option<AgentCommand> {
@@ -65,6 +75,8 @@ pub enum DeletePlan {
     AgentCommand {
         command: AgentCommand,
         files: Vec<PathBuf>,
+        /// Extra consequences the user should know about before confirming.
+        warning: Option<String>,
     },
     ReadOnly {
         reason: String,

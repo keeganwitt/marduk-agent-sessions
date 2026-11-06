@@ -14,7 +14,7 @@ Author is `Keegan Witt <keeganwitt@gmail.com>`, set in this repo's local git con
 
 ## Design rules (don't break these)
 
-- If an agent has its own per-session delete or archive command, use it (`DeletePlan::AgentCommand`, `AgentAdapter::archive_command`). Today that's `codex delete --force` (permanent) and `codex archive`/`unarchive`. Without a native command, delete to the system Trash (`trash` crate; the macOS NSFileManager method avoids a permission prompt to automate Finder). Never fall back to unlinking.
+- If an agent has its own per-session delete or archive command, use it (`DeletePlan::AgentCommand`, `AgentAdapter::archive_command`). Today that's `codex delete --force` (permanent), `codex archive`/`unarchive` and `opencode session delete` (permanent, cascades to child sessions; surfaced via `DeletePlan::AgentCommand.warning`). Without a native command, delete to the system Trash (`trash` crate; the macOS NSFileManager method avoids a permission prompt to automate Finder). Never fall back to unlinking.
 - Permanent deletes must say so in the UI: `PreviewItem.permanent` and the exact `command` are shown in the dialog.
 - After an agent command reports success, check that the transcript actually moved or disappeared, and treat it as a failure if it didn't.
 - Agent CLIs are found with `agents::find_program`, which also searches common install folders because Dock-launched apps get a minimal `PATH`.
@@ -22,6 +22,7 @@ Author is `Keegan Witt <keeganwitt@gmail.com>`, set in this repo's local git con
 - `delete::preflight` and `delete::toggle_archive` refuse running sessions (`RUNNING_WINDOW`), sessions changed since the scan, and paths outside the adapter's roots.
 - Never write to an agent's database. Delete through the agent's CLI (e.g. `codex delete`, `opencode session delete`), or report `DeletePlan::ReadOnly`.
 - Don't invent archive folders. Only offer archiving through the agent's own command, and only show its native archive (e.g. Codex `archived_sessions`).
+- Database-backed agents (OpenCode) open their database with `SQLITE_OPEN_READ_ONLY` and override `AgentAdapter::fingerprint`/`still_present` to use the session's row; the database file's own mtime is meaningless per session. Their sessions have no `files`, and `uid` includes the session id because they share `primary_file`.
 - `ScanResult.complete` must be false whenever part of an agent's storage couldn't be read. Future tag pruning depends on it.
 - `Session::key()` (`agent:id`) is the path-independent identity reserved for tags.
 - Links: `installExternalLinkHandler` (`src/lib/externalLinks.ts`) sends link clicks to `tauri-plugin-opener` (http, https and mailto only, scoped in `capabilities/default.json`). Tauri's webview ignores `target="_blank"`.

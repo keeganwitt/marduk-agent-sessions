@@ -36,6 +36,8 @@ pub struct Session {
     /// Every path that makes up the session, including `primary_file`.
     pub files: Vec<PathBuf>,
     pub fingerprint: Fingerprint,
+    /// The session this one was spawned from, for agents that record subagent sessions.
+    pub parent_id: Option<String>,
 }
 
 impl Session {

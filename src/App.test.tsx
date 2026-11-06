@@ -46,6 +46,7 @@ function previewOf(overrides: Partial<PreviewItem> & { uid: string }): PreviewIt
     files: [`/p/${overrides.uid}.jsonl`],
     permanent: false,
     command: null,
+    warning: null,
     refusedReason: null,
     ...overrides,
   };
@@ -119,6 +120,53 @@ describe("App", () => {
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     expect(await screen.findByText(/Permanently deleted 1 session/)).toBeInTheDocument();
+  });
+
+  it("shows OpenCode's child-session warning and rescans after an agent delete", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "o1", title: "Parent", agent: "opencode", permanentDelete: true }),
+        makeSession({ uid: "o2", title: "Child", agent: "opencode", parentId: "ses_parent" }),
+      ),
+    );
+    previewDelete.mockResolvedValue([
+      previewOf({
+        uid: "o1",
+        title: "Parent",
+        files: [],
+        permanent: true,
+        command: "opencode session delete ses_parent",
+        warning: "OpenCode also deletes this session's 1 child session.",
+      }),
+    ]);
+    deleteSessions.mockResolvedValue([{ status: "deleted", uid: "o1", files: [], command: "opencode session delete ses_parent" }]);
+
+    render(<App />);
+    expect(await screen.findByText("Subagent")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Select Parent" }));
+    await user.click(screen.getByRole("button", { name: /Delete 1/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/also deletes this session's 1 child session/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText(/Permanently deleted 1 session/)).toBeInTheDocument();
+    expect(scanSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("explains database-backed sessions in the files view", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "o1", title: "DB session", agentName: "OpenCode", files: [], database: "/data/opencode.db" })),
+    );
+
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Show files for DB session" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/one shared database/)).toBeInTheDocument();
+    expect(within(dialog).getByText("/data/opencode.db")).toBeInTheDocument();
   });
 
   it("does not let running sessions be selected", async () => {

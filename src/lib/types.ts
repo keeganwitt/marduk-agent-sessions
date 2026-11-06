@@ -18,6 +18,8 @@ export interface SessionRow {
   lastActivity: string;
   sizeBytes: number;
   files: string[];
+  database: string | null;
+  parentId: string | null;
   archived: boolean;
   running: boolean;
   readOnlyReason: string | null;
@@ -54,6 +56,7 @@ export interface PreviewItem {
   files: string[];
   permanent: boolean;
   command: string | null;
+  warning: string | null;
   refusedReason: string | null;
 }
 

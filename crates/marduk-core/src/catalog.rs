@@ -28,9 +28,15 @@ pub struct Catalog {
     snapshot: Mutex<HashMap<String, (usize, Session)>>,
 }
 
-/// Unique per transcript file, unlike `Session::key`, which two copies of a session share.
+/// Unique per stored copy of a session, unlike `Session::key`, which two copies share.
+/// Includes the id because database-backed agents keep every session in one file.
 pub fn uid(session: &Session) -> String {
-    format!("{}:{}", session.agent, session.primary_file.to_string_lossy())
+    format!(
+        "{}:{}#{}",
+        session.agent,
+        session.primary_file.to_string_lossy(),
+        session.id
+    )
 }
 
 impl Catalog {
@@ -171,7 +177,7 @@ impl Catalog {
             .lock()
             .unwrap()
             .values()
-            .any(|(_, session)| session.files.iter().any(|file| file == path))
+            .any(|(_, session)| session.primary_file == path || session.files.iter().any(|file| file == path))
     }
 
     /// Archives or unarchives each session with its agent's own command. Moved sessions

@@ -160,6 +160,8 @@ export default function App() {
       setSelected(new Set());
       setNotice(deleteNotice(outcome));
       setPreview(null);
+      // Agent deletes can take related sessions with them (OpenCode deletes child sessions).
+      if (outcome.some((result) => result.status === "deleted")) await rescan();
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {

@@ -94,6 +94,7 @@ impl AgentAdapter for CodexAdapter {
             Ok(command) => DeletePlan::AgentCommand {
                 command,
                 files: session.files.clone(),
+                warning: None,
             },
             Err(reason) => DeletePlan::ReadOnly { reason },
         }
@@ -295,6 +296,7 @@ fn read_session(path: &Path, archived: bool, titles: &HashMap<String, String>) -
         primary_file: path.to_path_buf(),
         files: vec![path.to_path_buf()],
         fingerprint,
+        parent_id: None,
     })
 }
 
@@ -464,6 +466,7 @@ mod tests {
                     args: vec!["delete".into(), "--force".into(), ID.into()]
                 },
                 files: session.files.clone(),
+                warning: None,
             }
         );
         assert_eq!(codex.archive_command(&session).unwrap().args, vec!["archive", ID]);

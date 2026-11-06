@@ -29,6 +29,9 @@ pub struct SessionRow {
     pub last_activity: String,
     pub size_bytes: u64,
     pub files: Vec<String>,
+    /// Set for database-backed agents, whose sessions have no files of their own.
+    pub database: Option<String>,
+    pub parent_id: Option<String>,
     pub archived: bool,
     pub running: bool,
     pub read_only_reason: Option<String>,
@@ -78,6 +81,7 @@ pub struct PreviewItem {
     pub files: Vec<String>,
     pub permanent: bool,
     pub command: Option<String>,
+    pub warning: Option<String>,
     pub refused_reason: Option<String>,
 }
 
@@ -142,6 +146,11 @@ fn session_row(catalog: &Catalog, session: &Session, now: SystemTime) -> Session
         last_activity: session.last_activity.to_rfc3339(),
         size_bytes: session.size_bytes,
         files: paths(session.files.clone()),
+        database: session
+            .files
+            .is_empty()
+            .then(|| session.primary_file.to_string_lossy().into_owned()),
+        parent_id: session.parent_id.clone(),
         archived: session.archived,
         running: session.is_running(now, catalog.running_window()),
         read_only_reason: match &plan {
@@ -203,13 +212,13 @@ pub fn transcript_dto(transcript: Transcript) -> TranscriptDto {
 }
 
 pub fn preview_item(catalog: &Catalog, preview: Preview) -> PreviewItem {
-    let (files, permanent, command, refused_reason) = match preview.result {
+    let (files, permanent, command, warning, refused_reason) = match preview.result {
         Ok(plan) => {
             let permanent = plan.is_permanent();
             let command = plan.command_line();
-            (paths(plan.files), permanent, command, None)
+            (paths(plan.files), permanent, command, plan.warning, None)
         }
-        Err(reason) => (Vec::new(), false, None, Some(reason)),
+        Err(reason) => (Vec::new(), false, None, None, Some(reason)),
     };
     PreviewItem {
         uid: preview.uid,
@@ -221,6 +230,7 @@ pub fn preview_item(catalog: &Catalog, preview: Preview) -> PreviewItem {
         files,
         permanent,
         command,
+        warning,
         refused_reason,
     }
 }

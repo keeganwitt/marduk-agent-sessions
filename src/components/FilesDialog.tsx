@@ -23,6 +23,22 @@ export function FilesDialog({ session, onReveal, onClose }: Props) {
         <p className="muted">
           {session.agentName} · {session.id}
         </p>
+        {session.database && (
+          <div className="database-note">
+            <p>
+              {session.agentName} keeps all sessions in one shared database, so this session has no files of its own.
+              Deleting it removes its rows through {session.agentName}'s own command; the database file stays.
+            </p>
+            <ul className="files">
+              <li>
+                <span className="path">{session.database}</span>
+                <button type="button" className="link" onClick={() => onReveal(session.database!)}>
+                  Show in folder
+                </button>
+              </li>
+            </ul>
+          </div>
+        )}
         <ul className="files">
           {session.files.map((file) => (
             <li key={file}>

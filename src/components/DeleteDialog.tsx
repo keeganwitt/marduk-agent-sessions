@@ -45,6 +45,7 @@ export function DeleteDialog({ items, busy, onConfirm, onCancel, onReveal }: Pro
                   {item.permanent && <span className="badge danger">Permanent</span>}
                 </div>
                 {item.command && <code className="command">{item.command}</code>}
+                {item.warning && <p className="item-warning">{item.warning}</p>}
                 <ul className="files">
                   {item.files.map((file) => (
                     <li key={file}>

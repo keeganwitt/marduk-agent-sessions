@@ -10,9 +10,10 @@ It scans the transcripts that coding agents keep on disk and shows them in one l
 |---|---|---|---|
 | Claude Code | `~/.claude/projects` (or `$CLAUDE_CONFIG_DIR/projects`) | Moves the transcript, its `<id>.*` sidecar files and its `<id>/` folder (subagents, tool results) to the Trash | — |
 | Codex | `~/.codex/sessions` and `~/.codex/archived_sessions` (or `$CODEX_HOME`) | **Permanent**, through `codex delete --force <id>`; needs the Codex CLI | `codex archive` / `codex unarchive` |
+| OpenCode | `~/.local/share/opencode/opencode*.db` (or `$XDG_DATA_HOME/opencode`, `$OPENCODE_DB`) | **Permanent**, through `opencode session delete <id>`, which also deletes the session's child sessions; needs the OpenCode CLI | Shows OpenCode's archived state; OpenCode has no archive command |
 | Pi | `~/.pi/agent/sessions` (or `$PI_CODING_AGENT_DIR/sessions`) | Moves the transcript to the Trash | — |
 
-OpenCode is next.
+OpenCode keeps every session in one SQLite database. Marduk opens it read-only, reads both OpenCode's current (`session_v2`) and older (`session`) tables, and never writes to it.
 
 When an agent has its own delete or archive command, Marduk uses it, so the agent's own indexes stay consistent. Otherwise sessions go to the system Trash. Claude Code and Pi have no per-session delete command; Pi's own session picker also uses the Trash.
 
