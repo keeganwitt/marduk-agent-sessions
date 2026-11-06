@@ -48,8 +48,16 @@ pub(crate) fn total_size(files: &[PathBuf]) -> u64 {
         .sum()
 }
 
+/// `MARDUK_HOME` moves only Marduk's idea of home, for the demo home; overriding `HOME` would
+/// also move Cargo's and pnpm's caches for everything `tauri dev` starts.
 pub(crate) fn home_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+    home_from(env_dir("MARDUK_HOME"))
+}
+
+fn home_from(marduk_home: Option<PathBuf>) -> PathBuf {
+    marduk_home
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub(crate) fn env_dir(name: &str) -> Option<PathBuf> {
@@ -138,5 +146,19 @@ mod tests {
 
         assert_eq!(find_in("tool", &dirs), Some(exe));
         assert_eq!(find_in("missing", &dirs), None);
+    }
+}
+
+#[cfg(test)]
+mod home_tests {
+    use super::*;
+
+    #[test]
+    fn marduk_home_overrides_the_user_home() {
+        assert_eq!(
+            home_from(Some(PathBuf::from("demo"))),
+            PathBuf::from("demo")
+        );
+        assert_eq!(home_from(None), dirs::home_dir().unwrap());
     }
 }

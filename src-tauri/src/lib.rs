@@ -250,6 +250,13 @@ fn set_theme(
         .map(|_| ())
 }
 
+/// `MARDUK_DATA_DIR` keeps settings and labels apart from the real ones, for the demo home.
+fn storage_override(value: Option<std::ffi::OsString>) -> Option<std::path::PathBuf> {
+    value
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let overrides = Arc::new(CliOverrides::default());
@@ -261,10 +268,15 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
-            let store = SettingsStore::load(app.path().app_config_dir()?.join("settings.json"));
+            let (config_dir, data_dir) = match storage_override(std::env::var_os("MARDUK_DATA_DIR"))
+            {
+                Some(dir) => (dir.clone(), dir),
+                None => (app.path().app_config_dir()?, app.path().app_data_dir()?),
+            };
+            let store = SettingsStore::load(config_dir.join("settings.json"));
             cli_settings::apply_saved(&store, &overrides);
             app.manage(AppSettings { store, overrides });
-            let labels_path = app.path().app_data_dir()?.join("labels.db");
+            let labels_path = data_dir.join("labels.db");
             let labels = marduk_core::labels::LabelStore::open(&labels_path).or_else(|error| {
                 eprintln!("Labels are unavailable ({error}); using a temporary store.");
                 marduk_core::labels::LabelStore::in_memory()
@@ -294,4 +306,19 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn marduk_data_dir_overrides_storage_unless_empty() {
+        assert_eq!(
+            storage_override(Some("demo/marduk".into())),
+            Some(std::path::PathBuf::from("demo/marduk"))
+        );
+        assert_eq!(storage_override(Some("".into())), None);
+        assert_eq!(storage_override(None), None);
+    }
 }

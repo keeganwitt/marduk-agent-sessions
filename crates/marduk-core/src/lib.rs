@@ -3,6 +3,7 @@ pub mod agents;
 pub mod cache;
 pub mod catalog;
 pub mod delete;
+pub mod demo;
 pub mod fs_util;
 mod jsonl;
 pub mod labels;

@@ -6,6 +6,8 @@ Marduk is a cross-platform desktop app for finding and cleaning up old AI coding
 
 It scans the transcripts that coding agents keep on disk and shows them in one list. You can filter by agent, age, size or project, then delete the sessions you don't need, or archive them when the agent supports archiving.
 
+![Marduk listing Claude Code, Codex, OpenCode, GitHub Copilot CLI and Pi sessions, with labels, a running session and expanded subagents](docs/screenshot.png)
+
 ## Supported agents
 
 | Agent              | Location                                                                              | Delete                                                                                                                                                                     | Archive                                                          |
@@ -56,11 +58,14 @@ The repo uses LF line endings on every OS (`.gitattributes`), so Windows checkou
 ```sh
 pnpm install
 pnpm tauri dev                          # run the app
+pnpm demo                               # run the app on made-up sessions (docs/demo.md)
 pnpm test                               # frontend tests (Vitest)
 cargo test --workspace                  # Rust tests
 cargo run -p marduk-core --example scan # read-only scan of this machine, for checking adapters
 cargo run --release -p marduk-core --example transcript # parse each agent's largest transcript
 ```
+
+`pnpm demo` needs none of the agents installed, and it never touches your real sessions or labels. See [docs/demo.md](docs/demo.md) for what's in it and how to retake the screenshot.
 
 The repo layout:
 
