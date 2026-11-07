@@ -19,6 +19,7 @@ export function makeSession(overrides: Partial<SessionRow> = {}): SessionRow {
     parentMissing: false,
     deletedWithParent: false,
     partOfParent: false,
+    projectless: false,
     archived: false,
     running: false,
     readOnlyReason: null,

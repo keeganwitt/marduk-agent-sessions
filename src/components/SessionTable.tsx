@@ -15,6 +15,7 @@ import {
   type ColumnId,
   type ColumnPrefs,
 } from "../lib/columns";
+import { NO_PROJECT } from "../lib/filter";
 import { formatAge, formatBytes, shortenPath } from "../lib/format";
 import type { SortKey, SortState } from "../lib/sort";
 import type { TreeRow } from "../lib/tree";
@@ -272,6 +273,62 @@ function DateCell({ value, now }: { value: string | null; now: Date }) {
   );
 }
 
+function ProjectCell({
+  session,
+  dir,
+  homeDir,
+  onOpenProject,
+  onFilterProject,
+}: {
+  session: SessionRow;
+  dir: string;
+  homeDir: string;
+  onOpenProject: (session: SessionRow) => void;
+  onFilterProject: (project: string) => void;
+}) {
+  const chat = session.projectless;
+  return (
+    <div className="project-cell">
+      <button
+        type="button"
+        className={chat ? "link no-project" : "link"}
+        title={
+          chat ? `No project. Open its chat folder, ${dir}` : `Open ${dir}`
+        }
+        aria-label={`Open ${chat ? "chat" : "project"} folder ${dir}`}
+        onClick={() => onOpenProject(session)}
+      >
+        {chat ? "No project" : shortenPath(dir, homeDir)}
+      </button>
+      <button
+        type="button"
+        className="filter-project"
+        title={
+          chat
+            ? "Show only sessions without a project"
+            : "Show only this project"
+        }
+        aria-label={
+          chat
+            ? "Show only sessions without a project"
+            : `Show only sessions in ${dir}`
+        }
+        onClick={() => onFilterProject(chat ? NO_PROJECT : dir)}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path
+            d="M2.5 3.5h11L9.25 8.5v4L6.75 13.5v-5z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 export function SessionTable(props: Props) {
   const {
     rows,
@@ -389,34 +446,13 @@ export function SessionTable(props: Props) {
         return (
           <td key={column.id} className="project">
             {session.projectDir ? (
-              <div className="project-cell">
-                <button
-                  type="button"
-                  className="link"
-                  title={`Open ${session.projectDir}`}
-                  aria-label={`Open project folder ${session.projectDir}`}
-                  onClick={() => onOpenProject(session)}
-                >
-                  {shortenPath(session.projectDir, homeDir)}
-                </button>
-                <button
-                  type="button"
-                  className="filter-project"
-                  title="Show only this project"
-                  aria-label={`Show only sessions in ${session.projectDir}`}
-                  onClick={() => onFilterProject(session.projectDir!)}
-                >
-                  <svg viewBox="0 0 16 16" aria-hidden="true">
-                    <path
-                      d="M2.5 3.5h11L9.25 8.5v4L6.75 13.5v-5z"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-              </div>
+              <ProjectCell
+                session={session}
+                dir={session.projectDir}
+                homeDir={homeDir}
+                onOpenProject={onOpenProject}
+                onFilterProject={onFilterProject}
+              />
             ) : (
               <span className="muted">—</span>
             )}

@@ -43,6 +43,8 @@ pub struct Session {
     /// Stored inside its parent session (Claude Code subagents): shown and readable, but
     /// only deleted, archived or labeled along with the parent.
     pub part_of_parent: bool,
+    /// A chat the agent started without a project, in a throwaway folder it made for it.
+    pub projectless: bool,
 }
 
 impl Session {

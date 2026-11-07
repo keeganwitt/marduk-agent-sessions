@@ -4,6 +4,7 @@ import {
   filterSessions,
   inProject,
   matchProjects,
+  NO_PROJECT,
   projectOptions,
 } from "./filter";
 import { makeSession } from "../test/factories";
@@ -99,16 +100,50 @@ describe("project filter", () => {
     expect(shown.map((s) => s.uid)).toEqual(["a"]);
   });
 
-  it("lists projects by session count, then by path", () => {
-    const sessions = ["/b", "/a", "/c", "/c", null].map((projectDir, index) =>
-      makeSession({ uid: String(index), projectDir }),
-    );
+  it("lists projects by session count, then by path, with chats as one entry", () => {
+    const sessions = [
+      makeSession({ uid: "1", projectDir: "/b" }),
+      makeSession({ uid: "2", projectDir: "/a" }),
+      makeSession({ uid: "3", projectDir: "/c" }),
+      makeSession({ uid: "4", projectDir: "/c" }),
+      makeSession({
+        uid: "5",
+        projectDir: "/chats/2026-11-06/tel",
+        projectless: true,
+      }),
+      makeSession({
+        uid: "6",
+        projectDir: "/chats/2026-11-05/x20",
+        projectless: true,
+      }),
+      makeSession({ uid: "7", projectDir: null }),
+    ];
 
     expect(projectOptions(sessions)).toEqual([
+      { dir: NO_PROJECT, count: 3 },
       { dir: "/c", count: 2 },
       { dir: "/a", count: 1 },
       { dir: "/b", count: 1 },
     ]);
+  });
+
+  it("filters to sessions without a project", () => {
+    const sessions = [
+      makeSession({
+        uid: "chat",
+        projectDir: "/chats/2026-11-06/tel",
+        projectless: true,
+      }),
+      makeSession({ uid: "none", projectDir: null }),
+      makeSession({ uid: "repo", projectDir: "/chats" }),
+    ];
+    const shown = (project: string) =>
+      filterSessions(sessions, { ...EMPTY_FILTER, project }, now).map(
+        (s) => s.uid,
+      );
+
+    expect(shown(NO_PROJECT)).toEqual(["chat", "none"]);
+    expect(shown("/chats")).toEqual(["repo"]);
   });
 
   it("suggests projects by full path or by the path shown with ~", () => {
@@ -120,5 +155,10 @@ describe("project filter", () => {
     expect(matchProjects(options, "~/proj", "/Users/me")).toEqual([options[0]]);
     expect(matchProjects(options, "SRV", "/Users/me")).toEqual([options[1]]);
     expect(matchProjects(options, "  ", "/Users/me")).toEqual(options);
+    const withChats = [{ dir: NO_PROJECT, count: 9 }, ...options];
+    expect(matchProjects(withChats, "no proj", "/Users/me")).toEqual([
+      withChats[0],
+    ]);
+    expect(matchProjects(withChats, "<", "/Users/me")).toEqual([]);
   });
 });

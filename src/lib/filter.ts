@@ -10,7 +10,7 @@ export interface SessionFilter {
   agent: string;
   archive: ArchiveFilter;
   label: LabelFilter;
-  /** A project folder; its subfolders match too. */
+  /** A project folder (its subfolders match too), or `NO_PROJECT`. */
   project: string | null;
   olderThanDays: number | null;
   minSizeMb: number | null;
@@ -18,6 +18,9 @@ export interface SessionFilter {
 }
 
 export const ALL_AGENTS = "all";
+
+/** Sessions started without a project, or with no folder at all. Never a real path. */
+export const NO_PROJECT = "<no project>";
 
 export const EMPTY_FILTER: SessionFilter = {
   agent: ALL_AGENTS,
@@ -44,8 +47,7 @@ export function sessionMatcher(
       (filter.label === "none"
         ? session.labelIds.length === 0
         : session.labelIds.includes(filter.label))) &&
-    (filter.project === null ||
-      inProject(session.projectDir, filter.project)) &&
+    (filter.project === null || inProjectFilter(session, filter.project)) &&
     (filter.olderThanDays === null ||
       ageInDays(session.lastActivity, now) >= filter.olderThanDays) &&
     (minBytes === null || session.sizeBytes >= minBytes) &&
@@ -62,6 +64,16 @@ export function filterSessions(
   return sessions.filter(sessionMatcher(filter, now));
 }
 
+function inProjectFilter(session: SessionRow, project: string): boolean {
+  return project === NO_PROJECT
+    ? hasNoProject(session)
+    : !session.projectless && inProject(session.projectDir, project);
+}
+
+export function hasNoProject(session: SessionRow): boolean {
+  return session.projectless || session.projectDir === null;
+}
+
 /** True when `dir` is `project` or one of its subfolders. */
 export function inProject(dir: string | null, project: string): boolean {
   if (dir === null) return false;
@@ -76,17 +88,24 @@ export interface ProjectOption {
   count: number;
 }
 
-/** Every project folder with its session count, the most used first. */
+/**
+ * Every project folder with its session count, the most used first. Sessions without a
+ * project are one `NO_PROJECT` option, rather than one folder per chat.
+ */
 export function projectOptions(sessions: SessionRow[]): ProjectOption[] {
   const counts = new Map<string, number>();
   for (const session of sessions) {
-    if (session.projectDir) {
-      counts.set(session.projectDir, (counts.get(session.projectDir) ?? 0) + 1);
-    }
+    const dir = hasNoProject(session) ? NO_PROJECT : session.projectDir!;
+    counts.set(dir, (counts.get(dir) ?? 0) + 1);
   }
   return [...counts]
     .map(([dir, count]) => ({ dir, count }))
     .sort((a, b) => b.count - a.count || a.dir.localeCompare(b.dir));
+}
+
+/** How a project option or filter reads in the UI. */
+export function projectLabel(dir: string, homeDir: string): string {
+  return dir === NO_PROJECT ? "No project" : tildePath(dir, homeDir);
 }
 
 /** Projects whose path, in full or with `~` for home, contains `text`. */
@@ -99,7 +118,7 @@ export function matchProjects(
   if (needle === "") return options;
   return options.filter(
     ({ dir }) =>
-      dir.toLowerCase().includes(needle) ||
-      tildePath(dir, homeDir).toLowerCase().includes(needle),
+      (dir !== NO_PROJECT && dir.toLowerCase().includes(needle)) ||
+      projectLabel(dir, homeDir).toLowerCase().includes(needle),
   );
 }

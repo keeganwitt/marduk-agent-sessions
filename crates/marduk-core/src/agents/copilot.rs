@@ -288,6 +288,7 @@ fn session_from(
         parent_id: None,
         deleted_with_parent: false,
         part_of_parent: false,
+        projectless: false,
     }
 }
 

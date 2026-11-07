@@ -1,7 +1,12 @@
 import { useId, useState } from "react";
 
-import { matchProjects, type ProjectOption } from "../lib/filter";
-import { shortenPath, tildePath } from "../lib/format";
+import {
+  matchProjects,
+  NO_PROJECT,
+  projectLabel,
+  type ProjectOption,
+} from "../lib/filter";
+import { shortenPath } from "../lib/format";
 
 /** With hundreds of projects, a full list is no help; typing narrows it instead. */
 const SHOWN = 50;
@@ -11,6 +16,10 @@ interface Props {
   value: string | null;
   homeDir: string;
   onChange: (project: string | null) => void;
+}
+
+function shownValue(value: string, homeDir: string): string {
+  return value === NO_PROJECT ? "No project" : shortenPath(value, homeDir);
 }
 
 export function ProjectFilter({ options, value, homeDir, onChange }: Props) {
@@ -46,8 +55,8 @@ export function ProjectFilter({ options, value, homeDir, onChange }: Props) {
             open && shown.length > 0 ? `${id}-option-${active}` : undefined
           }
           placeholder="Any project"
-          title={value ?? undefined}
-          value={open ? text : value ? shortenPath(value, homeDir) : ""}
+          title={value && value !== NO_PROJECT ? value : undefined}
+          value={open ? text : value ? shownValue(value, homeDir) : ""}
           onFocus={() => setOpen(true)}
           onBlur={close}
           onChange={(event) => {
@@ -93,14 +102,20 @@ export function ProjectFilter({ options, value, homeDir, onChange }: Props) {
                 id={`${id}-option-${index}`}
                 role="option"
                 aria-selected={index === active}
-                title={option.dir}
+                title={option.dir === NO_PROJECT ? undefined : option.dir}
                 // Keeps focus in the input, whose blur would close the list before the click.
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setActive(index)}
                 onClick={() => choose(option.dir)}
               >
-                <span className="combo-path">
-                  {tildePath(option.dir, homeDir)}
+                <span
+                  className={
+                    option.dir === NO_PROJECT
+                      ? "combo-path no-project"
+                      : "combo-path"
+                  }
+                >
+                  {projectLabel(option.dir, homeDir)}
                 </span>
                 <span className="combo-count">{option.count}</span>
               </li>

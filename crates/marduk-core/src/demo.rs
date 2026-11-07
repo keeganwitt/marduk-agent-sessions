@@ -128,6 +128,8 @@ struct Spec {
     size: u64,
     archived: bool,
     running: bool,
+    /// A Codex Desktop chat started without a project; `project` is ignored.
+    chat: bool,
     labels: &'static [&'static str],
 }
 
@@ -146,6 +148,7 @@ const fn spec(
         size,
         archived: false,
         running: false,
+        chat: false,
         labels: &[],
     }
 }
@@ -153,6 +156,11 @@ const fn spec(
 impl Spec {
     const fn archived(mut self) -> Self {
         self.archived = true;
+        self
+    }
+
+    const fn chat(mut self) -> Self {
+        self.chat = true;
         self
     }
 
@@ -488,6 +496,21 @@ impl Writer<'_> {
                 },
             )),
         )?;
+        self.codex(
+            spec("Explain this regex", "", 3 * DAY, 3 * DAY, 96 * KB).chat(),
+            &[],
+        )?;
+        self.codex(
+            spec(
+                "Convert a CSV export to JSON",
+                "",
+                5 * DAY,
+                5 * DAY,
+                210 * KB,
+            )
+            .chat(),
+            &[],
+        )?;
         self.kilo(&[
             spec(
                 "Sketch the onboarding flow",
@@ -720,7 +743,20 @@ impl Writer<'_> {
         id: &str,
         spawned_by: Option<(&str, &CodexAgent)>,
     ) -> io::Result<()> {
-        let cwd = self.project(spec.project)?;
+        let (cwd, workspace_root) = if spec.chat {
+            let chats = self.home.root.join("Documents").join("Codex");
+            let dir = chats
+                .join(self.datetime(spec.created).format("%Y-%m-%d").to_string())
+                .join(slug(spec.title));
+            fs::create_dir_all(&dir)?;
+            (
+                dir.to_string_lossy().into_owned(),
+                chats.to_string_lossy().into_owned(),
+            )
+        } else {
+            let cwd = self.project(spec.project)?;
+            (cwd.clone(), cwd)
+        };
         let source = match spawned_by {
             Some((parent, agent)) => json!({ "subagent": { "thread_spawn": {
                 "parent_thread_id": parent,
@@ -738,6 +774,7 @@ impl Writer<'_> {
                 "id": id,
                 "timestamp": self.stamp(spec.created),
                 "cwd": cwd,
+                "runtime_workspace_roots": [workspace_root],
                 "originator": "codex_cli_rs",
                 "source": source,
             }}),
@@ -1116,6 +1153,16 @@ fn summary(title: &str) -> String {
     )
 }
 
+/// Codex Desktop names a chat's folder after the start of its first prompt.
+fn slug(title: &str) -> String {
+    title
+        .split_whitespace()
+        .take(3)
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
 /// Claude Code names a project's folder after its path, with every other character a dash.
 fn claude_folder(cwd: &str) -> String {
     cwd.chars()
@@ -1283,6 +1330,15 @@ mod tests {
                 .iter()
                 .any(|session| session.agent == "opencode" && session.parent_id.is_some())
         );
+        let chats: Vec<_> = sessions
+            .iter()
+            .filter(|session| session.projectless)
+            .collect();
+        assert_eq!(chats.len(), 2);
+        let chats_dir = home.root().join("Documents").join("Codex");
+        assert!(chats.iter().all(|chat| {
+            PathBuf::from(chat.project_dir.as_deref().unwrap()).starts_with(&chats_dir)
+        }));
 
         let store = LabelStore::open(&home.var("MARDUK_DATA_DIR").join("labels.db")).unwrap();
         assert_eq!(store.labels().unwrap().len(), LABELS.len());

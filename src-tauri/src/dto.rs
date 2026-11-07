@@ -38,6 +38,8 @@ pub struct SessionRow {
     pub deleted_with_parent: bool,
     /// Stored inside its parent session: shown and readable, but not separately changed.
     pub part_of_parent: bool,
+    /// Started without a project; `project_dir` is a throwaway folder the agent made.
+    pub projectless: bool,
     pub archived: bool,
     pub running: bool,
     pub read_only_reason: Option<String>,
@@ -253,6 +255,7 @@ fn session_row(catalog: &Catalog, session: &Session, now: SystemTime) -> Session
         parent_missing: false,
         deleted_with_parent: session.deleted_with_parent,
         part_of_parent: session.part_of_parent,
+        projectless: session.projectless,
         archived: session.archived,
         running: session.is_running(now, catalog.running_window()),
         read_only_reason: match &plan {
@@ -431,6 +434,7 @@ mod tests {
             parent_missing: false,
             deleted_with_parent: false,
             part_of_parent: false,
+            projectless: false,
             archived: false,
             running: false,
             read_only_reason: None,

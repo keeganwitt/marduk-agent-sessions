@@ -24,6 +24,8 @@ export interface SessionRow {
   deletedWithParent: boolean;
   /** Stored inside its parent session (Claude Code subagents): readable, not separately changed. */
   partOfParent: boolean;
+  /** Started without a project; `projectDir` is a throwaway folder the agent made. */
+  projectless: boolean;
   archived: boolean;
   running: boolean;
   readOnlyReason: string | null;

@@ -347,6 +347,7 @@ impl ClaudeAdapter {
             parent_id: Some(parent.id.clone()),
             deleted_with_parent: true,
             part_of_parent: true,
+            projectless: false,
         })
     }
 }
@@ -378,6 +379,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         parent_id: None,
         deleted_with_parent: false,
         part_of_parent: false,
+        projectless: false,
     }
 }
 

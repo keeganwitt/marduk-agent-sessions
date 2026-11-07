@@ -658,6 +658,48 @@ describe("App", () => {
     expect(rowTitles()).toHaveLength(2);
   });
 
+  it("groups chats started without a project", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({
+          uid: "c1",
+          title: "Explain a regex",
+          projectDir: "/Users/me/Documents/Codex/2026-11-06/explain",
+          projectless: true,
+        }),
+        makeSession({
+          uid: "c2",
+          title: "Convert a CSV",
+          projectDir: "/Users/me/Documents/Codex/2026-11-05/convert",
+          projectless: true,
+        }),
+        makeSession({ uid: "r", title: "Repo work", projectDir: "/work/app" }),
+      ),
+    );
+
+    render(<App />);
+    expect(
+      await screen.findByRole("button", {
+        name: "Open chat folder /Users/me/Documents/Codex/2026-11-06/explain",
+      }),
+    ).toHaveTextContent("No project");
+
+    await user.click(screen.getByRole("combobox", { name: "Project" }));
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "No project2",
+      "/work/app1",
+    ]);
+
+    await user.click(options[0]);
+
+    expect(rowTitles().sort()).toEqual(["Convert a CSV", "Explain a regex"]);
+    expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue(
+      "No project",
+    );
+  });
+
   it("picks a project by typing part of its path", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(

@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -22,6 +22,8 @@ use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 /// `archived_sessions/` with `codex archive`. Thread names live in `session_index.jsonl`.
 pub struct CodexAdapter {
     home: PathBuf,
+    /// Where Codex Desktop makes a folder for each chat started without a project.
+    chats_dir: PathBuf,
     cli: Cli,
     cache: ParseCache<Fingerprint, Parsed>,
 }
@@ -33,6 +35,7 @@ impl CodexAdapter {
     pub fn new(home: PathBuf, cli: Option<PathBuf>) -> Self {
         Self {
             home,
+            chats_dir: default_chats_dir(),
             cli: Cli::fixed(PROGRAM, INSTALL_URL, cli),
             cache: ParseCache::default(),
         }
@@ -41,6 +44,7 @@ impl CodexAdapter {
     pub fn from_env(overrides: std::sync::Arc<CliOverrides>) -> Self {
         Self {
             home: env_dir("CODEX_HOME").unwrap_or_else(|| home_dir().join(".codex")),
+            chats_dir: default_chats_dir(),
             cli: Cli::detect("codex", PROGRAM, INSTALL_URL, overrides),
             cache: ParseCache::default(),
         }
@@ -126,9 +130,13 @@ impl AgentAdapter for CodexAdapter {
             }
         }
         for ((id, archived), segments) in threads {
-            result
-                .sessions
-                .push(session_from(id, archived, &titles, segments));
+            result.sessions.push(session_from(
+                id,
+                archived,
+                &titles,
+                &self.chats_dir,
+                segments,
+            ));
         }
         self.cache
             .retain(&rollouts.into_iter().map(|(path, _)| path).collect());
@@ -265,6 +273,7 @@ struct Parsed {
     agent_path: Option<String>,
     agent_nickname: Option<String>,
     agent_role: Option<String>,
+    runtime_roots: Vec<String>,
 }
 
 impl Parsed {
@@ -290,6 +299,39 @@ impl Parsed {
             (None, who) => who,
         }
     }
+}
+
+fn default_chats_dir() -> PathBuf {
+    home_dir().join("Documents").join("Codex")
+}
+
+/// Codex Desktop starts a chat without a project in a throwaway `<chats>/<YYYY-MM-DD>/<name>`
+/// folder. Newer rollouts record `<chats>` as a workspace root; older ones record no roots.
+fn is_projectless(cwd: &str, runtime_roots: &[String], chats_dir: &Path) -> bool {
+    let cwd = Path::new(cwd);
+    runtime_roots
+        .iter()
+        .map(Path::new)
+        .chain(std::iter::once(chats_dir))
+        .any(|root| {
+            cwd.strip_prefix(root).is_ok_and(|rest| {
+                let mut parts = rest.components();
+                matches!(
+                    (parts.next(), parts.next()),
+                    (Some(Component::Normal(day)), Some(Component::Normal(_))) if is_date(day)
+                )
+            })
+        })
+}
+
+fn is_date(name: &std::ffi::OsStr) -> bool {
+    name.to_str().is_some_and(|name| {
+        name.len() == 10
+            && name.bytes().enumerate().all(|(index, byte)| match index {
+                4 | 7 => byte == b'-',
+                _ => byte.is_ascii_digit(),
+            })
+    })
 }
 
 /// Codex injects `<environment_context>` blocks and AGENTS.md contents as user messages.
@@ -338,6 +380,12 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
                 parsed.agent_path = field("agent_path");
                 parsed.agent_nickname = field("agent_nickname");
                 parsed.agent_role = field("agent_role");
+                parsed.runtime_roots = meta["runtime_workspace_roots"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|root| root.as_str().map(str::to_string))
+                    .collect();
                 parsed
                     .span
                     .observe(meta["timestamp"].as_str().and_then(jsonl::parse_timestamp));
@@ -512,6 +560,7 @@ fn session_from(
     id: String,
     archived: bool,
     titles: &HashMap<String, String>,
+    chats_dir: &Path,
     mut segments: Vec<Segment>,
 ) -> Session {
     segments.sort_by(|a, b| {
@@ -557,6 +606,10 @@ fn session_from(
         parent_id: first.parent_id.clone(),
         deleted_with_parent: first.spawned,
         part_of_parent: false,
+        projectless: first
+            .cwd
+            .as_deref()
+            .is_some_and(|cwd| is_projectless(cwd, &first.runtime_roots, chats_dir)),
     }
 }
 
@@ -629,6 +682,67 @@ mod tests {
         );
         assert_eq!(session.files, vec![active]);
         assert!(sessions[1].archived);
+    }
+
+    #[test]
+    fn recognizes_chats_started_without_a_project() {
+        let home = tempfile::tempdir().unwrap();
+        let rollout_with = |id: &str, meta: serde_json::Value| {
+            let mut payload = serde_json::json!({ "id": id });
+            payload
+                .as_object_mut()
+                .unwrap()
+                .extend(meta.as_object().unwrap().clone());
+            write(
+                &home
+                    .path()
+                    .join(format!("sessions/2026/11/06/rollout-x-{id}.jsonl")),
+                &serde_json::json!({ "type": "session_meta", "payload": payload }).to_string(),
+            );
+        };
+        let ids = [
+            "019e98e4-0000-7000-8000-000000000001",
+            "019e98e4-0000-7000-8000-000000000002",
+            "019e98e4-0000-7000-8000-000000000003",
+            "019e98e4-0000-7000-8000-000000000004",
+        ];
+        rollout_with(
+            ids[0],
+            serde_json::json!({ "cwd": "/u/chats/2026-11-06/tel", "runtime_workspace_roots": ["/u/chats"] }),
+        );
+        rollout_with(
+            ids[1],
+            serde_json::json!({ "cwd": "/u/Documents/Codex/2026-08-25/x20" }),
+        );
+        rollout_with(
+            ids[2],
+            serde_json::json!({ "cwd": "/u/repo", "runtime_workspace_roots": ["/u/repo"] }),
+        );
+        rollout_with(
+            ids[3],
+            serde_json::json!({ "cwd": "/u/Documents/Codex/notes", "runtime_workspace_roots": ["/u/Documents/Codex/notes"] }),
+        );
+        let codex = CodexAdapter {
+            chats_dir: PathBuf::from("/u/Documents/Codex"),
+            ..adapter(home.path(), None)
+        };
+
+        let sessions = codex.scan().sessions;
+
+        let projectless = |id: &str| {
+            sessions
+                .iter()
+                .find(|session| session.id == id)
+                .unwrap()
+                .projectless
+        };
+        assert!(projectless(ids[0]), "recorded chats root");
+        assert!(
+            projectless(ids[1]),
+            "default chats folder, no roots recorded"
+        );
+        assert!(!projectless(ids[2]), "a project");
+        assert!(!projectless(ids[3]), "not a dated chat folder");
     }
 
     #[test]

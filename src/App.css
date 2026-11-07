@@ -1248,3 +1248,7 @@ button.filter-project svg {
   width: 14px;
   height: 14px;
 }
+
+.no-project {
+  font-style: italic;
+}

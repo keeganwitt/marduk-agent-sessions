@@ -268,6 +268,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         parent_id: None,
         deleted_with_parent: false,
         part_of_parent: false,
+        projectless: false,
     }
 }
 
