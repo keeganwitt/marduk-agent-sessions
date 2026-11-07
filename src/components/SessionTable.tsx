@@ -8,6 +8,8 @@ import {
 import {
   COLUMNS,
   columnWidth,
+  DEFAULT_PREFS,
+  isHidden,
   resize,
   setHidden,
   visibleColumns,
@@ -123,6 +125,7 @@ function ariaSortFor(
 }
 
 const SORT_KEYS: Partial<Record<ColumnId, SortKey>> = {
+  model: "model",
   session: "title",
   agent: "agent",
   project: "project",
@@ -241,7 +244,7 @@ export function ColumnsMenu({
             <label key={column.id}>
               <input
                 type="checkbox"
-                checked={!columns.hidden.includes(column.id)}
+                checked={!isHidden(columns, column)}
                 onChange={(event) =>
                   onColumnsChange((prefs) =>
                     setHidden(prefs, column.id, !event.target.checked),
@@ -254,7 +257,7 @@ export function ColumnsMenu({
           <button
             type="button"
             className="link"
-            onClick={() => onColumnsChange({ widths: {}, hidden: [] })}
+            onClick={() => onColumnsChange(DEFAULT_PREFS)}
           >
             Reset widths and columns
           </button>
@@ -442,6 +445,17 @@ export function SessionTable(props: Props) {
             {session.agentName}
           </td>
         );
+      case "model": {
+        const current = session.models[session.models.length - 1];
+        return (
+          <td key={column.id} title={session.models.join(", ") || undefined}>
+            {current ?? <span className="muted">—</span>}
+            {session.models.length > 1 && (
+              <span className="muted"> +{session.models.length - 1}</span>
+            )}
+          </td>
+        );
+      }
       case "project":
         return (
           <td key={column.id} className="project">

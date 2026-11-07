@@ -88,6 +88,7 @@ struct Row {
     created_ms: i64,
     updated_ms: i64,
     archived: bool,
+    model: Option<String>,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -306,6 +307,7 @@ impl OpenCodeAdapter {
             deleted_with_parent: row.parent_id.is_some(),
             part_of_parent: false,
             projectless: false,
+            models: row.model.into_iter().collect(),
             parent_id: row.parent_id,
         }
     }
@@ -398,14 +400,35 @@ impl OpenCodeAdapter {
     }
 }
 
+/// A session's `model` column: JSON such as `{"providerID":"anthropic","modelID":"…"}`, or a
+/// plain model name.
+fn model_name(value: &str) -> Option<String> {
+    let value = value.trim();
+    let name = if value.starts_with('{') {
+        let model: Value = serde_json::from_str(value).ok()?;
+        ["modelID", "modelId", "id", "model"]
+            .iter()
+            .find_map(|key| model[key].as_str())?
+            .to_string()
+    } else {
+        value.to_string()
+    };
+    (!name.is_empty()).then_some(name)
+}
+
 fn read_rows(connection: &Connection, table: &str) -> rusqlite::Result<Vec<Row>> {
     let archived = if has_column(connection, table, "time_archived") {
         "time_archived"
     } else {
         "null"
     };
+    let model = if has_column(connection, table, "model") {
+        "model"
+    } else {
+        "null"
+    };
     let mut statement = connection.prepare(&format!(
-        "select id, parent_id, directory, title, time_created, time_updated, {archived} from {table}"
+        "select id, parent_id, directory, title, time_created, time_updated, {archived}, {model} from {table}"
     ))?;
     statement
         .query_map([], |row| {
@@ -417,6 +440,11 @@ fn read_rows(connection: &Connection, table: &str) -> rusqlite::Result<Vec<Row>>
                 created_ms: row.get(4)?,
                 updated_ms: row.get(5)?,
                 archived: row.get::<_, Option<i64>>(6)?.is_some(),
+                model: row
+                    .get::<_, Option<String>>(7)
+                    .ok()
+                    .flatten()
+                    .and_then(|model| model_name(&model)),
             })
         })?
         .collect()
@@ -944,6 +972,37 @@ mod tests {
             )
             .unwrap();
         (path, connection)
+    }
+
+    #[test]
+    fn reads_the_session_model_as_json_or_a_plain_name() {
+        assert_eq!(
+            model_name(r#"{"providerID":"anthropic","modelID":"claude-opus-5-5"}"#).as_deref(),
+            Some("claude-opus-5-5")
+        );
+        assert_eq!(model_name("gpt-6.1").as_deref(), Some("gpt-6.1"));
+        assert_eq!(model_name(" "), None);
+        assert_eq!(model_name("{not json"), None);
+    }
+
+    #[test]
+    fn scans_the_session_model_column() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_, connection) = v2_db(dir.path());
+        insert_session(&connection, "ses_a", None, Some("A"), false);
+        connection
+            .execute_batch("alter table session_v2 add column model text")
+            .unwrap();
+        connection
+            .execute(
+                "update session_v2 set model = ?1 where id = 'ses_a'",
+                [r#"{"providerID":"openai","modelID":"gpt-6.1"}"#],
+            )
+            .unwrap();
+
+        let sessions = adapter(dir.path(), None).scan().sessions;
+
+        assert_eq!(sessions[0].models, ["gpt-6.1"]);
     }
 
     fn insert_session(

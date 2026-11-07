@@ -8,7 +8,12 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import { Filters } from "./components/Filters";
 import { ColumnsMenu, SessionTable } from "./components/SessionTable";
-import { EMPTY_FILTER, projectOptions, sessionMatcher } from "./lib/filter";
+import {
+  EMPTY_FILTER,
+  modelOptions,
+  projectOptions,
+  sessionMatcher,
+} from "./lib/filter";
 import { rangeBetween } from "./lib/selection";
 import { applyTheme, isTheme } from "./lib/theme";
 import { nextColor } from "./lib/labels";
@@ -248,6 +253,7 @@ export default function App() {
   }, []);
 
   const projects = useMemo(() => projectOptions(scan?.sessions ?? []), [scan]);
+  const models = useMemo(() => modelOptions(scan?.sessions ?? []), [scan]);
   const matcher = useMemo(
     () => sessionMatcher(filter, scannedAt),
     [filter, scannedAt],
@@ -582,6 +588,7 @@ export default function App() {
             agents={scan.agents}
             labels={labels}
             projects={projects}
+            models={models}
             homeDir={scan.homeDir}
             filter={filter}
             onChange={setFilter}

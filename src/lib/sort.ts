@@ -1,7 +1,7 @@
 import type { SessionRow } from "./types";
 
 export type SortKey =
-  "title" | "agent" | "project" | "created" | "lastActivity" | "size";
+  "title" | "agent" | "model" | "project" | "created" | "lastActivity" | "size";
 export type SortDirection = "asc" | "desc";
 
 export interface SortState {
@@ -43,6 +43,8 @@ function sortValue(session: SessionRow, key: SortKey): string | number | null {
       return session.title ?? session.id;
     case "agent":
       return session.agentName;
+    case "model":
+      return session.models[session.models.length - 1] ?? null;
     case "project":
       return session.projectDir;
     case "created":

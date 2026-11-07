@@ -710,7 +710,7 @@ impl Writer<'_> {
             record(
                 "assistant",
                 spec.step(1),
-                json!({ "role": "assistant", "content": [
+                json!({ "role": "assistant", "model": model("claude", spec.title), "content": [
                     { "type": "text", "text": PLAN },
                     { "type": "tool_use", "id": "toolu_1", "name": "Bash", "input": { "command": COMMAND } },
                 ]}),
@@ -725,7 +725,7 @@ impl Writer<'_> {
             record(
                 "assistant",
                 spec.last,
-                json!({ "role": "assistant", "content": [{ "type": "text", "text": summary(spec.title) }] }),
+                json!({ "role": "assistant", "model": model("claude", spec.title), "content": [{ "type": "text", "text": summary(spec.title) }] }),
             ),
         ]
     }
@@ -790,6 +790,8 @@ impl Writer<'_> {
                 spec.created,
                 json!({ "type": "user_message", "message": spec.title }),
             ),
+            json!({ "timestamp": self.stamp(spec.created), "type": "turn_context",
+                    "payload": { "cwd": cwd, "model": model("codex", spec.title) } }),
             item(
                 spec.step(1),
                 json!({ "type": "message", "role": "assistant", "content": [{ "type": "output_text", "text": PLAN }] }),
@@ -840,7 +842,7 @@ impl Writer<'_> {
             event(
                 "session.start",
                 spec.created,
-                json!({ "sessionId": id, "context": { "cwd": cwd } }),
+                json!({ "sessionId": id, "selectedModel": model("copilot", spec.title), "context": { "cwd": cwd } }),
             ),
             event(
                 "user.message",
@@ -896,6 +898,8 @@ impl Writer<'_> {
         let records = [
             json!({ "type": "session", "version": 3, "id": id,
                     "timestamp": self.stamp(spec.created), "cwd": cwd }),
+            json!({ "type": "model_change", "id": "m0", "parentId": null,
+                    "timestamp": self.stamp(spec.created), "modelId": model("pi", spec.title) }),
             entry(
                 "e1",
                 None,
@@ -967,7 +971,7 @@ impl Writer<'_> {
             "OPENCODE_DB",
             "create table session_v2 (id text primary key, parent_id text, directory text not null,
                title text, time_created integer not null, time_updated integer not null,
-               time_archived integer);
+               time_archived integer, model text);
              create table session_message (id text primary key, session_id text not null,
                type text not null, seq integer not null, time_created integer not null,
                time_updated integer not null, data text not null);
@@ -980,7 +984,7 @@ impl Writer<'_> {
             let id = opencode_id(spec.title);
             let cwd = self.project(spec.project)?;
             sql(connection.execute(
-                "insert into session_v2 values (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "insert into session_v2 values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     id,
                     parent.map(opencode_id),
@@ -989,6 +993,8 @@ impl Writer<'_> {
                     self.millis(spec.created),
                     self.millis(spec.last),
                     spec.archived.then(|| self.millis(spec.last)),
+                    json!({ "providerID": "anthropic", "modelID": model("opencode", spec.title) })
+                        .to_string(),
                 ],
             ))?;
             let message = |seq: i64, kind: &str, ago: u64, data: Value| {
@@ -1339,6 +1345,16 @@ impl Writer<'_> {
     }
 }
 
+/// A plausible model for a session, the same on every demo run.
+fn model(agent: &str, title: &str) -> &'static str {
+    let choices: &[&str] = match agent {
+        "claude" => &["claude-opus-5-5", "claude-sonnet-5-5"],
+        "codex" => &["gpt-6.1", "gpt-6.1-mini"],
+        _ => &["claude-sonnet-5-5", "gpt-6.1"],
+    };
+    choices[(fnv(title, 4) % choices.len() as u64) as usize]
+}
+
 fn summary(title: &str) -> String {
     format!(
         "Done: **{title}**.\n\n- Updated the code in `src/`\n- Added tests for the new behavior\n\n\
@@ -1461,6 +1477,13 @@ mod tests {
             for session in &sessions {
                 let title = session.title.as_deref().unwrap_or_default();
                 assert!(!title.is_empty(), "{} {}", adapter.id(), session.id);
+                if adapter.id() != "kilo" {
+                    assert!(
+                        !session.models.is_empty(),
+                        "{} {title} has no model",
+                        adapter.id()
+                    );
+                }
                 let project = PathBuf::from(session.project_dir.as_deref().unwrap());
                 assert!(project.starts_with(home.root()) && project.is_dir());
 

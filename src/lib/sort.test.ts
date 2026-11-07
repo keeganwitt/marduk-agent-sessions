@@ -76,4 +76,16 @@ describe("sortSessions", () => {
       "b",
     ]);
   });
+
+  it("sorts by the current model, with unknown models last", () => {
+    const sessions = [
+      makeSession({ uid: "none", models: [] }),
+      makeSession({ uid: "z", models: ["a-old", "zeta"] }),
+      makeSession({ uid: "b", models: ["beta"] }),
+    ];
+
+    const order = sortSessions(sessions, { key: "model", direction: "asc" });
+
+    expect(order.map((s) => s.uid)).toEqual(["b", "z", "none"]);
+  });
 });

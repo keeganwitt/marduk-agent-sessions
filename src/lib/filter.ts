@@ -8,6 +8,8 @@ export type LabelFilter = "any" | "none" | number;
 
 export interface SessionFilter {
   agent: string;
+  /** A model the session used at any point, or `ALL_MODELS`. */
+  model: string;
   archive: ArchiveFilter;
   label: LabelFilter;
   /** A project folder (its subfolders match too), or `NO_PROJECT`. */
@@ -18,12 +20,14 @@ export interface SessionFilter {
 }
 
 export const ALL_AGENTS = "all";
+export const ALL_MODELS = "all";
 
 /** Sessions started without a project, or with no folder at all. Never a real path. */
 export const NO_PROJECT = "<no project>";
 
 export const EMPTY_FILTER: SessionFilter = {
   agent: ALL_AGENTS,
+  model: ALL_MODELS,
   archive: "all",
   label: "any",
   project: null,
@@ -41,6 +45,7 @@ export function sessionMatcher(
     filter.minSizeMb === null ? null : filter.minSizeMb * 1024 * 1024;
   return (session) =>
     (filter.agent === ALL_AGENTS || session.agent === filter.agent) &&
+    (filter.model === ALL_MODELS || session.models.includes(filter.model)) &&
     (filter.archive === "all" ||
       session.archived === (filter.archive === "archived")) &&
     (filter.label === "any" ||
@@ -121,4 +126,19 @@ export function matchProjects(
       (dir !== NO_PROJECT && dir.toLowerCase().includes(needle)) ||
       projectLabel(dir, homeDir).toLowerCase().includes(needle),
   );
+}
+
+/** Every model sessions used, with how many sessions used it, the most used first. */
+export function modelOptions(
+  sessions: SessionRow[],
+): { model: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const session of sessions) {
+    for (const model of session.models) {
+      counts.set(model, (counts.get(model) ?? 0) + 1);
+    }
+  }
+  return [...counts]
+    .map(([model, count]) => ({ model, count }))
+    .sort((a, b) => b.count - a.count || a.model.localeCompare(b.model));
 }

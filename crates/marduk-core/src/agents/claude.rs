@@ -555,8 +555,16 @@ struct Record<'a> {
     message: Option<&'a RawValue>,
 }
 
+/// Just the model of an assistant message, without allocating its content.
+#[derive(Deserialize)]
+struct MessageModel<'a> {
+    #[serde(borrow)]
+    model: Option<Cow<'a, str>>,
+}
+
 #[derive(Default, Clone)]
 struct Parsed {
+    models: Vec<String>,
     cwd: Option<String>,
     custom_title: Option<String>,
     ai_title: Option<String>,
@@ -597,6 +605,15 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
         Some("summary") => parsed.summary = record.summary.or(parsed.summary.take()),
         Some("user") if parsed.first_prompt.is_none() && record.is_meta != Some(true) => {
             parsed.first_prompt = record.message.and_then(user_prompt_text);
+        }
+        Some("assistant") => {
+            if let Some(model) = record
+                .message
+                .and_then(|message| serde_json::from_str::<MessageModel>(message.get()).ok())
+                .and_then(|message| message.model)
+            {
+                crate::session::note_model(&mut parsed.models, &model);
+            }
         }
         _ => {}
     }
@@ -671,11 +688,13 @@ impl ClaudeAdapter {
             deleted_with_parent: true,
             part_of_parent: true,
             projectless: false,
+            models: parsed.models.clone(),
         })
     }
 }
 
 fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Session {
+    let models = parsed.models.clone();
     let id = path
         .file_stem()
         .unwrap_or_default()
@@ -703,6 +722,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         deleted_with_parent: false,
         part_of_parent: false,
         projectless: false,
+        models,
     }
 }
 
@@ -894,6 +914,34 @@ mod tests {
         fs::remove_file(folder.join(format!("{ID}.jsonl"))).unwrap();
         fs::remove_file(folder.join(format!("{OTHER_ID}.jsonl"))).unwrap();
         assert!(!adapter.memory_in_use(&memory_dir));
+    }
+
+    #[test]
+    fn records_the_models_a_session_used() {
+        let config = tempfile::tempdir().unwrap();
+        let assistant = |model: &str| {
+            format!(
+                r#"{{"type":"assistant","message":{{"role":"assistant","model":"{model}","content":[]}}}}"#
+            )
+        };
+        write_project(
+            config.path(),
+            "p",
+            &[(
+                &format!("{ID}.jsonl"),
+                &[
+                    assistant("claude-opus-5"),
+                    assistant("<synthetic>"),
+                    assistant("claude-opus-5-5"),
+                ]
+                .join("\n"),
+            )],
+        );
+
+        assert_eq!(
+            scan_one(config.path()).models,
+            ["claude-opus-5", "claude-opus-5-5"]
+        );
     }
 
     fn scan_one(config: &Path) -> Session {

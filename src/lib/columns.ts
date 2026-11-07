@@ -2,6 +2,7 @@ export type ColumnId =
   | "session"
   | "labels"
   | "agent"
+  | "model"
   | "project"
   | "created"
   | "lastActivity"
@@ -15,6 +16,8 @@ export interface ColumnDef {
   /** Session can't be hidden: it holds the title, expander and transcript link. */
   hideable: boolean;
   numeric: boolean;
+  /** Shown only once turned on in Columns. */
+  defaultHidden?: boolean;
 }
 
 export const COLUMNS: readonly ColumnDef[] = [
@@ -41,6 +44,15 @@ export const COLUMNS: readonly ColumnDef[] = [
     minWidth: 60,
     hideable: true,
     numeric: false,
+  },
+  {
+    id: "model",
+    label: "Model",
+    defaultWidth: 140,
+    minWidth: 60,
+    hideable: true,
+    numeric: false,
+    defaultHidden: true,
   },
   {
     id: "project",
@@ -79,11 +91,17 @@ export const COLUMNS: readonly ColumnDef[] = [
 export interface ColumnPrefs {
   widths: Partial<Record<ColumnId, number>>;
   hidden: ColumnId[];
+  /** Columns hidden by default that were turned on. */
+  shown: ColumnId[];
 }
 
 const STORAGE_KEY = "marduk.columns";
 
-export const DEFAULT_PREFS: ColumnPrefs = { widths: {}, hidden: [] };
+export const DEFAULT_PREFS: ColumnPrefs = { widths: {}, hidden: [], shown: [] };
+
+function column(id: ColumnId): ColumnDef {
+  return COLUMNS.find((candidate) => candidate.id === id)!;
+}
 
 function isColumnId(value: unknown): value is ColumnId {
   return COLUMNS.some((column) => column.id === value);
@@ -101,10 +119,13 @@ export function loadColumnPrefs(): ColumnPrefs {
         widths[id] = width;
     }
     const hidden = (parsed.hidden ?? []).filter(
-      (id): id is ColumnId =>
-        isColumnId(id) && COLUMNS.find((column) => column.id === id)!.hideable,
+      (id): id is ColumnId => isColumnId(id) && column(id).hideable,
     );
-    return { widths, hidden };
+    const shown = (parsed.shown ?? []).filter(
+      (id): id is ColumnId =>
+        isColumnId(id) && column(id).defaultHidden === true,
+    );
+    return { widths, hidden, shown };
   } catch {
     return DEFAULT_PREFS;
   }
@@ -125,8 +146,14 @@ export function columnWidth(prefs: ColumnPrefs, column: ColumnDef): number {
   );
 }
 
+export function isHidden(prefs: ColumnPrefs, def: ColumnDef): boolean {
+  return def.defaultHidden
+    ? !prefs.shown.includes(def.id)
+    : prefs.hidden.includes(def.id);
+}
+
 export function visibleColumns(prefs: ColumnPrefs): ColumnDef[] {
-  return COLUMNS.filter((column) => !prefs.hidden.includes(column.id));
+  return COLUMNS.filter((def) => !isHidden(prefs, def));
 }
 
 export function resize(
@@ -146,8 +173,12 @@ export function setHidden(
   id: ColumnId,
   hidden: boolean,
 ): ColumnPrefs {
-  const column = COLUMNS.find((candidate) => candidate.id === id)!;
-  if (!column.hideable) return prefs;
+  const def = column(id);
+  if (!def.hideable) return prefs;
+  if (def.defaultHidden) {
+    const rest = prefs.shown.filter((candidate) => candidate !== id);
+    return { ...prefs, shown: hidden ? rest : [...rest, id] };
+  }
   const rest = prefs.hidden.filter((candidate) => candidate !== id);
   return { ...prefs, hidden: hidden ? [...rest, id] : rest };
 }

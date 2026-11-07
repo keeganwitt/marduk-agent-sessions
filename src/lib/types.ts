@@ -26,6 +26,8 @@ export interface SessionRow {
   partOfParent: boolean;
   /** Started without a project; `projectDir` is a throwaway folder the agent made. */
   projectless: boolean;
+  /** Models the session used, the current one last. */
+  models: string[];
   archived: boolean;
   running: boolean;
   readOnlyReason: string | null;

@@ -18,7 +18,12 @@ describe("column prefs", () => {
 
   it("defaults to every column at its default width", () => {
     expect(loadColumnPrefs()).toEqual(DEFAULT_PREFS);
-    expect(visibleColumns(DEFAULT_PREFS)).toHaveLength(COLUMNS.length);
+    expect(visibleColumns(DEFAULT_PREFS).map((c) => c.id)).toEqual(
+      COLUMNS.filter((c) => !c.defaultHidden).map((c) => c.id),
+    );
+    expect(visibleColumns(DEFAULT_PREFS).map((c) => c.id)).not.toContain(
+      "model",
+    );
     expect(columnWidth(DEFAULT_PREFS, column("size"))).toBe(
       column("size").defaultWidth,
     );
@@ -40,6 +45,21 @@ describe("column prefs", () => {
     expect(setHidden(DEFAULT_PREFS, "session", true)).toBe(DEFAULT_PREFS);
   });
 
+  it("shows a hidden-by-default column only once turned on, even with older saved prefs", () => {
+    const withModel = setHidden(DEFAULT_PREFS, "model", false);
+    expect(withModel.shown).toEqual(["model"]);
+    expect(visibleColumns(withModel).map((c) => c.id)).toContain("model");
+    expect(setHidden(withModel, "model", true).shown).toEqual([]);
+
+    localStorage.setItem(
+      "marduk.columns",
+      JSON.stringify({ widths: {}, hidden: ["labels"] }),
+    );
+    expect(visibleColumns(loadColumnPrefs()).map((c) => c.id)).not.toContain(
+      "model",
+    );
+  });
+
   it("round-trips through storage and ignores unknown or invalid entries", () => {
     saveColumnPrefs(
       setHidden(resize(DEFAULT_PREFS, "size", 120), "labels", true),
@@ -47,6 +67,7 @@ describe("column prefs", () => {
     expect(loadColumnPrefs()).toEqual({
       widths: { size: 120 },
       hidden: ["labels"],
+      shown: [],
     });
 
     localStorage.setItem(

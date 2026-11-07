@@ -197,6 +197,7 @@ fn append_message(
 
 #[derive(Default, Clone)]
 struct Parsed {
+    models: Vec<String>,
     id: Option<String>,
     cwd: Option<String>,
     name: Option<String>,
@@ -215,6 +216,16 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
         Some("session") => {
             parsed.id = record["id"].as_str().map(str::to_string);
             parsed.cwd = record["cwd"].as_str().map(str::to_string);
+        }
+        Some("model_change") => {
+            if let Some(model) = record["modelId"].as_str() {
+                crate::session::note_model(&mut parsed.models, model);
+            }
+        }
+        Some("message") if record["message"]["role"] == "assistant" => {
+            if let Some(model) = record["message"]["model"].as_str() {
+                crate::session::note_model(&mut parsed.models, model);
+            }
         }
         Some("session_info") => {
             if let Some(name) = record["name"].as_str() {
@@ -277,6 +288,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         deleted_with_parent: false,
         part_of_parent: false,
         projectless: false,
+        models: parsed.models,
     }
 }
 
@@ -294,6 +306,25 @@ mod tests {
         let path = dir.join(FILE);
         fs::write(&path, content).unwrap();
         path
+    }
+
+    #[test]
+    fn records_models_from_model_changes() {
+        let root = tempfile::tempdir().unwrap();
+        write_session(
+            root.path(),
+            &[
+                r#"{"type":"session","id":"abc"}"#,
+                r#"{"type":"model_change","id":"a","modelId":"claude-sonnet-5-5"}"#,
+                r#"{"type":"model_change","id":"b","modelId":"gpt-6.1"}"#,
+            ]
+            .join("\n"),
+        );
+
+        assert_eq!(
+            scan_one(root.path()).models,
+            ["claude-sonnet-5-5", "gpt-6.1"]
+        );
     }
 
     fn scan_one(root: &Path) -> Session {

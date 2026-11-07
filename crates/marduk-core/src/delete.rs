@@ -309,6 +309,7 @@ mod tests {
             deleted_with_parent: false,
             part_of_parent: false,
             projectless: false,
+            models: Vec::new(),
         }
     }
 

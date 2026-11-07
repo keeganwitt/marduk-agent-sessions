@@ -312,6 +312,7 @@ struct Parsed {
     agent_nickname: Option<String>,
     agent_role: Option<String>,
     runtime_roots: Vec<String>,
+    models: Vec<String>,
 }
 
 impl Parsed {
@@ -612,6 +613,13 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
                     .observe(meta["timestamp"].as_str().and_then(jsonl::parse_timestamp));
             }
         }
+        Some("turn_context") if !inherited => {
+            if let Ok(context) = serde_json::from_str::<Value>(payload.get())
+                && let Some(model) = context["model"].as_str()
+            {
+                crate::session::note_model(&mut parsed.models, model);
+            }
+        }
         Some("event_msg")
             if parsed.first_prompt.is_none()
                 && !inherited
@@ -831,6 +839,12 @@ fn session_from(
             .cwd
             .as_deref()
             .is_some_and(|cwd| is_projectless(cwd, &first.runtime_roots, chats_dir)),
+        models: segments.iter().fold(Vec::new(), |mut models, segment| {
+            for model in &segment.parsed.models {
+                crate::session::note_model(&mut models, model);
+            }
+            models
+        }),
     }
 }
 
@@ -1050,6 +1064,30 @@ mod tests {
         write(&config, "features.memories = true\n");
         assert!(memories_enabled(&config));
         assert!(!memories_enabled(&home.path().join("missing.toml")));
+    }
+
+    #[test]
+    fn records_models_from_turn_context() {
+        let home = tempfile::tempdir().unwrap();
+        let context = |model: &str| {
+            format!(r#"{{"type":"turn_context","payload":{{"model":"{model}","cwd":"/work"}}}}"#)
+        };
+        write(
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &[
+                rollout(ID),
+                context("gpt-6.1"),
+                context("gpt-6.1-mini"),
+                context("gpt-6.1"),
+            ]
+            .join("\n"),
+        );
+
+        let sessions = adapter(home.path(), None).scan().sessions;
+
+        assert_eq!(sessions[0].models, ["gpt-6.1-mini", "gpt-6.1"]);
     }
 
     #[test]

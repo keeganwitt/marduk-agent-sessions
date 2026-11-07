@@ -45,6 +45,22 @@ pub struct Session {
     pub part_of_parent: bool,
     /// A chat the agent started without a project, in a throwaway folder it made for it.
     pub projectless: bool,
+    /// Models the session used, least recently used first; the last is the current one.
+    pub models: Vec<String>,
+}
+
+/// Records that `model` was used, keeping `models` in order of last use. Ignores blanks and
+/// placeholders such as Claude Code's `<synthetic>`.
+pub(crate) fn note_model(models: &mut Vec<String>, model: &str) {
+    let model = model.trim();
+    if model.is_empty() || model.starts_with('<') {
+        return;
+    }
+    if models.last().map(String::as_str) == Some(model) {
+        return;
+    }
+    models.retain(|known| known != model);
+    models.push(model.to_string());
 }
 
 impl Session {
@@ -61,6 +77,16 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notes_models_in_order_of_last_use_and_skips_placeholders() {
+        let mut models = Vec::new();
+        for model in ["a", "a", "b", "<synthetic>", " ", "a"] {
+            note_model(&mut models, model);
+        }
+
+        assert_eq!(models, ["b", "a"]);
+    }
 
     fn fingerprint_aged(age: Duration, now: SystemTime) -> Fingerprint {
         Fingerprint {

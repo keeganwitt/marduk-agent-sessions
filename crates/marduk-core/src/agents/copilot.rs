@@ -212,6 +212,7 @@ struct Parsed {
     start_cwd: Option<String>,
     first_prompt: Option<String>,
     span: Span,
+    models: Vec<String>,
 }
 
 fn parse_line(parsed: &mut Parsed, line: &str) {
@@ -224,6 +225,11 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
             .and_then(jsonl::parse_timestamp),
     );
     let data = &record["data"];
+    for key in ["selectedModel", "newModel", "model"] {
+        if let Some(model) = data[key].as_str() {
+            crate::session::note_model(&mut parsed.models, model);
+        }
+    }
     match record["type"].as_str() {
         Some("session.start") => {
             parsed.session_id = data["sessionId"]
@@ -299,6 +305,7 @@ fn session_from(
         deleted_with_parent: false,
         part_of_parent: false,
         projectless: false,
+        models: parsed.models,
     }
 }
 
@@ -400,6 +407,26 @@ mod tests {
     use super::*;
 
     const ID: &str = "459987cf-cdb8-4ba0-9065-f470cbe762ce";
+
+    #[test]
+    fn records_models_from_session_events() {
+        let root = tempfile::tempdir().unwrap();
+        write_session(
+            root.path(),
+            "s1",
+            &[
+                r#"{"type":"session.start","data":{"sessionId":"s1","selectedModel":"claude-sonnet-5"}}"#,
+                r#"{"type":"session.model_change","data":{"newModel":"gpt-6.1"}}"#,
+            ],
+            None,
+        );
+
+        let sessions = CopilotAdapter::new(root.path().to_path_buf())
+            .scan()
+            .sessions;
+
+        assert_eq!(sessions[0].models, ["claude-sonnet-5", "gpt-6.1"]);
+    }
 
     fn write_session(
         root: &Path,

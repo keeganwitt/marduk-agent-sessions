@@ -4,6 +4,7 @@ import {
   filterSessions,
   inProject,
   matchProjects,
+  modelOptions,
   NO_PROJECT,
   projectOptions,
 } from "./filter";
@@ -160,5 +161,30 @@ describe("project filter", () => {
       withChats[0],
     ]);
     expect(matchProjects(withChats, "<", "/Users/me")).toEqual([]);
+  });
+});
+
+describe("model filter", () => {
+  const sessions = [
+    makeSession({ uid: "a", models: ["claude-opus-5", "claude-opus-5-5"] }),
+    makeSession({ uid: "b", models: ["claude-opus-5-5"] }),
+    makeSession({ uid: "c", models: [] }),
+  ];
+
+  it("matches a model the session used at any point", () => {
+    const shown = (model: string) =>
+      filterSessions(sessions, { ...EMPTY_FILTER, model }, now).map(
+        (s) => s.uid,
+      );
+
+    expect(shown("claude-opus-5")).toEqual(["a"]);
+    expect(shown("claude-opus-5-5")).toEqual(["a", "b"]);
+  });
+
+  it("lists models by how many sessions used them", () => {
+    expect(modelOptions(sessions)).toEqual([
+      { model: "claude-opus-5-5", count: 2 },
+      { model: "claude-opus-5", count: 1 },
+    ]);
   });
 });

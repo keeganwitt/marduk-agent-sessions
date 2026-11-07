@@ -1,5 +1,6 @@
 import {
   ALL_AGENTS,
+  ALL_MODELS,
   type ArchiveFilter,
   type LabelFilter,
   type ProjectOption,
@@ -12,6 +13,7 @@ interface Props {
   agents: AgentSummary[];
   labels: Label[];
   projects: ProjectOption[];
+  models: { model: string; count: number }[];
   homeDir: string;
   filter: SessionFilter;
   onChange: (filter: SessionFilter) => void;
@@ -31,6 +33,7 @@ export function Filters({
   agents,
   labels,
   projects,
+  models,
   homeDir,
   filter,
   onChange,
@@ -53,6 +56,24 @@ export function Filters({
           ))}
         </select>
       </label>
+      {models.length > 0 && (
+        <label>
+          Model
+          <select
+            value={filter.model}
+            onChange={(event) =>
+              onChange({ ...filter, model: event.target.value })
+            }
+          >
+            <option value={ALL_MODELS}>All models</option>
+            {models.map(({ model, count }) => (
+              <option key={model} value={model}>
+                {model} ({count})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         Status
         <select
