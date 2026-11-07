@@ -17,7 +17,7 @@ import {
   sessionMatcher,
   type OptionalFilter,
 } from "./lib/filter";
-import { rangeBetween } from "./lib/selection";
+import { rangeBetween, withLeftoverSubagents } from "./lib/selection";
 import { applyTheme, isTheme } from "./lib/theme";
 import { nextColor } from "./lib/labels";
 import { buildTree } from "./lib/tree";
@@ -329,7 +329,10 @@ export default function App() {
   const selectedVisible = visible.filter((session) =>
     selected.has(session.uid),
   );
-  const toDelete = selectedVisible.filter(isDeletable);
+  const toDelete = withLeftoverSubagents(
+    selectedVisible.filter(isDeletable),
+    scan?.sessions ?? [],
+  );
   const toArchive = selectedVisible.filter(
     (session) => isArchivable(session) && !session.archived,
   );

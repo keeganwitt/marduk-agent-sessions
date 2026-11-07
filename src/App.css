@@ -1746,7 +1746,12 @@ button.ghost:hover {
 
 .clear-filters {
   align-self: flex-end;
-  padding-bottom: 6px;
+}
+
+/* Text buttons in the filter bar match the fields' height so they share a baseline. */
+.filters button.ghost {
+  height: 28px;
+  padding: 0 10px;
 }
 
 /* Equal heights keep every filter's label on one line; WebKit's default dropdown is shorter

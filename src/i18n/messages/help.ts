@@ -43,7 +43,7 @@ export const help = defineMessages(
       "Install or update an agent's command-line tool. Choose where yours is in <strong>Settings</strong>.",
     "help.subagents.title": "Subagents",
     "help.subagents.body":
-      "Sessions an agent started on its own are nested under the session that started them; expand the parent to see them. Some agents delete them along with the parent, and the confirmation says when that happens. A subagent whose parent is gone shows <em>Parent deleted</em>.",
+      "Sessions an agent started on its own are nested under the session that started them; expand the parent to see them. They go with their parent: select the parent to delete them. Some agents delete them along with the parent, and the confirmation says when that happens; Marduk also deletes the ones an agent would leave behind, such as Codex Guardian reviews. A subagent whose parent is gone shows <em>Parent deleted</em> and can be selected on its own.",
     "help.labels.title": "Labels",
     "help.labels.body":
       "Labels are kept by Marduk, not the agent, so they survive archiving. Deleting a session in Marduk removes its labels. Labels of sessions deleted some other way are removed once the session has been missing for 7 days.",
@@ -94,7 +94,7 @@ export const help = defineMessages(
         "Instalar o actualizar la herramienta de línea de comandos de un agente. Elige dónde está la tuya en <strong>Ajustes</strong>.",
       "help.subagents.title": "Subagentes",
       "help.subagents.body":
-        "Las sesiones que un agente inició por su cuenta aparecen anidadas bajo la sesión que las inició; despliega la principal para verlas. Algunos agentes las eliminan junto con la principal, y la confirmación indica cuándo ocurre. Un subagente cuya sesión principal ya no existe muestra <em>Sesión principal eliminada</em>.",
+        "Las sesiones que un agente inició por su cuenta aparecen anidadas bajo la sesión que las inició; despliega la principal para verlas. Van con su sesión principal: selecciónala para eliminarlas. Algunos agentes las eliminan junto con la principal, y la confirmación indica cuándo ocurre; Marduk también elimina las que un agente dejaría, como las revisiones de Guardian de Codex. Un subagente cuya sesión principal ya no existe muestra <em>Sesión principal eliminada</em> y se puede seleccionar por separado.",
       "help.labels.title": "Etiquetas",
       "help.labels.body":
         "Las etiquetas las guarda Marduk, no el agente, así que sobreviven al archivado. Eliminar una sesión en Marduk elimina sus etiquetas. Las etiquetas de sesiones eliminadas de otra forma se quitan cuando la sesión lleva 7 días sin aparecer.",
@@ -144,7 +144,7 @@ export const help = defineMessages(
         "Instalar ou atualizar a ferramenta de linha de comando de um agente. Escolha onde está a sua em <strong>Configurações</strong>.",
       "help.subagents.title": "Subagentes",
       "help.subagents.body":
-        "Sessões que um agente iniciou por conta própria aparecem aninhadas sob a sessão que as iniciou; expanda a principal para vê-las. Alguns agentes as excluem junto com a principal, e a confirmação avisa quando isso acontece. Um subagente cuja sessão principal não existe mais mostra <em>Sessão principal excluída</em>.",
+        "As sessões que um agente iniciou por conta própria aparecem aninhadas sob a sessão que as iniciou; expanda a principal para vê-las. Elas acompanham a sessão principal: selecione-a para excluí-las. Alguns agentes as excluem junto com a principal, e a confirmação avisa quando isso acontece; o Marduk também exclui as que um agente deixaria para trás, como as revisões do Guardian do Codex. Um subagente cuja sessão principal não existe mais mostra <em>Sessão principal excluída</em> e pode ser selecionado sozinho.",
       "help.labels.title": "Etiquetas",
       "help.labels.body":
         "As etiquetas são guardadas pelo Marduk, não pelo agente, então sobrevivem ao arquivamento. Excluir uma sessão no Marduk remove suas etiquetas. Etiquetas de sessões excluídas de outra forma são removidas quando a sessão está ausente há 7 dias.",
@@ -194,7 +194,7 @@ export const help = defineMessages(
         "Installer ou mettre à jour l'outil en ligne de commande d'un agent. Indiquez où se trouve le vôtre dans <strong>Réglages</strong>.",
       "help.subagents.title": "Sous-agents",
       "help.subagents.body":
-        "Les sessions qu'un agent a lancées de lui-même sont imbriquées sous la session qui les a lancées ; développez la session parente pour les voir. Certains agents les suppriment avec la session parente, et la confirmation l'indique. Un sous-agent dont la session parente n'existe plus affiche <em>Session parente supprimée</em>.",
+        "Les sessions qu’un agent a lancées de lui-même sont imbriquées sous la session qui les a lancées ; développez la session parente pour les voir. Elles suivent leur parente : sélectionnez la parente pour les supprimer. Certains agents les suppriment avec la parente, et la confirmation l’indique ; Marduk supprime aussi celles qu’un agent laisserait, comme les revues Guardian de Codex. Un sous-agent dont la parente n’existe plus affiche <em>Session parente supprimée</em> et peut être sélectionné seul.",
       "help.labels.title": "Étiquettes",
       "help.labels.body":
         "Les étiquettes sont conservées par Marduk, pas par l'agent, elles survivent donc à l'archivage. Supprimer une session dans Marduk supprime ses étiquettes. Les étiquettes des sessions supprimées autrement sont retirées une fois la session absente depuis 7 jours.",
@@ -244,7 +244,7 @@ export const help = defineMessages(
         "Das Kommandozeilenwerkzeug eines Agents installieren oder aktualisieren. Wo Ihres liegt, wählen Sie in den <strong>Einstellungen</strong>.",
       "help.subagents.title": "Subagents",
       "help.subagents.body":
-        "Sitzungen, die ein Agent selbst gestartet hat, erscheinen unter der Sitzung, die sie gestartet hat; klappen Sie die übergeordnete Sitzung auf, um sie zu sehen. Manche Agents löschen sie zusammen mit der übergeordneten Sitzung, und die Bestätigung weist darauf hin. Ein Subagent, dessen übergeordnete Sitzung fehlt, zeigt <em>Übergeordnete Sitzung gelöscht</em>.",
+        "Sitzungen, die ein Agent selbst gestartet hat, erscheinen unter der Sitzung, die sie gestartet hat; klappen Sie die übergeordnete Sitzung auf, um sie zu sehen. Sie gehören zu ihrer übergeordneten Sitzung: Wählen Sie diese aus, um sie zu löschen. Manche Agents löschen sie zusammen mit der übergeordneten Sitzung, und die Bestätigung weist darauf hin; Marduk löscht außerdem die, die ein Agent zurücklassen würde, etwa Guardian-Reviews von Codex. Ein Subagent ohne übergeordnete Sitzung zeigt <em>Übergeordnete Sitzung gelöscht</em> und kann einzeln ausgewählt werden.",
       "help.labels.title": "Labels",
       "help.labels.body":
         "Labels verwaltet Marduk, nicht der Agent, daher bleiben sie beim Archivieren erhalten. Wenn Sie eine Sitzung in Marduk löschen, werden ihre Labels entfernt. Labels von Sitzungen, die anderweitig gelöscht wurden, werden entfernt, sobald die Sitzung 7 Tage lang fehlt.",
@@ -294,7 +294,7 @@ export const help = defineMessages(
         "エージェントのコマンドラインツールのインストールや更新。ツールの場所は <strong>設定</strong> で選択できます。",
       "help.subagents.title": "サブエージェント",
       "help.subagents.body":
-        "エージェントが自ら開始したセッションは、それを開始したセッションの下にまとめて表示されます。親セッションを展開すると表示されます。親セッションと一緒に削除するエージェントもあり、その場合は確認画面に表示されます。親セッションがなくなったサブエージェントには <em>親セッション削除済み</em> と表示されます。",
+        "エージェントが自分で開始したセッションは、開始元のセッションの下にまとめて表示されます。親を展開すると表示されます。サブエージェントは親と一緒に扱われるため、削除するには親を選択します。一部のエージェントは親と一緒に削除し、その場合は確認画面に表示されます。Codex の Guardian レビューなど、エージェントが残すものも Marduk が一緒に削除します。親がなくなったサブエージェントには <em>親セッション削除済み</em> と表示され、単独で選択できます。",
       "help.labels.title": "ラベル",
       "help.labels.body":
         "ラベルはエージェントではなく Marduk が保持するため、アーカイブしても残ります。Marduk でセッションを削除するとラベルも削除されます。ほかの方法で削除されたセッションのラベルは、そのセッションが 7 日間見つからなかった時点で削除されます。",
@@ -343,7 +343,7 @@ export const help = defineMessages(
         "에이전트의 명령줄 도구 설치 또는 업데이트. 도구 위치는 <strong>설정</strong>에서 선택하세요.",
       "help.subagents.title": "하위 에이전트",
       "help.subagents.body":
-        "에이전트가 스스로 시작한 세션은 그 세션을 시작한 세션 아래에 묶여 표시됩니다. 상위 세션을 펼치면 볼 수 있습니다. 일부 에이전트는 상위 세션과 함께 삭제하며, 그런 경우 확인 창에 표시됩니다. 상위 세션이 없어진 하위 에이전트에는 <em>상위 세션 삭제됨</em>이 표시됩니다.",
+        "에이전트가 스스로 시작한 세션은 이를 시작한 세션 아래에 표시됩니다. 상위 세션을 펼치면 볼 수 있습니다. 하위 에이전트는 상위 세션과 함께 다뤄지므로, 삭제하려면 상위 세션을 선택하세요. 일부 에이전트는 상위 세션과 함께 삭제하며, 이 경우 확인 창에 표시됩니다. Codex의 Guardian 검토처럼 에이전트가 남겨 두는 세션도 Marduk이 함께 삭제합니다. 상위 세션이 없는 하위 에이전트에는 <em>상위 세션 삭제됨</em>가 표시되며 따로 선택할 수 있습니다.",
       "help.labels.title": "라벨",
       "help.labels.body":
         "라벨은 에이전트가 아니라 Marduk이 보관하므로 보관해도 그대로 남습니다. Marduk에서 세션을 삭제하면 라벨도 삭제됩니다. 다른 방법으로 삭제된 세션의 라벨은 세션이 7일 동안 보이지 않으면 삭제됩니다.",
@@ -392,7 +392,7 @@ export const help = defineMessages(
         "安装或更新智能体的命令行工具。可在<strong>设置</strong>中选择你的工具所在位置。",
       "help.subagents.title": "子智能体",
       "help.subagents.body":
-        "智能体自行启动的会话会嵌套显示在启动它们的会话下方；展开父会话即可看到。有些智能体会随父会话一起删除它们，确认窗口会说明这种情况。父会话已不存在的子智能体会显示<em>父会话已删除</em>。",
+        "智能体自行启动的会话会嵌套在启动它们的会话下；展开父会话即可查看。子智能体随父会话一起处理：选择父会话即可删除它们。有些智能体会随父会话一起删除它们，确认时会说明；对于智能体会留下的会话（如 Codex 的 Guardian 审查），Marduk 也会一并删除。父会话已不存在的子智能体会显示<em>父会话已删除</em>，并且可以单独选择。",
       "help.labels.title": "标签",
       "help.labels.body":
         "标签由 Marduk 而非智能体保存，因此归档后依然保留。在 Marduk 中删除会话会同时删除其标签。以其他方式删除的会话，其标签会在该会话消失满 7 天后删除。",
@@ -442,7 +442,7 @@ export const help = defineMessages(
         "Не устанавливает и не обновляет инструмент командной строки агента. Укажите, где находится ваш, в разделе <strong>Настройки</strong>.",
       "help.subagents.title": "Субагенты",
       "help.subagents.body":
-        "Сессии, которые агент запустил сам, вложены в сессию, которая их запустила; разверните родительскую сессию, чтобы их увидеть. Некоторые агенты удаляют их вместе с родительской, и подтверждение сообщает об этом. У субагента, родительская сессия которого исчезла, отображается <em>Родительская сессия удалена</em>.",
+        "Сессии, которые агент запустил сам, вложены в запустившую их сессию; разверните родительскую, чтобы их увидеть. Они идут вместе с родительской сессией: выберите её, чтобы удалить их. Некоторые агенты удаляют их вместе с родительской, и подтверждение об этом сообщает; Marduk также удаляет те, что агент оставил бы, например проверки Guardian в Codex. Субагент, у которого нет родительской сессии, отмечен <em>Родительская сессия удалена</em> и может быть выбран отдельно.",
       "help.labels.title": "Метки",
       "help.labels.body":
         "Метки хранит Marduk, а не агент, поэтому они сохраняются при архивации. Удаление сессии в Marduk удаляет её метки. Метки сессий, удалённых другим способом, удаляются, когда сессия отсутствует 7 дней.",

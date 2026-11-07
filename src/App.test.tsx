@@ -458,6 +458,7 @@ describe("App", () => {
           title: "Child",
           agent: "opencode",
           parentId: "ses_parent",
+          deletedWithParent: true,
         }),
       ),
     );
@@ -1155,16 +1156,14 @@ describe("App", () => {
       screen.getByRole("checkbox", { name: "Select all sessions shown" }),
     );
     expect(
-      screen.getByRole("group", { name: /^3 selected/ }),
-    ).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", {
-        name: "Hide 1 subagent session of Main thread",
-      }),
-    );
-    expect(
       screen.getByRole("group", { name: /^2 selected/ }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "Select Guardian review" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("checkbox", { name: "Select Lost review" }),
+    ).toBeChecked();
   });
 
   it("shows Claude subagents under their session as rows that can't be selected", async () => {
@@ -1470,5 +1469,37 @@ describe("App", () => {
     );
     await user.click(screen.getByRole("menuitem", { name: "Show in folder" }));
     expect(revealSessionFile).toHaveBeenCalledWith("/p/abc-123.jsonl");
+  });
+  it("deletes a parent's Guardian reviews with it, since Codex leaves them behind", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "p", id: "p", agent: "codex", title: "Main" }),
+        makeSession({
+          uid: "s",
+          id: "s",
+          agent: "codex",
+          title: "Spawned",
+          parentId: "p",
+          deletedWithParent: true,
+        }),
+        makeSession({
+          uid: "r",
+          id: "r",
+          agent: "codex",
+          title: "Review",
+          parentId: "p",
+        }),
+      ),
+    );
+    previewDelete.mockResolvedValue([]);
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Main" }),
+    );
+    await user.click(screen.getByRole("button", { name: /^Delete 2 / }));
+
+    expect(previewDelete).toHaveBeenCalledWith(["p", "r"]);
   });
 });

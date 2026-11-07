@@ -302,7 +302,7 @@ export function Filters({
       {isFiltering(filter) && (
         <button
           type="button"
-          className="link clear-filters"
+          className="ghost clear-filters"
           onClick={() => onChange({ ...EMPTY_FILTER, query: filter.query })}
         >
           {t("table.filter.clear")}

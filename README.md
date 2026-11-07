@@ -28,7 +28,7 @@ When an agent has its own delete or archive command, Marduk uses it, so the agen
 
 ## Subagent sessions
 
-Sessions an agent started on its own (Codex Guardian reviews and spawned subagents, OpenCode and Kilo child sessions) are nested under the session that started them. Expand a parent to see them. A subagent whose parent was deleted is shown at the top level with a _Parent deleted_ badge. Claude Code keeps its subagents inside the parent session's folder (`<session>/subagents/`), so they appear under their session titled from their description and agent type, and can be read but not deleted, archived or labeled on their own: deleting the parent moves them to the Trash with it.
+Sessions an agent started on its own (Codex Guardian reviews and spawned subagents, OpenCode and Kilo child sessions) are nested under the session that started them. Expand a parent to see them. They go with their parent: select the parent to delete it and them. Codex leaves a session's Guardian reviews behind when it deletes the session, so Marduk deletes them too. A subagent whose parent was deleted is shown at the top level with a _Parent deleted_ badge, and can be selected on its own. Claude Code keeps its subagents inside the parent session's folder (`<session>/subagents/`), so they appear under their session titled from their description and agent type, and can be read but not deleted, archived or labeled on their own: deleting the parent moves them to the Trash with it.
 
 ## Labels
 

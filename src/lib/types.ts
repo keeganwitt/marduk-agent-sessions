@@ -106,7 +106,9 @@ export function isArchivable(session: SessionRow): boolean {
   return !session.running && session.canArchive;
 }
 
+/** Subagents go with their parent; only orphans, whose parent is gone, are chosen on their own. */
 export function isSelectable(session: SessionRow): boolean {
+  if (session.parentId !== null && !session.parentMissing) return false;
   return (
     !session.partOfParent && (isDeletable(session) || isArchivable(session))
   );
