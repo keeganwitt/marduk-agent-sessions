@@ -19,6 +19,9 @@ pub trait AgentAdapter: Send + Sync {
         0
     }
     fn delete_plan(&self, session: &Session) -> DeletePlan;
+    /// How this agent's sessions are deleted and archived, in words for the help dialog.
+    /// Keep it in step with `delete_plan` and `archive_command`.
+    fn mechanics(&self) -> Mechanics;
     fn transcript(&self, session: &Session) -> std::io::Result<Transcript>;
     /// What "unchanged since the scan" and "still running" are judged by. File-based agents
     /// use the transcript file; database-backed agents use the session's own row.
@@ -39,6 +42,12 @@ pub trait AgentAdapter: Send + Sync {
     fn archive_command(&self, _session: &Session) -> Option<AgentCommand> {
         None
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Mechanics {
+    pub delete: String,
+    pub archive: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

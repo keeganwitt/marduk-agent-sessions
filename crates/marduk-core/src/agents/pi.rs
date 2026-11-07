@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use super::{env_dir, home_dir, jsonl_two_levels, total_size};
 use crate::adapter::ScanProgress;
-use crate::adapter::{AgentAdapter, DeletePlan, ScanResult};
+use crate::adapter::{AgentAdapter, DeletePlan, Mechanics, ScanResult};
 use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl;
@@ -65,6 +65,14 @@ impl AgentAdapter for PiAdapter {
             &self.sessions_dir,
             &mut ScanResult::default(),
         ))
+    }
+
+    fn mechanics(&self) -> Mechanics {
+        Mechanics {
+            delete: "Moves the transcript to the Trash, as Pi's own session picker does."
+                .to_string(),
+            archive: "Pi has no archive.".to_string(),
+        }
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {

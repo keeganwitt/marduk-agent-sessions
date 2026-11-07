@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use super::cli::{Cli, CliOverrides};
 use super::{env_dir, home_dir};
-use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanProgress, ScanResult};
+use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, Mechanics, ScanProgress, ScanResult};
 use crate::jsonl;
 use crate::session::{Fingerprint, Session};
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
@@ -614,6 +614,18 @@ impl AgentAdapter for OpenCodeAdapter {
             .filter(|db| db.is_file())
             .collect();
         super::total_size(&databases)
+    }
+
+    fn mechanics(&self) -> Mechanics {
+        let (name, program) = (self.flavor.name, self.flavor.program);
+        Mechanics {
+            delete: format!(
+                "Runs `{program} session delete <id>`, which deletes permanently, along with the \
+                 session's child sessions. Needs the {name} CLI; without it, {name} sessions are \
+                 read-only. Marduk never writes to {name}'s database."
+            ),
+            archive: format!("Shows {name}'s archived state, but {name} has no archive command."),
+        }
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {

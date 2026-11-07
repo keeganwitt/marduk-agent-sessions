@@ -7,7 +7,7 @@ use serde_json::value::RawValue;
 
 use super::{env_dir, home_dir, jsonl_two_levels, total_size};
 use crate::adapter::ScanProgress;
-use crate::adapter::{AgentAdapter, DeletePlan, ScanResult};
+use crate::adapter::{AgentAdapter, DeletePlan, Mechanics, ScanResult};
 use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl;
@@ -90,6 +90,16 @@ impl AgentAdapter for ClaudeAdapter {
         DeletePlan::Trash {
             files: session.files.clone(),
             warning: None,
+        }
+    }
+
+    fn mechanics(&self) -> Mechanics {
+        Mechanics {
+            delete: "Moves the transcript, its sidecar files and its session folder (subagents, \
+                     tool results) to the Trash. Claude Code has no delete command of its own. \
+                     Subagents are only deleted along with their session."
+                .to_string(),
+            archive: "Claude Code has no archive.".to_string(),
         }
     }
 

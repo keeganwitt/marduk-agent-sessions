@@ -1252,3 +1252,112 @@ button.filter-project svg {
 .no-project {
   font-style: italic;
 }
+
+.help-dialog {
+  width: min(720px, 92vw);
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.tabs [role="tab"],
+.agent-list [role="tab"] {
+  font: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.tabs [role="tab"] {
+  padding: 6px 12px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tabs [role="tab"][aria-selected="true"] {
+  color: inherit;
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.tabs [role="tab"]:hover,
+.agent-list [role="tab"]:hover {
+  color: inherit;
+}
+
+.tabs [role="tab"]:focus-visible,
+.agent-list [role="tab"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.help-panel {
+  min-height: 320px;
+}
+
+.help-section + .help-section,
+.help-section + p {
+  margin-top: 14px;
+}
+
+.help-section h3 {
+  margin: 0 0 4px;
+}
+
+.help-section p,
+.help-section ul {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.help-section ul {
+  padding-left: 20px;
+}
+
+.help-section li + li {
+  margin-top: 4px;
+}
+
+.agent-help {
+  display: flex;
+  gap: 16px;
+}
+
+.agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+  width: 160px;
+}
+
+.agent-list [role="tab"] {
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.agent-list [role="tab"][aria-selected="true"] {
+  color: inherit;
+  background: var(--row-selected);
+  font-weight: 600;
+}
+
+.agent-detail {
+  flex: 1;
+  min-width: 0;
+}
+
+.help-section ul.paths {
+  list-style: none;
+  padding-left: 0;
+}
+
+.paths code {
+  overflow-wrap: anywhere;
+}

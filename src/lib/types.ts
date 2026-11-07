@@ -108,6 +108,15 @@ export function isSelectable(session: SessionRow): boolean {
   );
 }
 
+export interface AgentHelp {
+  id: string;
+  name: string;
+  /** Folders the agent's sessions are read from. */
+  roots: string[];
+  delete: string;
+  archive: string;
+}
+
 export interface CliStatus {
   agent: string;
   agentName: string;

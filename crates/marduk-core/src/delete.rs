@@ -241,6 +241,13 @@ mod tests {
         fn scan_with(&self, _progress: &dyn crate::adapter::ScanProgress) -> ScanResult {
             ScanResult::empty_complete()
         }
+        fn mechanics(&self) -> crate::adapter::Mechanics {
+            crate::adapter::Mechanics {
+                delete: String::new(),
+                archive: String::new(),
+            }
+        }
+
         fn delete_plan(&self, _session: &Session) -> DeletePlan {
             self.plan.clone()
         }

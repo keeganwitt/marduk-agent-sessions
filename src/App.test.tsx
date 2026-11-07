@@ -13,6 +13,7 @@ vi.mock("./lib/ipc", () => ({
   toggleArchive: vi.fn(),
   revealSessionFile: vi.fn(),
   openProjectDir: vi.fn(),
+  agentHelp: vi.fn(),
   loadTranscript: vi.fn(),
   getTheme: vi.fn(),
   listLabels: vi.fn(),
@@ -590,6 +591,19 @@ describe("App", () => {
     expect(
       screen.queryByText("Explain the flaky test"),
     ).not.toBeInTheDocument();
+  });
+
+  it("opens the help dialog", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(scanOf(makeSession()));
+    vi.mocked(ipc.agentHelp).mockResolvedValue([]);
+
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Help" }));
+
+    expect(
+      screen.getByRole("dialog", { name: "How Marduk changes sessions" }),
+    ).toBeInTheDocument();
   });
 
   it("shows project folders relative to home", async () => {

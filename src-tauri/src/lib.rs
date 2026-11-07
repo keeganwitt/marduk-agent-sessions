@@ -10,7 +10,7 @@ use marduk_core::{CliOverrides, RUNNING_WINDOW, SystemBackend};
 use tauri::Manager;
 
 use cli_settings::CliStatus;
-use dto::{ArchiveResult, DeleteResult, PreviewItem, ScanResponse, TranscriptDto};
+use dto::{AgentHelpDto, ArchiveResult, DeleteResult, PreviewItem, ScanResponse, TranscriptDto};
 use settings::SettingsStore;
 
 type SharedCatalog = Arc<Catalog>;
@@ -220,6 +220,15 @@ async fn cli_statuses(catalog: tauri::State<'_, SharedCatalog>) -> Result<Vec<Cl
 }
 
 #[tauri::command]
+fn agent_help(catalog: tauri::State<'_, SharedCatalog>) -> Vec<AgentHelpDto> {
+    catalog
+        .agent_help()
+        .into_iter()
+        .map(AgentHelpDto::from)
+        .collect()
+}
+
+#[tauri::command]
 async fn set_cli_path(
     app: tauri::AppHandle,
     catalog: tauri::State<'_, SharedCatalog>,
@@ -248,6 +257,36 @@ fn set_theme(
         .store
         .update(|current| current.theme = theme)
         .map(|_| ())
+}
+
+/// The default size fits every default column; smaller screens get a window that fits them.
+fn fit_to_screen(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    let Some(monitor) = window.current_monitor()? else {
+        return Ok(());
+    };
+    let scale = monitor.scale_factor();
+    let area = monitor.work_area().size.to_logical::<f64>(scale);
+    let size = window.outer_size()?.to_logical::<f64>(scale);
+    if let Some((width, height)) = fitted_size((size.width, size.height), (area.width, area.height))
+    {
+        window.set_size(tauri::LogicalSize::new(width, height))?;
+        window.center()?;
+    }
+    Ok(())
+}
+
+/// On a work area too small for the window, a size that fits it with a margin; `None` when
+/// the window already fits.
+fn fitted_size(window: (f64, f64), area: (f64, f64)) -> Option<(f64, f64)> {
+    let fits = |size: f64, available: f64, margin: f64| {
+        if size <= available {
+            size
+        } else {
+            (available * margin).floor()
+        }
+    };
+    let fitted = (fits(window.0, area.0, 0.95), fits(window.1, area.1, 0.92));
+    (fitted != window).then_some(fitted)
 }
 
 /// `MARDUK_DATA_DIR` keeps settings and labels apart from the real ones, for the demo home.
@@ -282,6 +321,11 @@ pub fn run() {
                 marduk_core::labels::LabelStore::in_memory()
             })?;
             app.manage::<SharedLabels>(Arc::new(labels));
+            if let Some(window) = app.get_webview_window("main")
+                && let Err(error) = fit_to_screen(&window)
+            {
+                eprintln!("Couldn't fit the window to the screen: {error}");
+            }
             Ok(())
         })
         .manage(catalog)
@@ -295,6 +339,7 @@ pub fn run() {
             file_details,
             load_transcript,
             cli_statuses,
+            agent_help,
             set_cli_path,
             get_theme,
             set_theme,
@@ -311,6 +356,19 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shrinks_the_window_only_on_screens_too_small_for_it() {
+        assert_eq!(fitted_size((1360.0, 860.0), (1470.0, 920.0)), None);
+        assert_eq!(
+            fitted_size((1360.0, 860.0), (1280.0, 720.0)),
+            Some((1216.0, 662.0))
+        );
+        assert_eq!(
+            fitted_size((1360.0, 860.0), (1920.0, 800.0)),
+            Some((1360.0, 736.0))
+        );
+    }
 
     #[test]
     fn marduk_data_dir_overrides_storage_unless_empty() {

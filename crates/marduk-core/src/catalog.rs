@@ -60,6 +60,13 @@ pub struct Preview {
     pub result: Result<PlannedDelete, String>,
 }
 
+pub struct AgentHelp {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub roots: Vec<std::path::PathBuf>,
+    pub mechanics: crate::adapter::Mechanics,
+}
+
 /// Holds the adapters and the most recent scan. Deletes are resolved by uid against that
 /// scan, so callers never supply file paths.
 pub struct Catalog {
@@ -153,6 +160,20 @@ impl Catalog {
                 let cli = adapter.cli()?;
                 cli.refresh();
                 Some((adapter.id(), adapter.display_name(), cli.info()))
+            })
+            .collect()
+    }
+
+    /// Every agent with the folders it's read from and how its sessions are deleted and
+    /// archived, for the help dialog.
+    pub fn agent_help(&self) -> Vec<AgentHelp> {
+        self.adapters
+            .iter()
+            .map(|adapter| AgentHelp {
+                id: adapter.id(),
+                name: adapter.display_name(),
+                roots: adapter.roots(),
+                mechanics: adapter.mechanics(),
             })
             .collect()
     }

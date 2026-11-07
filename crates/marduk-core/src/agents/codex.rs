@@ -10,7 +10,7 @@ use serde_json::value::RawValue;
 use super::cli::{Cli, CliOverrides};
 use super::{env_dir, home_dir, total_size};
 use crate::adapter::ScanProgress;
-use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, ScanResult};
+use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, Mechanics, ScanResult};
 use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl;
@@ -156,6 +156,18 @@ impl AgentAdapter for CodexAdapter {
                 .map(|(path, _)| path)
                 .collect::<Vec<_>>(),
         )
+    }
+
+    fn mechanics(&self) -> Mechanics {
+        Mechanics {
+            delete: "Runs `codex delete --force <id>`, which deletes permanently, along with the \
+                     subagent sessions it spawned (but not its Guardian reviews). Needs the Codex \
+                     CLI; without it, Codex sessions are read-only."
+                .to_string(),
+            archive: "Runs `codex archive <id>` or `codex unarchive <id>`, which move the \
+                      session between Codex's sessions and archived_sessions folders."
+                .to_string(),
+        }
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {

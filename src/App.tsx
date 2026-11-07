@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeleteDialog } from "./components/DeleteDialog";
 import { FilesDialog } from "./components/FilesDialog";
+import { HelpDialog } from "./components/HelpDialog";
 import { LabelMenu } from "./components/LabelMenu";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { TranscriptPanel } from "./components/TranscriptPanel";
@@ -183,6 +184,7 @@ export default function App() {
   const [filesFor, setFilesFor] = useState<SessionRow | null>(null);
   const [transcriptFor, setTranscriptFor] = useState<SessionRow | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [labels, setLabels] = useState<Label[]>([]);
   const [labelMenuOpen, setLabelMenuOpen] = useState(false);
   const [columns, setColumns] = useState<ColumnPrefs>(loadColumnPrefs);
@@ -441,6 +443,9 @@ export default function App() {
             ? `${matching.length} of ${scan.sessions.length} sessions · ${formatBytes(matchingBytes)}`
             : ""}
         </span>
+        <button type="button" onClick={() => setHelpOpen(true)}>
+          Help
+        </button>
         <button type="button" onClick={() => setSettingsOpen(true)}>
           Settings
         </button>
@@ -561,6 +566,12 @@ export default function App() {
         </div>
       )}
 
+      {helpOpen && (
+        <HelpDialog
+          homeDir={scan?.homeDir ?? ""}
+          onClose={() => setHelpOpen(false)}
+        />
+      )}
       {settingsOpen && (
         <SettingsDialog
           onClose={(changed) => {

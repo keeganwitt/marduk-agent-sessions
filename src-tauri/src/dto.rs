@@ -410,8 +410,50 @@ pub fn archive_result(uid: String, outcome: ArchiveOutcome) -> ArchiveResult {
     }
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentHelpDto {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub roots: Vec<String>,
+    pub delete: String,
+    pub archive: String,
+}
+
+impl From<marduk_core::catalog::AgentHelp> for AgentHelpDto {
+    fn from(help: marduk_core::catalog::AgentHelp) -> Self {
+        Self {
+            id: help.id,
+            name: help.name,
+            roots: paths(help.roots),
+            delete: help.mechanics.delete,
+            archive: help.mechanics.archive,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn agent_help_carries_folders_and_mechanics() {
+        let dto = AgentHelpDto::from(marduk_core::catalog::AgentHelp {
+            id: "pi",
+            name: "Pi",
+            roots: vec![PathBuf::from("/home/me/.pi/agent/sessions")],
+            mechanics: marduk_core::Mechanics {
+                delete: "Trash".into(),
+                archive: "None".into(),
+            },
+        });
+
+        assert_eq!(dto.roots, vec!["/home/me/.pi/agent/sessions".to_string()]);
+        assert_eq!(
+            (dto.delete.as_str(), dto.archive.as_str()),
+            ("Trash", "None")
+        );
+    }
+
     use serde_json::json;
 
     use super::*;

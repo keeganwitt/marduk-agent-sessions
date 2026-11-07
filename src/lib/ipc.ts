@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { Theme } from "./theme";
 import type {
+  AgentHelp,
   ArchiveResult,
   CliStatus,
   DeleteResult,
@@ -42,6 +43,10 @@ export function openProjectDir(uid: string): Promise<void> {
 
 export function loadTranscript(uid: string): Promise<Transcript> {
   return invoke("load_transcript", { uid });
+}
+
+export function agentHelp(): Promise<AgentHelp[]> {
+  return invoke("agent_help");
 }
 
 export function cliStatuses(): Promise<CliStatus[]> {

@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::{env_dir, home_dir, total_size};
 use crate::adapter::ScanProgress;
-use crate::adapter::{AgentAdapter, DeletePlan, ScanResult};
+use crate::adapter::{AgentAdapter, DeletePlan, Mechanics, ScanResult};
 use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl::{self, Span};
@@ -105,6 +105,16 @@ impl AgentAdapter for CopilotAdapter {
                 .map(|dir| dir.join("events.jsonl"))
                 .collect::<Vec<_>>(),
         )
+    }
+
+    fn mechanics(&self) -> Mechanics {
+        Mechanics {
+            delete: "Moves the session folder to the Trash. Copilot's own delete is only a slash \
+                     command inside a session. Run `/chronicle reindex` in Copilot afterwards to \
+                     update its search index."
+                .to_string(),
+            archive: "GitHub Copilot CLI has no archive.".to_string(),
+        }
     }
 
     fn delete_plan(&self, session: &Session) -> DeletePlan {

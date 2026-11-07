@@ -10,7 +10,9 @@ pub mod labels;
 pub mod session;
 pub mod transcript;
 
-pub use adapter::{AgentAdapter, AgentCommand, DeletePlan, NoProgress, ScanProgress, ScanResult};
+pub use adapter::{
+    AgentAdapter, AgentCommand, DeletePlan, Mechanics, NoProgress, ScanProgress, ScanResult,
+};
 pub use agents::cli::{CliInfo, CliOverrides};
 pub use delete::{ArchiveOutcome, DeleteBackend, DeleteOutcome, PlannedDelete, SystemBackend};
 pub use session::{Fingerprint, Session};
@@ -41,4 +43,19 @@ pub fn default_adapters(
         )),
         Box::new(agents::pi::PiAdapter::from_env()),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_agent_explains_how_it_deletes_and_archives() {
+        for adapter in default_adapters(Default::default()) {
+            let mechanics = adapter.mechanics();
+            assert!(!mechanics.delete.trim().is_empty(), "{}", adapter.id());
+            assert!(!mechanics.archive.trim().is_empty(), "{}", adapter.id());
+            assert!(!adapter.roots().is_empty(), "{}", adapter.id());
+        }
+    }
 }
