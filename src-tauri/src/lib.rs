@@ -390,6 +390,12 @@ fn set_theme(
 
 const DEV_TITLE: &str = "Marduk (dev)";
 
+/// Dev builds say so in the title, except on demo data (`MARDUK_HOME`), which is used for
+/// screenshots of the app as people will see it.
+fn dev_title(debug_build: bool, demo_home: Option<&std::ffi::OsStr>) -> Option<&'static str> {
+    (debug_build && demo_home.is_none()).then_some(DEV_TITLE)
+}
+
 /// The default size fits every default column; smaller screens get a window that fits them.
 fn fit_to_screen(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     let Some(monitor) = window.current_monitor()? else {
@@ -456,9 +462,9 @@ pub fn run() {
                 if let Err(error) = fit_to_screen(&window) {
                     eprintln!("Couldn't fit the window to the screen: {error}");
                 }
-                // Tells a dev build (`tauri dev`, `pnpm demo`) apart from the installed app.
-                if cfg!(debug_assertions)
-                    && let Err(error) = window.set_title(DEV_TITLE)
+                let demo_home = std::env::var_os("MARDUK_HOME");
+                if let Some(title) = dev_title(cfg!(debug_assertions), demo_home.as_deref())
+                    && let Err(error) = window.set_title(title)
                 {
                     eprintln!("Couldn't set the window title: {error}");
                 }
@@ -504,6 +510,15 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn titles_dev_builds_except_on_demo_data() {
+        let demo = std::ffi::OsStr::new("/tmp/marduk-demo");
+
+        assert_eq!(dev_title(true, None), Some("Marduk (dev)"));
+        assert_eq!(dev_title(true, Some(demo)), None);
+        assert_eq!(dev_title(false, None), None);
+    }
 
     #[test]
     fn shrinks_the_window_only_on_screens_too_small_for_it() {
