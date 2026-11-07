@@ -40,6 +40,20 @@ Skipped for the same reasons as Antigravity, going by AllSessions' notes:
 
 Reading is possible, though: unlike Antigravity's, these aren't encrypted. Read-only support would work.
 
+### Amp
+
+Skipped (2026-11-07) because Amp keeps threads on its server. Marduk is built to read local files and never deals with accounts or authentication; supporting Amp would make every scan contact Amp's server through the user's logged-in CLI.
+
+- **Local files are a stale cache:** `~/.local/share/amp/threads/T-*.json` held 29 threads, the newest from May 2026, and only 8 of them were still on the server, which listed 114.
+- **The CLI has everything, non-interactively:**
+  - `amp threads list --json` returns id, title, updated, `tree` (the project as a `file://` URI, or null) and message count. There's no archived flag: archived threads are the ones `--include-archived` adds.
+  - `amp threads export <id>` returns the full thread: messages with `text`, `thinking`, `tool_use` and `tool_result` blocks, the model under each assistant message's `usage`, and `meta.visibility`.
+  - `amp threads delete <id>` deletes permanently, on the server and locally. For a thread shared with a workspace, that deletes it for everyone.
+  - `amp threads archive <id>` (and `--unarchive`).
+  - `amp threads rename <id> <name>`, a native rename (see [Renaming sessions](#renaming-sessions)).
+- **Sizes aren't available**, so size filters wouldn't apply, and the model is only known after an export.
+- **If revisited:** it should be opt-in in Settings, report a logged-out CLI as an incomplete scan, and give the demo a fake `amp` script.
+
 ### ChatGPT desktop app
 
 Not feasible. Chats live on OpenAI's servers, and the Mac app keeps no local copy (only an `app_pairing_extensions` folder). There's no public API for listing or deleting consumer chats. The only option would be importing a ChatGPT data export as read-only, which isn't worth building.
