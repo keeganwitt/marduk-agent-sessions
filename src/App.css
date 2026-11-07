@@ -1496,6 +1496,16 @@ button.filter-project svg {
   outline-offset: -2px;
 }
 
+.memory-frontmatter {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
 .memory-view {
   flex: 1;
   min-height: 0;

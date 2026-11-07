@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useI18n, type I18n } from "../i18n/context";
 import { tildePath } from "../lib/format";
+import { splitFrontmatter } from "../lib/frontmatter";
 import {
   listMemory,
   readMemoryFile,
@@ -27,6 +28,18 @@ function errorMessage(error: unknown): string {
 function storeLabel(store: MemoryStore, homeDir: string, t: I18n["t"]): string {
   if (store.projectDir) return tildePath(store.projectDir, homeDir);
   return t("memory.allProjects", { agent: store.agentName });
+}
+
+function MemoryText({ text }: { text: string }) {
+  const { frontmatter, body } = splitFrontmatter(text);
+  return (
+    <article className="message memory-text">
+      {frontmatter !== null && (
+        <pre className="memory-frontmatter">{frontmatter}</pre>
+      )}
+      <Markdown text={body} />
+    </article>
+  );
 }
 
 function FilePanel({
@@ -85,11 +98,7 @@ function FilePanel({
         {text === null && !error && (
           <p className="muted">{t("memory.loading")}</p>
         )}
-        {text !== null && (
-          <article className="message memory-text">
-            <Markdown text={text} />
-          </article>
-        )}
+        {text !== null && <MemoryText text={text} />}
       </div>
     </aside>
   );

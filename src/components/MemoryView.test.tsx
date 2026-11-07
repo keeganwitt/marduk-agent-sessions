@@ -134,7 +134,7 @@ describe("MemoryView", () => {
   it("reads a memory file in a side panel", async () => {
     const user = userEvent.setup();
     vi.mocked(ipc.readMemoryFile).mockResolvedValue(
-      "# Git\n\nUse the **personal** email.",
+      "---\nname: git\nmetadata:\n  type: feedback\n---\n\n# Git\n\nUse the **personal** email.",
     );
     renderView();
 
@@ -145,6 +145,13 @@ describe("MemoryView", () => {
       "/c/projects/-w/memory/git.md",
     );
     expect(await within(panel).findByText("personal")).toBeInTheDocument();
+    expect(within(panel).getByText(/name: git/)).toHaveClass(
+      "memory-frontmatter",
+    );
+    expect(
+      within(panel).getByRole("heading", { name: "Git" }),
+    ).toBeInTheDocument();
+    expect(within(panel).queryByRole("separator")).toBeNull();
   });
 
   it("moves a project's memory to the Trash after confirming, then reloads", async () => {
