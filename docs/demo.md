@@ -16,7 +16,7 @@ Each run rewrites the demo home, so ages are relative to now: one Claude Code se
 The sessions come from `crates/marduk-core/src/demo.rs`, which writes each agent's files the way that agent does:
 
 - **Claude Code:** JSONL transcripts in `.claude/projects/<folder>/`, one of them running with four subagents in `<id>/subagents/`.
-- **Codex:** rollouts in `.codex/sessions/YYYY/MM/DD/` and `.codex/archived_sessions/`, with spawned subagents and one subagent whose parent is gone (shown with _Parent deleted_).
+- **Codex:** rollouts in `.codex/sessions/YYYY/MM/DD/` and `.codex/archived_sessions/`, with spawned subagents, a Guardian review that `codex delete` would leave behind (under _Review PR 282_), and one subagent whose parent is gone (shown with _Parent deleted_).
 - **GitHub Copilot:** `events.jsonl` and `workspace.yaml` folders in `.copilot/session-state/`.
 - **OpenCode:** a SQLite database with the current `session_v2` tables, including a child session and an archived one.
 - **Kilo:** a SQLite database with OpenCode's older `session`/`message`/`part` tables.
@@ -71,7 +71,7 @@ By default, transcripts are padded to the sizes listed in `demo.rs`, so the Size
 1. Run `pnpm demo`.
 2. Resize the window to about 1510 × 860 points.
 3. In **Columns ▾**, turn on **Model**. Narrow **Labels** to just fit _keep_ and _research_, and widen **Project** and **Model** until the table fills the window with no path or model name cut off.
-4. Expand _Add dark mode to the settings page_ to show its subagents, and select _Fix flaky login test_ and _Links don't open in the markdown view_ so the selection actions show.
+4. Working from the bottom up, so rows don't move under the pointer: expand _Review PR 282: rate limiter_ and select it, select _Fix flaky login test_, then expand _Add dark mode to the settings page_. The toolbar then shows the selection actions, with **Delete 3** because the Guardian review goes with its parent, and the expanded subagents show they can't be selected on their own.
 5. Click **+ Filter** to open its menu. That also makes sure no column edge is highlighted and the window has focus.
 6. On macOS, capture the window with `screencapture -o -l <window id> docs/screenshot.png` (Screen Recording permission is required), or press ⇧⌘4, then Space, then ⌥-click the window to leave out the shadow.
 

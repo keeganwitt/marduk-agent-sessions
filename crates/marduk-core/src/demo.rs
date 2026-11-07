@@ -217,6 +217,14 @@ struct CodexAgent {
     role: &'static str,
 }
 
+/// How a Codex subagent session was started: spawned by its parent, or a Guardian review of
+/// one of its parent's tool calls, which `codex delete` leaves behind.
+#[derive(Clone, Copy)]
+enum CodexOrigin<'a> {
+    Spawned(&'a CodexAgent),
+    Guardian,
+}
+
 struct Writer<'a> {
     home: &'a DemoHome,
     options: &'a DemoOptions,
@@ -358,6 +366,16 @@ impl Writer<'_> {
                     role: "reviewer",
                 },
             )],
+        )?;
+        self.codex_rollout(
+            review.child(
+                "Approve: git push --force-with-lease",
+                5 * HOUR,
+                5 * HOUR,
+                64 * KB,
+            ),
+            &uuid("Review PR 282: rate limiter/guardian"),
+            Some((&uuid(review.title), CodexOrigin::Guardian)),
         )?;
         let ci = spec(
             "Migrate CI to GitHub Actions",
@@ -507,11 +525,11 @@ impl Writer<'_> {
             &uuid("lint_fix"),
             Some((
                 &uuid("A session that was deleted"),
-                &CodexAgent {
+                CodexOrigin::Spawned(&CodexAgent {
                     task: "lint_fix",
                     nickname: "Curie",
                     role: "worker",
-                },
+                }),
             )),
         )?;
         self.codex(
@@ -755,7 +773,11 @@ impl Writer<'_> {
         self.codex_rollout(spec, &id, None)?;
         for (subagent, agent) in subagents {
             let child_id = uuid(&format!("{}/{}", spec.title, agent.task));
-            self.codex_rollout(*subagent, &child_id, Some((&id, agent)))?;
+            self.codex_rollout(
+                *subagent,
+                &child_id,
+                Some((&id, CodexOrigin::Spawned(agent))),
+            )?;
         }
         self.label(format!("codex:{id}"), &spec);
         Ok(())
@@ -765,7 +787,7 @@ impl Writer<'_> {
         &self,
         spec: Spec,
         id: &str,
-        spawned_by: Option<(&str, &CodexAgent)>,
+        spawned_by: Option<(&str, CodexOrigin)>,
     ) -> io::Result<()> {
         let (cwd, workspace_root) = if spec.chat {
             let chats = self.home.root.join("Documents").join("Codex");
@@ -782,7 +804,8 @@ impl Writer<'_> {
             (cwd.clone(), cwd)
         };
         let source = match spawned_by {
-            Some((parent, agent)) => json!({ "subagent": { "thread_spawn": {
+            Some((_, CodexOrigin::Guardian)) => json!({ "subagent": { "other": "guardian" } }),
+            Some((parent, CodexOrigin::Spawned(agent))) => json!({ "subagent": { "thread_spawn": {
                 "parent_thread_id": parent,
                 "depth": 1,
                 "agent_path": format!("/root/{}", agent.task),
@@ -793,15 +816,20 @@ impl Writer<'_> {
         };
         let item = |ago: u64, payload: Value| json!({ "timestamp": self.stamp(ago), "type": "response_item", "payload": payload });
         let event = |ago: u64, payload: Value| json!({ "timestamp": self.stamp(ago), "type": "event_msg", "payload": payload });
+        let mut meta = json!({
+            "id": id,
+            "timestamp": self.stamp(spec.created),
+            "cwd": cwd,
+            "runtime_workspace_roots": [workspace_root],
+            "originator": "codex_cli_rs",
+            "source": source,
+        });
+        if let Some((parent, CodexOrigin::Guardian)) = spawned_by {
+            meta["parent_thread_id"] = json!(parent);
+            meta["thread_source"] = json!("guardian_review");
+        }
         let records = [
-            json!({ "timestamp": self.stamp(spec.created), "type": "session_meta", "payload": {
-                "id": id,
-                "timestamp": self.stamp(spec.created),
-                "cwd": cwd,
-                "runtime_workspace_roots": [workspace_root],
-                "originator": "codex_cli_rs",
-                "source": source,
-            }}),
+            json!({ "timestamp": self.stamp(spec.created), "type": "session_meta", "payload": meta }),
             item(
                 spec.created,
                 json!({ "type": "message", "role": "user", "content": [{ "type": "input_text", "text": spec.title }] }),
@@ -1653,6 +1681,14 @@ mod tests {
                 .iter()
                 .any(|session| session.agent == "opencode" && session.parent_id.is_some())
         );
+        let guardian = sessions
+            .iter()
+            .find(|session| {
+                session.title.as_deref() == Some("Approve: git push --force-with-lease")
+            })
+            .expect("a Codex Guardian review");
+        assert!(!guardian.deleted_with_parent);
+        assert!(ids.contains(guardian.parent_id.as_deref().unwrap()));
         let chats: Vec<_> = sessions
             .iter()
             .filter(|session| session.projectless)
