@@ -49,3 +49,14 @@ Not feasible. Chats live on OpenAI's servers, and the Mac app keeps no local cop
 ### Filter by source (CLI, desktop app, VS Code)
 
 Some agents' sessions don't say which surface created them. Claude Code and Codex write the same files from the CLI, the desktop app and the IDE extensions, so for those the filter would be guessing.
+
+### Renaming sessions
+
+Wanted so a session's title is easier to find again, and to resume from, in the agent itself. That needs the agent's own name to change; a name stored only in Marduk doesn't show up in the agent's session list (Claude Code's `/resume`, Codex's picker). It would also leave two names for one session. A searchable note field was considered for the same reason and rejected.
+
+Blocked because no agent has a non-interactive rename command, and Marduk doesn't write to agents' data:
+
+- **Claude Code:** `/rename` works only inside a session. It appends a `custom-title` record to the transcript, and writing that from outside could collide with the agent writing the same file.
+- **Codex:** thread names live in Codex's own `session_index`, which Marduk would have to edit.
+
+Revisit if an agent adds a rename command Marduk could run, like `codex delete` for deletes.
