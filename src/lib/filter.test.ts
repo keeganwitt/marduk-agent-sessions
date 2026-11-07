@@ -4,10 +4,12 @@ import {
   filterSessions,
   inProject,
   agentTypeOptions,
+  isFiltering,
   matchProjects,
   modelOptions,
   NO_PROJECT,
   projectOptions,
+  shownOptionalFilters,
 } from "./filter";
 import { makeSession } from "../test/factories";
 
@@ -212,5 +214,24 @@ describe("agent type filter", () => {
       { agentType: "Explore", count: 2 },
       { agentType: "architect", count: 1 },
     ]);
+  });
+});
+
+describe("optional filters", () => {
+  it("shows those added and any narrowing the list, in a fixed order", () => {
+    expect(shownOptionalFilters([], EMPTY_FILTER)).toEqual([]);
+    expect(shownOptionalFilters(["model", "archive"], EMPTY_FILTER)).toEqual([
+      "archive",
+      "model",
+    ]);
+    expect(
+      shownOptionalFilters([], { ...EMPTY_FILTER, agentType: "Explore" }),
+    ).toEqual(["agentType"]);
+  });
+
+  it("counts filters but not the search box as filtering", () => {
+    expect(isFiltering(EMPTY_FILTER)).toBe(false);
+    expect(isFiltering({ ...EMPTY_FILTER, query: "x" })).toBe(false);
+    expect(isFiltering({ ...EMPTY_FILTER, minSizeMb: 10 })).toBe(true);
   });
 });

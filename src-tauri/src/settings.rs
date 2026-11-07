@@ -27,6 +27,10 @@ pub struct Settings {
     /// Column widths and visibility, as the UI stores them; Rust doesn't interpret them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub columns: Option<serde_json::Value>,
+    /// Other UI preferences by name (e.g. which optional filters are shown), as the UI stores
+    /// them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ui: BTreeMap<String, serde_json::Value>,
 }
 
 impl Default for Settings {
@@ -36,6 +40,7 @@ impl Default for Settings {
             theme: Theme::default(),
             language: system_language(),
             columns: None,
+            ui: BTreeMap::new(),
         }
     }
 }
@@ -109,6 +114,27 @@ mod tests {
         assert_eq!(
             SettingsStore::load(path).get().cli_paths.get("codex"),
             Some(&PathBuf::from("/opt/codex"))
+        );
+    }
+
+    #[test]
+    fn ui_prefs_round_trip_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let store = SettingsStore::load(path.clone());
+        assert!(store.get().ui.is_empty());
+
+        store
+            .update(|settings| {
+                settings
+                    .ui
+                    .insert("filters".into(), serde_json::json!(["model"]));
+            })
+            .unwrap();
+
+        assert_eq!(
+            SettingsStore::load(path).get().ui.get("filters"),
+            Some(&serde_json::json!(["model"]))
         );
     }
 

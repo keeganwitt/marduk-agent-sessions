@@ -11,9 +11,11 @@ import { ColumnsMenu, SessionTable } from "./components/SessionTable";
 import {
   EMPTY_FILTER,
   agentTypeOptions,
+  isOptionalFilter,
   modelOptions,
   projectOptions,
   sessionMatcher,
+  type OptionalFilter,
 } from "./lib/filter";
 import { rangeBetween } from "./lib/selection";
 import { applyTheme, isTheme } from "./lib/theme";
@@ -26,12 +28,14 @@ import {
   deleteSessions,
   getColumns,
   getTheme,
+  getUiPref,
   listLabels,
   memoryLeftBehind,
   openProjectDir,
   previewDelete,
   revealSessionFile,
   saveColumns,
+  saveUiPref,
   scanSessions,
   toggleArchive,
   trashMemory,
@@ -197,6 +201,18 @@ export default function App() {
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState(EMPTY_FILTER);
+  const [addedFilters, setAddedFilters] = useState<OptionalFilter[]>([]);
+  useEffect(() => {
+    getUiPref("filters").then(
+      (saved) =>
+        Array.isArray(saved) && setAddedFilters(saved.filter(isOptionalFilter)),
+      () => {},
+    );
+  }, []);
+  const changeAddedFilters = useCallback((added: OptionalFilter[]) => {
+    setAddedFilters(added);
+    void saveUiPref("filters", added).catch(() => {});
+  }, []);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
   const [memoryOffers, setMemoryOffers] = useState<MemoryStore[]>([]);
@@ -661,6 +677,8 @@ export default function App() {
             homeDir={scan.homeDir}
             filter={filter}
             onChange={setFilter}
+            added={addedFilters}
+            onAddedChange={changeAddedFilters}
           />
           <ColumnsMenu columns={columns} onColumnsChange={setColumns} />
         </div>

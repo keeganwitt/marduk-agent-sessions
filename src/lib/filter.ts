@@ -163,3 +163,36 @@ export function agentTypeOptions(
       (a, b) => b.count - a.count || a.agentType.localeCompare(b.agentType),
     );
 }
+
+/** Filters shown only once added with "+ Filter", because few people need them. */
+export const OPTIONAL_FILTERS = ["archive", "model", "agentType"] as const;
+export type OptionalFilter = (typeof OPTIONAL_FILTERS)[number];
+
+export function isOptionalFilter(value: unknown): value is OptionalFilter {
+  return OPTIONAL_FILTERS.includes(value as OptionalFilter);
+}
+
+/** Whether an optional filter is narrowing the list. */
+export function isOptionalActive(
+  filter: SessionFilter,
+  id: OptionalFilter,
+): boolean {
+  return filter[id] !== EMPTY_FILTER[id];
+}
+
+/** Optional filters to show: those added, plus any narrowing the list, so none hide. */
+export function shownOptionalFilters(
+  added: readonly OptionalFilter[],
+  filter: SessionFilter,
+): OptionalFilter[] {
+  return OPTIONAL_FILTERS.filter(
+    (id) => added.includes(id) || isOptionalActive(filter, id),
+  );
+}
+
+/** Whether any filter (not the search box, which clears on its own) is narrowing the list. */
+export function isFiltering(filter: SessionFilter): boolean {
+  return (Object.keys(EMPTY_FILTER) as (keyof SessionFilter)[]).some(
+    (key) => key !== "query" && filter[key] !== EMPTY_FILTER[key],
+  );
+}

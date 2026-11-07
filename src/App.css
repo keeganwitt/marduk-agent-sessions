@@ -1574,3 +1574,91 @@ button.filter-project svg {
   border-radius: 6px;
   background: var(--surface);
 }
+
+.removable-filter {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.remove-filter {
+  width: 20px;
+  height: 20px;
+  margin-bottom: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.remove-filter:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  color: CanvasText;
+}
+
+button.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent);
+}
+
+button.ghost:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.add-filter {
+  align-self: flex-end;
+}
+
+.filter-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 6;
+  min-width: 160px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.filter-menu [role="menuitem"] {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.filter-menu [role="menuitem"]:hover,
+.filter-menu [role="menuitem"]:focus-visible {
+  background: var(--row-selected);
+}
+
+.clear-filters {
+  align-self: flex-end;
+  padding-bottom: 6px;
+}
+
+/* Equal heights keep every filter's label on one line; WebKit's default dropdown is shorter
+   than a text field and ignores height unless it's drawn as a menu-list button. */
+.filters select,
+.filters input,
+.filters .combo input {
+  box-sizing: border-box;
+  height: 28px;
+}
+
+.filters select {
+  -webkit-appearance: menulist-button;
+  appearance: menulist-button;
+}

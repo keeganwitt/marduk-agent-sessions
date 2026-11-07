@@ -47,6 +47,15 @@ export function loadTranscript(uid: string): Promise<Transcript> {
   return invoke("load_transcript", { uid });
 }
 
+/** A UI preference saved by name in the settings file, or null if never saved. */
+export function getUiPref(key: string): Promise<unknown> {
+  return invoke("get_ui_pref", { key });
+}
+
+export function saveUiPref(key: string, value: unknown): Promise<void> {
+  return invoke("set_ui_pref", { key, value });
+}
+
 /** The saved language setting (`system` or a locale id). */
 export function getLanguage(): Promise<string> {
   return invoke("get_language");

@@ -21,6 +21,8 @@ vi.mock("./lib/ipc", () => ({
   agentHelp: vi.fn(),
   getColumns: vi.fn(),
   saveColumns: vi.fn(),
+  getUiPref: vi.fn(),
+  saveUiPref: vi.fn(),
   listMemory: vi.fn(),
   memoryLeftBehind: vi.fn(),
   readMemoryFile: vi.fn(),
@@ -127,6 +129,8 @@ describe("App", () => {
     vi.mocked(ipc.memoryLeftBehind).mockResolvedValue([]);
     vi.mocked(ipc.getColumns).mockResolvedValue(null);
     vi.mocked(ipc.saveColumns).mockResolvedValue();
+    vi.mocked(ipc.getUiPref).mockResolvedValue(null);
+    vi.mocked(ipc.saveUiPref).mockResolvedValue();
     localStorage.clear();
   });
 
@@ -811,6 +815,9 @@ describe("App", () => {
     const badge = await screen.findByText("architect", { selector: ".badge" });
     expect(badge).toHaveAttribute("title", "Ran as the architect agent");
 
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    await user.click(screen.getByRole("menuitem", { name: "Agent type" }));
+
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Agent type" }),
       "architect",
@@ -821,15 +828,66 @@ describe("App", () => {
     ).toEqual(["Plan the data model"]);
   });
 
-  it("hides the Agent type filter when no session has one", async () => {
+  it("doesn't offer an Agent type filter when no session has one", async () => {
+    const user = userEvent.setup();
     scanSessions.mockResolvedValue(
       scanOf(makeSession({ title: "Plain session" })),
     );
 
     render(<App />);
     await screen.findByText("Plain session");
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
 
-    expect(screen.queryByRole("combobox", { name: "Agent type" })).toBeNull();
+    expect(
+      screen.getByRole("menuitem", { name: "Status" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Agent type" })).toBeNull();
+  });
+
+  it("adds, saves and removes optional filters, and clears them all", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "a", title: "Active one" }),
+        makeSession({ uid: "b", title: "Archived one", archived: true }),
+      ),
+    );
+
+    render(<App />);
+    await screen.findByText("Active one");
+    expect(screen.queryByRole("combobox", { name: "Status" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    await user.click(screen.getByRole("menuitem", { name: "Status" }));
+    expect(ipc.saveUiPref).toHaveBeenCalledWith("filters", ["archive"]);
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Status" }),
+      "archived",
+    );
+    expect(rowTitles()).toEqual(["Archived oneArchived"]);
+
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(rowTitles()).toHaveLength(2);
+    expect(
+      screen.getByRole("combobox", { name: "Status" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Remove the Status filter" }),
+    );
+    expect(screen.queryByRole("combobox", { name: "Status" })).toBeNull();
+    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("filters", []);
+  });
+
+  it("restores optional filters added in an earlier session", async () => {
+    vi.mocked(ipc.getUiPref).mockResolvedValue(["archive", "bogus"]);
+    scanSessions.mockResolvedValue(scanOf(makeSession({ title: "A session" })));
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("combobox", { name: "Status" }),
+    ).toBeInTheDocument();
   });
 
   it("opens the help dialog", async () => {

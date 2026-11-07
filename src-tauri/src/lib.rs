@@ -325,6 +325,25 @@ async fn set_cli_path(
 }
 
 #[tauri::command]
+fn get_ui_pref(settings: tauri::State<'_, AppSettings>, key: String) -> Option<serde_json::Value> {
+    settings.store.get().ui.get(&key).cloned()
+}
+
+#[tauri::command]
+fn set_ui_pref(
+    settings: tauri::State<'_, AppSettings>,
+    key: String,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    settings
+        .store
+        .update(|current| {
+            current.ui.insert(key, value);
+        })
+        .map(|_| ())
+}
+
+#[tauri::command]
 fn get_language(settings: tauri::State<'_, AppSettings>) -> String {
     settings.store.get().language
 }
@@ -368,6 +387,8 @@ fn set_theme(
         .update(|current| current.theme = theme)
         .map(|_| ())
 }
+
+const DEV_TITLE: &str = "Marduk (dev)";
 
 /// The default size fits every default column; smaller screens get a window that fits them.
 fn fit_to_screen(window: &tauri::WebviewWindow) -> tauri::Result<()> {
@@ -431,10 +452,16 @@ pub fn run() {
                 marduk_core::labels::LabelStore::in_memory()
             })?;
             app.manage::<SharedLabels>(Arc::new(labels));
-            if let Some(window) = app.get_webview_window("main")
-                && let Err(error) = fit_to_screen(&window)
-            {
-                eprintln!("Couldn't fit the window to the screen: {error}");
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(error) = fit_to_screen(&window) {
+                    eprintln!("Couldn't fit the window to the screen: {error}");
+                }
+                // Tells a dev build (`tauri dev`, `pnpm demo`) apart from the installed app.
+                if cfg!(debug_assertions)
+                    && let Err(error) = window.set_title(DEV_TITLE)
+                {
+                    eprintln!("Couldn't set the window title: {error}");
+                }
             }
             Ok(())
         })
@@ -462,6 +489,8 @@ pub fn run() {
             set_columns,
             get_language,
             set_language,
+            get_ui_pref,
+            set_ui_pref,
             list_labels,
             create_label,
             update_label,
