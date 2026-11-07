@@ -8,7 +8,7 @@ Your coding agents are less monstrous than Tiamat, but left alone they make thei
 
 It reads the transcripts that coding agents keep on disk. You can filter by agent, age, size or project, then delete the sessions you don't need, or archive them when the agent supports archiving.
 
-![Marduk listing Claude Code, Codex, OpenCode, GitHub Copilot CLI and Pi sessions, with labels, a running session and expanded subagents](docs/screenshot.png)
+![Marduk listing Claude Code, Codex, OpenCode, GitHub Copilot CLI and Pi sessions, with labels, models, a running session and expanded subagents](docs/screenshot.png)
 
 ## Supported agents
 

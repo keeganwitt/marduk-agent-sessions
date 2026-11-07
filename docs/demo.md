@@ -68,8 +68,9 @@ By default, transcripts are padded to the sizes listed in `demo.rs`, so the Size
 ## Updating the README screenshot
 
 1. Run `pnpm demo`.
-2. Resize the window to about 1330 × 860 points, so that every default column fits without scrolling sideways.
-3. Expand _Add dark mode to the settings page_ to show its subagents.
-4. On macOS, capture the window with `screencapture -o -l <window id> docs/screenshot.png` (Screen Recording permission is required), or press ⇧⌘4, then Space, then ⌥-click the window to leave out the shadow.
+2. Resize the window to about 1510 × 860 points.
+3. In **Columns ▾**, turn on **Model**. Narrow **Labels** to just fit _keep_ and _research_, and widen **Project** and **Model** until the table fills the window with no path or model name cut off.
+4. Expand _Add dark mode to the settings page_ to show its subagents, then click empty space in the toolbar so no column edge is highlighted and the window has focus.
+5. On macOS, capture the window with `screencapture -o -l <window id> docs/screenshot.png` (Screen Recording permission is required), or press ⇧⌘4, then Space, then ⌥-click the window to leave out the shadow.
 
-Take the screenshot within five minutes of starting the demo, while the _Running_ badge is still showing.
+Take the screenshot within five minutes of starting the demo, while the _Running_ badge is still showing. Column widths persist (in the demo's settings and the webview's cache), so a rerun usually only needs steps 2 and 4.

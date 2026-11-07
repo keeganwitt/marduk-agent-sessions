@@ -1349,8 +1349,8 @@ impl Writer<'_> {
 fn model(agent: &str, title: &str) -> &'static str {
     let choices: &[&str] = match agent {
         "claude" => &["claude-opus-5-5", "claude-sonnet-5-5"],
-        "codex" => &["gpt-6.1", "gpt-6.1-mini"],
-        _ => &["claude-sonnet-5-5", "gpt-6.1"],
+        "codex" => &["gpt-6.1-sol", "gpt-6.1-terra", "gpt-6.1-luna"],
+        _ => &["claude-sonnet-5-5", "gpt-6.1-sol"],
     };
     choices[(fnv(title, 4) % choices.len() as u64) as usize]
 }
