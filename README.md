@@ -2,7 +2,7 @@
 
 <img src="assets/marduk.svg" alt="Marduk holding a spade" width="192" height="192">
 
-In the Babylonian creation epic, the _Enūma Eliš_, the world begins as Tiamat, the primordial salt sea, mingled with Apsu, the fresh water. When the younger gods kill Apsu, Tiamat raises an army of monsters against them, and none of the gods will face her until Marduk agrees to, on the condition that he rule them if he wins. He catches Tiamat in his net, drives the winds into her and splits her with an arrow. Then he puts the pieces in order: half of her becomes the sky and half the earth, and he gives the stars their stations and the year its months. His symbol is the _marru_, a spade, which is what he's holding above.
+In the Babylonian creation epic, the _Enūma Eliš_, the world begins as Tiamat, the primordial salt sea, mingled with Apsu, the fresh water. When the younger gods kill Apsu, Tiamat raises an army of monsters against them, and none of the gods will face her until Marduk agrees to, on the condition that he rule them if he wins. He catches Tiamat in his net, drives the winds into her and splits her with an arrow. Then he puts the pieces in order: half of her becomes the sky and half the earth, and he gives the stars their stations and the year its months. His symbol is the _marru_, a spade, which is what he's holding above. (His name is pronounced MAR-dook, with the vowel of "book", not "duck".)
 
 Your coding agents are less monstrous than Tiamat, but left alone they make their own kind of chaos: thousands of sessions spread across Claude Code, Codex, OpenCode and the rest, each stored in its own format and folder, most of which nobody will open again. Marduk is a cross-platform desktop app that puts them in order. It finds every agent's sessions, shows them in one list, and helps you clean up the ones you no longer need.
 
@@ -38,12 +38,16 @@ Select sessions and use **Labels ▾** to add or remove labels, or create a new 
 
 The **Memory** tab shows what agents remember between sessions.
 
+![The Memory tab showing a project's Claude Code memory files, a warning about a memory missing from MEMORY.md, and the session each memory came from](docs/memory.png)
+
 - **Claude Code** keeps memory per project, in `~/.claude/projects/<project>/memory/`: a `MEMORY.md` index that it loads into every session, plus one file per memory. Marduk lists each project's memory files with their type, description and the session that wrote them, and warns when the index is longer than the 200 lines Claude Code loads, when a memory isn't listed in the index, when the index links to a missing file, or when the project folder no longer exists. You can read the files, show the folder, or move a project's memory to the Trash.
 - **Codex** keeps one memory store for all projects, in `~/.codex/memories/` (or `memories_v2/`), when its memories feature is on. Codex regenerates these files itself, so Marduk only shows them, and links each session summary to its session. Clear them with Codex's own **Settings › Personalization › Delete Codex memories**.
 
 Deleting sessions doesn't make Claude Code's memory useless: it's per project, and Claude Code uses it again the next time you work there. When a delete removes a project's last session, the confirmation offers to move that project's memory to the Trash too, unchecked by default.
 
 ## Reading transcripts
+
+![A Claude Code transcript in the side panel, with collapsed tool calls, a code block and a table](docs/transcript.png)
 
 Click a session's title to read it in a side panel. Messages are rendered as Markdown, tool calls are collapsed with their output, and injected context (system prompts, AGENTS.md) is hidden unless you turn it on. Very long sessions show their first and last 500 messages. For Pi, only the active branch is shown, not abandoned rewinds.
 

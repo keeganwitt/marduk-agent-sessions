@@ -75,6 +75,13 @@ By default, transcripts are padded to the sizes listed in `demo.rs`, so the Size
 5. Click **+ Filter** to open its menu. That also makes sure no column edge is highlighted and the window has focus.
 6. On macOS, capture the window with `screencapture -o -l <window id> docs/screenshot.png` (Screen Recording permission is required), or press ⇧⌘4, then Space, then ⌥-click the window to leave out the shadow.
 
+### The Memory and transcript screenshots
+
+With the window at the same size:
+
+- **`docs/memory.png`:** open the **Memory** tab and select _~/Projects/dotfiles_, which has a warning and memories linked to their session. Capture it the same way.
+- **`docs/transcript.png`:** on the **Sessions** tab, click _Links don't open in the markdown view_. It's the one demo session with a full conversation: two prompts, three tool calls, a code block and a table. Capture it with the panel open.
+
 Dev builds are titled "Marduk (dev)", but not on demo data, so the screenshot shows the title people will see.
 
 Take the screenshot within five minutes of starting the demo, while the _Running_ badge is still showing. Column widths persist (in the demo's settings and the webview's cache), so a rerun usually only needs steps 2, 4 and 5.

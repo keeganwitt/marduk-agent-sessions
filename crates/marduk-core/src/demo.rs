@@ -43,6 +43,8 @@ const LABELS: [(&str, &str); 5] = [
 const PLAN: &str = "I'll start by looking at how the project is laid out.";
 const COMMAND: &str = "ls";
 const LISTING: &str = "README.md\nsrc\ntests";
+/// The session whose transcript is a full conversation, for the transcript screenshot.
+const LINKS: &str = "Links don't open in the markdown view";
 const ABANDONED: &str = "Here's a first draft, before you asked me to start over.";
 
 pub struct DemoOptions {
@@ -432,14 +434,7 @@ impl Writer<'_> {
             &[],
         )?;
         self.claude(
-            spec(
-                "Links don't open in the markdown view",
-                WEB,
-                5 * HOUR,
-                4 * HOUR,
-                1200 * KB,
-            )
-            .labels(&["bug"]),
+            spec(LINKS, WEB, 5 * HOUR, 4 * HOUR, 1200 * KB).labels(&["bug"]),
             &[],
         )?;
         self.codex(
@@ -739,6 +734,17 @@ impl Writer<'_> {
                 "message": message,
             })
         };
+        if spec.title == LINKS && !sidechain {
+            return links_conversation(spec)
+                .into_iter()
+                .map(|(kind, ago, mut message)| {
+                    if kind == "assistant" {
+                        message["model"] = json!(model("claude", spec.title));
+                    }
+                    record(kind, ago, message)
+                })
+                .collect();
+        }
         vec![
             record(
                 "user",
@@ -1287,14 +1293,16 @@ impl Writer<'_> {
                 .join(claude_folder(&path_of(project)))
                 .join("memory")
         };
-        let memory = |id: &str, kind: &str, description: &str, body: &str, ago: u64| {
-            format!(
-                "---\nname: {id}\ndescription: {description}\nmetadata:\n  type: {kind}\n  \
+        // `session` is the title of the session that wrote the memory, in the same project.
+        let memory =
+            |id: &str, kind: &str, description: &str, body: &str, ago: u64, session: &str| {
+                format!(
+                    "---\nname: {id}\ndescription: {description}\nmetadata:\n  type: {kind}\n  \
                  originSessionId: {}\n  modified: {}\n---\n\n{body}\n",
-                uuid("Add dark mode to the settings page"),
-                self.stamp(ago)
-            )
-        };
+                    uuid(session),
+                    self.stamp(ago)
+                )
+            };
         let write = |dir: &Path, files: &[(&str, String)]| -> io::Result<()> {
             fs::create_dir_all(dir)?;
             for (name, text) in files {
@@ -1320,6 +1328,7 @@ impl Writer<'_> {
                         "Colors come from CSS variables in src/styles/tokens.css",
                         "Never hard-code colors.\n\n**Why:** dark mode swaps the variables.\n\n**How to apply:** add new colors to tokens.css.",
                         2 * HOUR,
+                        "Add dark mode to the settings page",
                     ),
                 ),
                 (
@@ -1330,6 +1339,7 @@ impl Writer<'_> {
                         "Run pnpm test -- --run before committing",
                         "Watch mode never exits.\n\n**Why:** a hung commit hook.\n\n**How to apply:** always pass --run.",
                         DAY,
+                        LINKS,
                     ),
                 ),
                 (
@@ -1340,6 +1350,7 @@ impl Writer<'_> {
                         "UI changes need a screenshot in the pull request",
                         "The design team reviews every UI change from screenshots.",
                         3 * DAY,
+                        "Add dark mode to the settings page",
                     ),
                 ),
             ],
@@ -1359,6 +1370,7 @@ impl Writer<'_> {
                         "Keep the Brewfile sorted",
                         "Sort entries alphabetically.",
                         5 * HOUR,
+                        "Set up a Homebrew bundle",
                     ),
                 ),
                 (
@@ -1369,6 +1381,7 @@ impl Writer<'_> {
                         "The prompt is Starship, configured in starship.toml",
                         "Starship, not oh-my-zsh.",
                         6 * HOUR,
+                        "Set up a Homebrew bundle",
                     ),
                 ),
             ],
@@ -1389,6 +1402,7 @@ impl Writer<'_> {
                         "Deploy with make deploy from the release branch",
                         "Never deploy from main.",
                         120 * DAY,
+                        "Move the site to a static host",
                     ),
                 ),
             ],
@@ -1485,6 +1499,88 @@ fn model(agent: &str, title: &str) -> &'static str {
         _ => &["claude-sonnet-5-5", "gpt-6.1-sol"],
     };
     choices[(fnv(title, 4) % choices.len() as u64) as usize]
+}
+
+/// A conversation with several turns, tool calls and Markdown, for the transcript screenshot.
+fn links_conversation(spec: &Spec) -> Vec<(&'static str, u64, Value)> {
+    let tool = |id: &str, name: &str, input: Value| json!({ "type": "tool_use", "id": id, "name": name, "input": input });
+    let result = |id: &str, text: &str| json!({ "role": "user", "content": [{ "type": "tool_result", "tool_use_id": id, "content": text }] });
+    let assistant = |content: Value| json!({ "role": "assistant", "content": content });
+    vec![
+        (
+            "user",
+            spec.created,
+            json!({ "role": "user", "content": LINKS }),
+        ),
+        (
+            "assistant",
+            spec.step(1),
+            assistant(json!([
+                { "type": "text", "text": "Let me find where links are rendered." },
+                tool("toolu_1", "Grep", json!({ "pattern": "<a ", "path": "src" })),
+            ])),
+        ),
+        (
+            "user",
+            spec.step(2),
+            result(
+                "toolu_1",
+                "src/components/Markdown.tsx:41:      <a href={href} target=\"_blank\">",
+            ),
+        ),
+        (
+            "assistant",
+            spec.step(3),
+            assistant(json!([
+                { "type": "text", "text": "The renderer relies on `target=\"_blank\"`, but the app's webview never opens new windows, so the click is dropped. I'll send clicks to the system browser through the opener plugin instead:\n\n```tsx\nonClick={(event) => {\n  event.preventDefault();\n  if (isExternal(href)) void openUrl(href);\n}}\n```" },
+                tool("toolu_2", "Edit", json!({ "file_path": "src/components/Markdown.tsx", "old_string": "target=\"_blank\"", "new_string": "onClick={openExternal}" })),
+            ])),
+        ),
+        (
+            "user",
+            spec.step(4),
+            result(
+                "toolu_2",
+                "The file src/components/Markdown.tsx has been updated.",
+            ),
+        ),
+        (
+            "assistant",
+            spec.step(5),
+            assistant(json!([tool(
+                "toolu_3",
+                "Bash",
+                json!({ "command": "pnpm test -- --run Markdown" })
+            )])),
+        ),
+        (
+            "user",
+            spec.step(6),
+            result(
+                "toolu_3",
+                " ✓ src/components/Markdown.test.tsx (4 tests) 38ms\n\n Test Files  1 passed (1)\n      Tests  4 passed (4)",
+            ),
+        ),
+        (
+            "assistant",
+            spec.step(7),
+            assistant(
+                json!([{ "type": "text", "text": "Fixed: links now open in your default browser, and the tests pass." }]),
+            ),
+        ),
+        (
+            "user",
+            spec.step(8),
+            json!({ "role": "user", "content": "Does that work for mailto: links too?" }),
+        ),
+        (
+            "assistant",
+            spec.last,
+            assistant(
+                json!([{ "type": "text", "text": "Yes. Only these schemes open; anything else, like `javascript:` or `file:`, is shown as plain text:\n\n| Scheme | Opens in |\n| --- | --- |\n| `https`, `http` | your default browser |\n| `mailto` | your mail app |\n\nSee [the opener plugin docs](https://example.com/opener) for the full list." }]),
+            ),
+        ),
+    ]
 }
 
 fn summary(title: &str) -> String {
@@ -1631,7 +1727,7 @@ mod tests {
                         .tool
                         .as_ref()
                         .and_then(|tool| tool.output.as_deref())
-                        == Some(LISTING)),
+                        .is_some_and(|output| !output.is_empty())),
                     "{} {title}: no tool output in {messages:?}",
                     adapter.id()
                 );
@@ -1642,6 +1738,31 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn one_claude_session_has_a_full_conversation() {
+        let (_dir, home, _) = write_demo(false);
+        let (adapter, sessions) = scan(&home)
+            .into_iter()
+            .find(|(adapter, _)| adapter.id() == "claude")
+            .unwrap();
+        let session = sessions
+            .iter()
+            .find(|session| session.title.as_deref() == Some(LINKS))
+            .unwrap();
+        let transcript = adapter.transcript(session).unwrap();
+        let messages: Vec<_> = transcript.head.iter().chain(&transcript.tail).collect();
+
+        let prompts = messages
+            .iter()
+            .filter(|message| message.role == Role::User && message.tool.is_none())
+            .count();
+        let tools = messages
+            .iter()
+            .filter(|message| message.tool.is_some())
+            .count();
+        assert_eq!((prompts, tools), (2, 3), "{messages:?}");
     }
 
     #[test]
@@ -1754,6 +1875,29 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn claude_memories_come_from_sessions_in_their_own_project() {
+        let (_dir, home, _) = write_demo(false);
+        for (adapter, sessions) in scan(&home) {
+            if adapter.id() != "claude" {
+                continue;
+            }
+            for store in adapter.memory(&sessions) {
+                for file in store.files.iter().filter(|file| file.session_id.is_some()) {
+                    let source = sessions
+                        .iter()
+                        .find(|session| Some(&session.id) == file.session_id.as_ref());
+                    match source {
+                        Some(session) => {
+                            assert_eq!(session.project_dir, store.project_dir, "{}", file.title)
+                        }
+                        None => assert_eq!(store.project_exists, Some(false), "{}", file.title),
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn padding_gives_sessions_their_listed_sizes() {
         let (_dir, home, _) = write_demo(true);
