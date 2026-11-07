@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeleteDialog } from "./components/DeleteDialog";
 import { FilesDialog } from "./components/FilesDialog";
 import { HelpDialog } from "./components/HelpDialog";
+import { MemoryView } from "./components/MemoryView";
 import { LabelMenu } from "./components/LabelMenu";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { TranscriptPanel } from "./components/TranscriptPanel";
@@ -19,11 +20,13 @@ import {
   deleteSessions,
   getTheme,
   listLabels,
+  memoryLeftBehind,
   openProjectDir,
   previewDelete,
   revealSessionFile,
   scanSessions,
   toggleArchive,
+  trashMemory,
 } from "./lib/ipc";
 import {
   loadColumnPrefs,
@@ -44,6 +47,7 @@ import {
   type DeleteResult,
   type PreviewItem,
   type Label,
+  type MemoryStore,
   type ScanProgress,
   type ScanResponse,
   type SessionRow,
@@ -177,6 +181,8 @@ export default function App() {
   const [filter, setFilter] = useState(EMPTY_FILTER);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
+  const [memoryOffers, setMemoryOffers] = useState<MemoryStore[]>([]);
+  const [view, setView] = useState<"sessions" | "memory">("sessions");
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
@@ -323,13 +329,20 @@ export default function App() {
   const openPreview = async () => {
     setError(null);
     try {
-      setPreview(await previewDelete(toDelete.map((session) => session.uid)));
+      const items = await previewDelete(toDelete.map((session) => session.uid));
+      const ready = items
+        .filter((item) => item.refusedReason === null)
+        .map((item) => item.uid);
+      setMemoryOffers(
+        ready.length > 0 ? await memoryLeftBehind(ready).catch(() => []) : [],
+      );
+      setPreview(items);
     } catch (caught) {
       setError(errorMessage(caught));
     }
   };
 
-  const confirmDelete = async (uids: string[]) => {
+  const confirmDelete = async (uids: string[], memoryFolders: string[]) => {
     setDeleting(true);
     try {
       const outcome = await deleteSessions(uids);
@@ -351,7 +364,28 @@ export default function App() {
           },
       );
       setSelected(new Set());
-      setNotice(deleteNotice(outcome));
+      const memoryProblems: string[] = [];
+      let memoryTrashed = 0;
+      for (const folder of memoryFolders) {
+        try {
+          await trashMemory(folder, true);
+          memoryTrashed += 1;
+        } catch (caught) {
+          memoryProblems.push(errorMessage(caught));
+        }
+      }
+      const result = deleteNotice(outcome);
+      setNotice({
+        text: [
+          result.text,
+          memoryTrashed === 1 && "Moved its project's memory to the Trash.",
+          memoryTrashed > 1 &&
+            `Moved ${memoryTrashed} projects' memory to the Trash.`,
+        ]
+          .filter(Boolean)
+          .join(" "),
+        problems: [...result.problems, ...memoryProblems],
+      });
       setPreview(null);
       // Agent deletes can take related sessions with them (OpenCode deletes child sessions).
       if (outcome.some((result) => result.status === "deleted")) await rescan();
@@ -438,8 +472,26 @@ export default function App() {
     <main className="app">
       <header className="toolbar">
         <h1 className="visually-hidden">Marduk</h1>
+        <div className="view-tabs" role="tablist" aria-label="View">
+          {(
+            [
+              ["sessions", "Sessions"],
+              ["memory", "Memory"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={view === id}
+              onClick={() => setView(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <span className="summary">
-          {scan
+          {scan && view === "sessions"
             ? `${matching.length} of ${scan.sessions.length} sessions · ${formatBytes(matchingBytes)}`
             : ""}
         </span>
@@ -449,57 +501,63 @@ export default function App() {
         <button type="button" onClick={() => setSettingsOpen(true)}>
           Settings
         </button>
-        <div className="menu-anchor">
-          <button
-            type="button"
-            aria-haspopup="dialog"
-            aria-expanded={labelMenuOpen}
-            disabled={selectedVisible.length === 0 || busy}
-            onClick={() => setLabelMenuOpen((open) => !open)}
-          >
-            Labels ▾
-          </button>
-          {labelMenuOpen && (
-            <LabelMenu
-              labels={labels}
-              selected={selectedVisible}
-              onApply={(add, remove) => void labelSelected(add, remove)}
-              onCreate={newLabel}
-              onClose={() => setLabelMenuOpen(false)}
-            />
-          )}
-        </div>
+        {view === "sessions" && (
+          <div className="menu-anchor">
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded={labelMenuOpen}
+              disabled={selectedVisible.length === 0 || busy}
+              onClick={() => setLabelMenuOpen((open) => !open)}
+            >
+              Labels ▾
+            </button>
+            {labelMenuOpen && (
+              <LabelMenu
+                labels={labels}
+                selected={selectedVisible}
+                onApply={(add, remove) => void labelSelected(add, remove)}
+                onCreate={newLabel}
+                onClose={() => setLabelMenuOpen(false)}
+              />
+            )}
+          </div>
+        )}
         <button type="button" onClick={() => void rescan()} disabled={busy}>
           Rescan
         </button>
-        {toArchive.length > 0 && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void runArchive(toArchive.map((s) => s.uid))}
-          >
-            Archive {toArchive.length}
-          </button>
+        {view === "sessions" && (
+          <>
+            {toArchive.length > 0 && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void runArchive(toArchive.map((s) => s.uid))}
+              >
+                Archive {toArchive.length}
+              </button>
+            )}
+            {toUnarchive.length > 0 && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void runArchive(toUnarchive.map((s) => s.uid))}
+              >
+                Unarchive {toUnarchive.length}
+              </button>
+            )}
+            <button
+              type="button"
+              className="danger"
+              disabled={toDelete.length === 0 || busy}
+              onClick={() => void openPreview()}
+            >
+              {toDelete.length === 0
+                ? "Delete…"
+                : `Delete ${toDelete.length} (${formatBytes(deleteBytes)})…`}
+            </button>
+          </>
         )}
-        {toUnarchive.length > 0 && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void runArchive(toUnarchive.map((s) => s.uid))}
-          >
-            Unarchive {toUnarchive.length}
-          </button>
-        )}
-        <button
-          type="button"
-          className="danger"
-          disabled={toDelete.length === 0 || busy}
-          onClick={() => void openPreview()}
-        >
-          {toDelete.length === 0
-            ? "Delete…"
-            : `Delete ${toDelete.length} (${formatBytes(deleteBytes)})…`}
-        </button>
       </header>
 
       {error && (
@@ -518,7 +576,7 @@ export default function App() {
         <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />
       )}
 
-      {scan && (
+      {scan && view === "sessions" && (
         <div className="filter-bar">
           <Filters
             agents={scan.agents}
@@ -534,7 +592,16 @@ export default function App() {
       {!scan && activity && (
         <BusyIndicator label={activity} progress={progress} />
       )}
-      {scan && (
+      {scan && view === "memory" && (
+        <MemoryView
+          sessions={scan.sessions}
+          homeDir={scan.homeDir}
+          now={scannedAt}
+          reloadKey={scan}
+          onOpenSession={setTranscriptFor}
+        />
+      )}
+      {scan && view === "sessions" && (
         <div className="table-area" aria-busy={busy}>
           {activity && (
             <BusyIndicator label={activity} progress={progress} overlay />
@@ -604,8 +671,9 @@ export default function App() {
       {preview && (
         <DeleteDialog
           items={preview}
+          memory={memoryOffers}
           busy={deleting}
-          onConfirm={(uids) => void confirmDelete(uids)}
+          onConfirm={(uids, folders) => void confirmDelete(uids, folders)}
           onCancel={() => setPreview(null)}
           onReveal={(path) => void reveal(path)}
           homeDir={scan?.homeDir ?? ""}

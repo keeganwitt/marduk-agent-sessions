@@ -29,6 +29,7 @@ Author is `Keegan Witt <keeganwitt@gmail.com>`, set in this repo's local git con
 - Agent support is built from each agent's source and docs, with fixtures in tests, even when nobody on the project uses that agent.
 - `ScanResult.complete` must be false whenever part of an agent's storage couldn't be read. Future tag pruning depends on it.
 - `Session::key()` (`agent:id`) is the path-independent identity labels are keyed by (`marduk_core::labels::LabelStore`). Label pruning (`reconcile`) only judges agents whose scan was complete, after `PRUNE_GRACE`.
+- Memory (`marduk_core::memory`, `AgentAdapter::memory`): Claude Code's per-project memory folders may be moved to the Trash whole (`owns_memory_folder`); alongside a delete only when no transcript is left in the project (`memory_in_use`), and the offer is unchecked by default. Codex memory is generated state: show it, never change it.
 - Labels are solid, squared chips (`.label-chip`); status badges are tinted, round pills (`.badge`). Keep them visually distinct.
 - Links: `installExternalLinkHandler` (`src/lib/externalLinks.ts`) sends link clicks to `tauri-plugin-opener` (http, https and mailto only, scoped in `capabilities/default.json`). Tauri's webview ignores `target="_blank"`.
 

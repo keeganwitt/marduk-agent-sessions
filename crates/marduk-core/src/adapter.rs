@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::session::Session;
 use crate::transcript::Transcript;
@@ -36,6 +36,30 @@ pub trait AgentAdapter: Send + Sync {
     /// The agent's CLI, for agents that need it to delete or archive.
     fn cli(&self) -> Option<&crate::agents::cli::Cli> {
         None
+    }
+    /// Memory the agent keeps on disk; `sessions` are this agent's from the last scan.
+    fn memory(&self, _sessions: &[Session]) -> Vec<crate::memory::MemoryStore> {
+        Vec::new()
+    }
+    /// Whether `path` is one of this agent's memory files, which Marduk may read.
+    fn owns_memory_file(&self, _path: &Path) -> bool {
+        false
+    }
+    /// Whether `folder` is a memory folder Marduk may move to the Trash as a whole.
+    fn owns_memory_folder(&self, _folder: &Path) -> bool {
+        false
+    }
+    /// Whether the agent still has sessions that would use the memory in `folder`.
+    fn memory_in_use(&self, _folder: &Path) -> bool {
+        true
+    }
+    /// Memory that no session would use once `deleting` are gone from `all`.
+    fn memory_left_behind(
+        &self,
+        _deleting: &[&Session],
+        _all: &[Session],
+    ) -> Vec<crate::memory::MemoryStore> {
+        Vec::new()
     }
     /// The agent's own command to archive this session, or to unarchive it when it is
     /// already archived. `None` when the agent has no native archive.

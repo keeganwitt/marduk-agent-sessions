@@ -22,6 +22,7 @@ The sessions come from `crates/marduk-core/src/demo.rs`, which writes each agent
 - **Kilo:** a SQLite database with OpenCode's older `session`/`message`/`part` tables.
 - **Pi:** JSONL session trees in `.pi/agent/sessions/`, each with a reply the user rewound past, which Marduk should hide.
 - **Labels:** five labels applied to eight sessions, in `marduk/labels.db`.
+- **Memory:** Claude Code memory for four projects (healthy, a memory missing from its index, a deleted project, an empty folder), and a Codex memory store with memories turned on.
 
 Every session has a short transcript with a prompt, a tool call and its output, and a markdown reply with a link, so the transcript panel has something to show.
 

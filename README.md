@@ -33,6 +33,15 @@ Sessions an agent started on its own (Codex Guardian reviews and spawned subagen
 
 Select sessions and use **Labels ▾** to add or remove labels, or create a new one by typing its name. Filter by label from the _Label_ dropdown, and rename, recolor or delete labels in **Settings**. Labels are stored by Marduk (in `labels.db` in its app data folder), keyed by agent and session id, so they survive an agent archiving or moving a session. Deleting a session in Marduk removes its labels; labels of sessions deleted some other way are removed after they've been missing from complete scans for 7 days.
 
+## Agent memory
+
+The **Memory** tab shows what agents remember between sessions.
+
+- **Claude Code** keeps memory per project, in `~/.claude/projects/<project>/memory/`: a `MEMORY.md` index that it loads into every session, plus one file per memory. Marduk lists each project's memory files with their type, description and the session that wrote them, and warns when the index is longer than the 200 lines Claude Code loads, when a memory isn't listed in the index, when the index links to a missing file, or when the project folder no longer exists. You can read the files, show the folder, or move a project's memory to the Trash.
+- **Codex** keeps one memory store for all projects, in `~/.codex/memories/` (or `memories_v2/`), when its memories feature is on. Codex regenerates these files itself, so Marduk only shows them, and links each session summary to its session. Clear them with Codex's own **Settings › Personalization › Delete Codex memories**.
+
+Deleting sessions doesn't make Claude Code's memory useless: it's per project, and Claude Code uses it again the next time you work there. When a delete removes a project's last session, the confirmation offers to move that project's memory to the Trash too, unchecked by default.
+
 ## Reading transcripts
 
 Click a session's title to read it in a side panel. Messages are rendered as Markdown, tool calls are collapsed with their output, and injected context (system prompts, AGENTS.md) is hidden unless you turn it on. Very long sessions show their first and last 500 messages. For Pi, only the active branch is shown, not abandoned rewinds.

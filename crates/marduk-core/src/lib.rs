@@ -7,6 +7,7 @@ pub mod demo;
 pub mod fs_util;
 mod jsonl;
 pub mod labels;
+pub mod memory;
 pub mod session;
 pub mod transcript;
 

@@ -7,6 +7,7 @@ import type {
   DeleteResult,
   FileDetail,
   Label,
+  MemoryStore,
   PreviewItem,
   ScanProgress,
   ScanResponse,
@@ -43,6 +44,30 @@ export function openProjectDir(uid: string): Promise<void> {
 
 export function loadTranscript(uid: string): Promise<Transcript> {
   return invoke("load_transcript", { uid });
+}
+
+export function listMemory(): Promise<MemoryStore[]> {
+  return invoke("list_memory");
+}
+
+export function memoryLeftBehind(uids: string[]): Promise<MemoryStore[]> {
+  return invoke("memory_left_behind", { uids });
+}
+
+export function readMemoryFile(path: string): Promise<string> {
+  return invoke("read_memory_file", { path });
+}
+
+/** With `onlyIfUnused`, refused while any session in the memory's project is left. */
+export function trashMemory(
+  folder: string,
+  onlyIfUnused: boolean,
+): Promise<void> {
+  return invoke("trash_memory", { folder, onlyIfUnused });
+}
+
+export function revealMemory(path: string): Promise<void> {
+  return invoke("reveal_memory", { path });
 }
 
 export function agentHelp(): Promise<AgentHelp[]> {

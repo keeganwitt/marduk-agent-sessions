@@ -178,6 +178,91 @@ impl Catalog {
             .collect()
     }
 
+    /// Each adapter's sessions from the last scan.
+    fn sessions_by_adapter(&self) -> Vec<Vec<Session>> {
+        let mut sessions = vec![Vec::new(); self.adapters.len()];
+        for (index, session) in self.snapshot.lock().unwrap().values() {
+            sessions[*index].push(session.clone());
+        }
+        sessions
+    }
+
+    /// Every agent's memory, judged against the last scan.
+    pub fn memory(&self) -> Vec<crate::memory::MemoryStore> {
+        let sessions = self.sessions_by_adapter();
+        self.adapters
+            .iter()
+            .zip(&sessions)
+            .flat_map(|(adapter, sessions)| adapter.memory(sessions))
+            .collect()
+    }
+
+    /// Memory no session would use once `uids` are deleted, offered for deletion with them.
+    pub fn memory_left_behind(&self, uids: &[String]) -> Vec<crate::memory::MemoryStore> {
+        let snapshot = self.snapshot.lock().unwrap().clone();
+        let sessions = self.sessions_by_adapter();
+        self.adapters
+            .iter()
+            .enumerate()
+            .flat_map(|(index, adapter)| {
+                let deleting: Vec<&Session> = uids
+                    .iter()
+                    .filter_map(|uid| snapshot.get(uid))
+                    .filter(|(owner, _)| *owner == index)
+                    .map(|(_, session)| session)
+                    .collect();
+                if deleting.is_empty() {
+                    Vec::new()
+                } else {
+                    adapter.memory_left_behind(&deleting, &sessions[index])
+                }
+            })
+            .collect()
+    }
+
+    /// The text of a memory file, if some agent owns it.
+    pub fn read_memory_file(&self, path: &std::path::Path) -> Result<String, String> {
+        const LIMIT: u64 = 2 * 1024 * 1024;
+        if !self
+            .adapters
+            .iter()
+            .any(|adapter| adapter.owns_memory_file(path))
+        {
+            return Err(format!("{} isn't an agent memory file.", path.display()));
+        }
+        if crate::memory::size(path) > LIMIT {
+            return Err(format!("{} is too large to show.", path.display()));
+        }
+        std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))
+    }
+
+    /// Moves a whole memory folder to the Trash. With `only_if_unused`, refuses a folder
+    /// whose sessions haven't all been deleted, as when it's offered alongside a delete.
+    pub fn trash_memory(
+        &self,
+        folder: &std::path::Path,
+        only_if_unused: bool,
+        backend: &dyn DeleteBackend,
+    ) -> Result<(), String> {
+        let Some(adapter) = self
+            .adapters
+            .iter()
+            .find(|adapter| adapter.owns_memory_folder(folder))
+        else {
+            return Err(format!(
+                "{} isn't a memory folder Marduk can remove.",
+                folder.display()
+            ));
+        };
+        if only_if_unused && adapter.memory_in_use(folder) {
+            return Err(format!(
+                "{} is still used by sessions in its project.",
+                folder.display()
+            ));
+        }
+        backend.trash(&[folder.to_path_buf()])
+    }
+
     pub fn display_name(&self, agent: &str) -> &'static str {
         self.adapters
             .iter()
@@ -481,6 +566,96 @@ mod tests {
         assert!(
             matches!(&second[0].1, DeleteOutcome::Refused { reason } if reason.contains("not in the current scan"))
         );
+    }
+
+    /// Records what it was asked to trash, and actually removes it so later checks see that.
+    #[derive(Default)]
+    struct RecordingTrash(Mutex<Vec<std::path::PathBuf>>);
+    impl DeleteBackend for RecordingTrash {
+        fn trash(&self, paths: &[std::path::PathBuf]) -> Result<(), String> {
+            for path in paths {
+                if path.is_dir() {
+                    fs::remove_dir_all(path).unwrap();
+                } else {
+                    fs::remove_file(path).unwrap();
+                }
+            }
+            self.0.lock().unwrap().extend(paths.iter().cloned());
+            Ok(())
+        }
+        fn run(&self, _command: &crate::adapter::AgentCommand) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    /// One Claude Code project with a single, old session and a memory folder.
+    fn catalog_with_claude_memory() -> (tempfile::TempDir, Catalog, std::path::PathBuf) {
+        let config = tempfile::tempdir().unwrap();
+        let project = config.path().join("projects").join("-work-app");
+        let memory_dir = project.join("memory");
+        fs::create_dir_all(&memory_dir).unwrap();
+        fs::write(memory_dir.join("MEMORY.md"), "- [Git](git.md)").unwrap();
+        fs::write(memory_dir.join("git.md"), "---\nname: git\n---\n").unwrap();
+        let transcript = project.join("a9d8b9f2-3d8c-48bd-8b2d-ed6447b3e25f.jsonl");
+        fs::write(
+            &transcript,
+            r#"{"type":"user","cwd":"/work/app","message":{"role":"user","content":"hi"}}"#,
+        )
+        .unwrap();
+        let old =
+            filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+        filetime::set_file_mtime(&transcript, old).unwrap();
+        let catalog = Catalog::new(
+            vec![Box::new(crate::agents::claude::ClaudeAdapter::new(
+                config.path().to_path_buf(),
+            ))],
+            Duration::from_secs(60),
+        );
+        (config, catalog, memory_dir)
+    }
+
+    #[test]
+    fn offers_memory_with_the_last_session_and_trashes_it_once_unused() {
+        let (_config, catalog, memory_dir) = catalog_with_claude_memory();
+        let scans = catalog.scan();
+        let id = uid(&scans[0].sessions[0]);
+        let trash = RecordingTrash::default();
+
+        let offered = catalog.memory_left_behind(std::slice::from_ref(&id));
+        assert_eq!(offered.len(), 1);
+        assert_eq!(offered[0].folder, memory_dir);
+        let refused = catalog.trash_memory(&memory_dir, true, &trash).unwrap_err();
+        assert!(refused.contains("still used"), "{refused}");
+
+        catalog.delete(&[id], &trash, SystemTime::now());
+        catalog.trash_memory(&memory_dir, true, &trash).unwrap();
+
+        assert!(!memory_dir.exists());
+    }
+
+    #[test]
+    fn reads_and_trashes_only_agent_memory() {
+        let (config, catalog, memory_dir) = catalog_with_claude_memory();
+        catalog.scan();
+        let trash = RecordingTrash::default();
+
+        assert_eq!(catalog.memory().len(), 1);
+        assert!(
+            catalog
+                .read_memory_file(&memory_dir.join("git.md"))
+                .unwrap()
+                .contains("name: git")
+        );
+        let transcript = memory_dir
+            .parent()
+            .unwrap()
+            .join("a9d8b9f2-3d8c-48bd-8b2d-ed6447b3e25f.jsonl");
+        assert!(catalog.read_memory_file(&transcript).is_err());
+        assert!(catalog.trash_memory(config.path(), false, &trash).is_err());
+        assert!(trash.0.lock().unwrap().is_empty());
+
+        catalog.trash_memory(&memory_dir, false, &trash).unwrap();
+        assert_eq!(*trash.0.lock().unwrap(), vec![memory_dir]);
     }
 
     #[test]

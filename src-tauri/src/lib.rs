@@ -10,7 +10,10 @@ use marduk_core::{CliOverrides, RUNNING_WINDOW, SystemBackend};
 use tauri::Manager;
 
 use cli_settings::CliStatus;
-use dto::{AgentHelpDto, ArchiveResult, DeleteResult, PreviewItem, ScanResponse, TranscriptDto};
+use dto::{
+    AgentHelpDto, ArchiveResult, DeleteResult, MemoryStoreDto, PreviewItem, ScanResponse,
+    TranscriptDto,
+};
 use settings::SettingsStore;
 
 type SharedCatalog = Arc<Catalog>;
@@ -183,6 +186,84 @@ async fn reveal_session_file(
 }
 
 #[tauri::command]
+async fn list_memory(
+    catalog: tauri::State<'_, SharedCatalog>,
+) -> Result<Vec<MemoryStoreDto>, String> {
+    let catalog = catalog.inner().clone();
+    blocking(move || {
+        catalog
+            .memory()
+            .into_iter()
+            .map(MemoryStoreDto::from)
+            .collect()
+    })
+    .await
+}
+
+#[tauri::command]
+async fn memory_left_behind(
+    catalog: tauri::State<'_, SharedCatalog>,
+    uids: Vec<String>,
+) -> Result<Vec<MemoryStoreDto>, String> {
+    let catalog = catalog.inner().clone();
+    blocking(move || {
+        catalog
+            .memory_left_behind(&uids)
+            .into_iter()
+            .map(MemoryStoreDto::from)
+            .collect()
+    })
+    .await
+}
+
+#[tauri::command]
+async fn read_memory_file(
+    catalog: tauri::State<'_, SharedCatalog>,
+    path: String,
+) -> Result<String, String> {
+    let catalog = catalog.inner().clone();
+    blocking(move || catalog.read_memory_file(std::path::Path::new(&path))).await?
+}
+
+#[tauri::command]
+async fn trash_memory(
+    catalog: tauri::State<'_, SharedCatalog>,
+    folder: String,
+    only_if_unused: bool,
+) -> Result<(), String> {
+    let catalog = catalog.inner().clone();
+    blocking(move || {
+        catalog.trash_memory(
+            std::path::Path::new(&folder),
+            only_if_unused,
+            &SystemBackend,
+        )
+    })
+    .await?
+}
+
+/// Shows a memory store's folder, or one of its files, in the file manager.
+#[tauri::command]
+async fn reveal_memory(
+    catalog: tauri::State<'_, SharedCatalog>,
+    path: String,
+) -> Result<(), String> {
+    let catalog = catalog.inner().clone();
+    blocking(move || {
+        let path = std::path::PathBuf::from(path);
+        let known = catalog
+            .memory()
+            .iter()
+            .any(|store| store.folder == path || store.files.iter().any(|file| file.path == path));
+        if !known {
+            return Err("That isn't agent memory Marduk found.".to_string());
+        }
+        tauri_plugin_opener::reveal_item_in_dir(&path).map_err(|error| error.to_string())
+    })
+    .await?
+}
+
+#[tauri::command]
 async fn file_details(
     catalog: tauri::State<'_, SharedCatalog>,
     paths: Vec<String>,
@@ -340,6 +421,11 @@ pub fn run() {
             load_transcript,
             cli_statuses,
             agent_help,
+            list_memory,
+            memory_left_behind,
+            read_memory_file,
+            trash_memory,
+            reveal_memory,
             set_cli_path,
             get_theme,
             set_theme,

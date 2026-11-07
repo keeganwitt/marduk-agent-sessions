@@ -1,4 +1,6 @@
 use std::borrow::Cow;
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -11,26 +13,252 @@ use crate::adapter::{AgentAdapter, DeletePlan, Mechanics, ScanResult};
 use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl;
+use crate::memory::{self, MemoryFile, MemoryStore};
 use crate::session::Fingerprint;
 use crate::session::Session;
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
 pub struct ClaudeAdapter {
     projects_dir: PathBuf,
+    /// Claude Code's global config, which lists every project path it has opened.
+    global_config: PathBuf,
     cache: ParseCache<Fingerprint, Parsed>,
 }
+
+const MEMORY_INDEX: &str = "MEMORY.md";
+/// Claude Code loads only the start of `MEMORY.md` into a session.
+const INDEX_LINE_LIMIT: usize = 200;
+const INDEX_BYTE_LIMIT: u64 = 25 * 1024;
 
 impl ClaudeAdapter {
     pub fn new(config_dir: PathBuf) -> Self {
         Self {
             projects_dir: config_dir.join("projects"),
+            global_config: config_dir.join(".claude.json"),
             cache: ParseCache::default(),
         }
     }
 
+    /// With `CLAUDE_CONFIG_DIR` set, `.claude.json` is inside it; otherwise it's `~/.claude.json`,
+    /// next to (not inside) `~/.claude`.
     pub fn from_env() -> Self {
-        Self::new(env_dir("CLAUDE_CONFIG_DIR").unwrap_or_else(|| home_dir().join(".claude")))
+        match env_dir("CLAUDE_CONFIG_DIR") {
+            Some(config_dir) => Self::new(config_dir),
+            None => Self {
+                global_config: home_dir().join(".claude.json"),
+                ..Self::new(home_dir().join(".claude"))
+            },
+        }
     }
+
+    /// Project paths Claude Code has opened, by their folder name under `projects/`.
+    fn known_projects(&self) -> HashMap<String, String> {
+        let config = fs::read_to_string(&self.global_config)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
+        config
+            .as_ref()
+            .and_then(|config| config["projects"].as_object())
+            .map(|projects| {
+                projects
+                    .keys()
+                    .map(|path| (project_folder_name(path), path.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The memory in `<project folder>/memory`, with what's wrong with it. `sessions` are the
+    /// project's top-level sessions.
+    fn memory_store(
+        &self,
+        folder: &Path,
+        sessions: &[&Session],
+        known: &HashMap<String, String>,
+    ) -> MemoryStore {
+        let memory_dir = folder.join("memory");
+        let name = folder.file_name().unwrap_or_default().to_string_lossy();
+        let project_dir = sessions
+            .iter()
+            .find_map(|session| session.project_dir.clone())
+            .or_else(|| known.get(name.as_ref()).cloned());
+        let project_exists = project_dir.as_deref().map(|dir| Path::new(dir).is_dir());
+        let mut paths: Vec<PathBuf> = fs::read_dir(&memory_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "md"))
+            .collect();
+        paths.sort_by_key(|path| {
+            (
+                path.file_name() != Some(OsStr::new(MEMORY_INDEX)),
+                path.clone(),
+            )
+        });
+        let mut index: Option<String> = None;
+        let files: Vec<MemoryFile> = paths
+            .into_iter()
+            .map(|path| {
+                let text = fs::read_to_string(&path).unwrap_or_default();
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+                let fields = memory::frontmatter(&text);
+                let is_index = file_name == MEMORY_INDEX;
+                let file = MemoryFile {
+                    title: if is_index {
+                        MEMORY_INDEX.to_string()
+                    } else {
+                        fields
+                            .get("name")
+                            .cloned()
+                            .unwrap_or_else(|| stem.into_owned())
+                    },
+                    description: if is_index {
+                        Some(
+                            "The index Claude Code loads into every session in this project."
+                                .to_string(),
+                        )
+                    } else {
+                        fields.get("description").cloned()
+                    },
+                    kind: if is_index {
+                        Some("index".to_string())
+                    } else {
+                        fields.get("type").cloned()
+                    },
+                    session_id: fields.get("originSessionId").cloned(),
+                    modified: fields
+                        .get("modified")
+                        .and_then(|value| jsonl::parse_timestamp(value))
+                        .or_else(|| memory::modified(&path)),
+                    size: memory::size(&path),
+                    path,
+                };
+                if is_index {
+                    index = Some(text);
+                }
+                file
+            })
+            .collect();
+        let problems = memory_problems(
+            project_dir.as_deref(),
+            project_exists,
+            index.as_deref(),
+            &files,
+        );
+        MemoryStore {
+            agent: "claude",
+            agent_name: "Claude Code",
+            folder: memory_dir,
+            project_dir,
+            project_exists,
+            sessions: sessions.len(),
+            files,
+            problems,
+            note: None,
+            can_trash: true,
+        }
+    }
+
+    fn top_level_by_folder(sessions: &[Session]) -> HashMap<PathBuf, Vec<&Session>> {
+        let mut by_folder: HashMap<PathBuf, Vec<&Session>> = HashMap::new();
+        for session in sessions.iter().filter(|session| !session.part_of_parent) {
+            if let Some(folder) = session.primary_file.parent() {
+                by_folder
+                    .entry(folder.to_path_buf())
+                    .or_default()
+                    .push(session);
+            }
+        }
+        by_folder
+    }
+}
+
+/// Claude Code names a project's folder after its path, with every other character a dash.
+fn project_folder_name(path: &str) -> String {
+    path.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
+}
+
+fn memory_problems(
+    project_dir: Option<&str>,
+    project_exists: Option<bool>,
+    index: Option<&str>,
+    files: &[MemoryFile],
+) -> Vec<String> {
+    let mut problems = Vec::new();
+    if let (Some(dir), Some(false)) = (project_dir, project_exists) {
+        problems.push(format!("The project folder {dir} no longer exists."));
+    }
+    let topics: Vec<&MemoryFile> = files
+        .iter()
+        .filter(|file| file.kind.as_deref() != Some("index"))
+        .collect();
+    if files.is_empty() {
+        problems.push("The memory folder is empty.".to_string());
+        return problems;
+    }
+    let Some(index) = index else {
+        problems.push(format!(
+            "There's no {MEMORY_INDEX}, the index Claude Code loads."
+        ));
+        return problems;
+    };
+    let lines = index.lines().count();
+    if lines > INDEX_LINE_LIMIT {
+        problems.push(format!(
+            "{MEMORY_INDEX} has {lines} lines; Claude Code only loads the first {INDEX_LINE_LIMIT}."
+        ));
+    } else if index.len() as u64 > INDEX_BYTE_LIMIT {
+        problems.push(format!(
+            "{MEMORY_INDEX} is {} KB; Claude Code only loads the first {} KB.",
+            index.len() / 1024,
+            INDEX_BYTE_LIMIT / 1024
+        ));
+    }
+    let links: HashSet<String> = memory::link_targets(index).into_iter().collect();
+    let unlisted: Vec<String> = topics
+        .iter()
+        .filter_map(|file| {
+            file.path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .filter(|name| !links.contains(name))
+        .collect();
+    if !unlisted.is_empty() {
+        problems.push(format!(
+            "Not listed in {MEMORY_INDEX}, so Claude Code won't find {}: {}.",
+            if unlisted.len() == 1 { "it" } else { "them" },
+            unlisted.join(", ")
+        ));
+    }
+    let present: HashSet<String> = files
+        .iter()
+        .filter_map(|file| {
+            file.path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .collect();
+    let mut missing: Vec<&String> = links
+        .iter()
+        .filter(|link| !present.contains(*link))
+        .collect();
+    missing.sort();
+    if !missing.is_empty() {
+        problems.push(format!(
+            "{MEMORY_INDEX} links to files that don't exist: {}.",
+            missing
+                .iter()
+                .map(|link| link.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    problems
 }
 
 impl AgentAdapter for ClaudeAdapter {
@@ -91,6 +319,91 @@ impl AgentAdapter for ClaudeAdapter {
             files: session.files.clone(),
             warning: None,
         }
+    }
+
+    fn memory(&self, sessions: &[Session]) -> Vec<MemoryStore> {
+        let known = self.known_projects();
+        let by_folder = Self::top_level_by_folder(sessions);
+        let mut folders: Vec<PathBuf> = fs::read_dir(&self.projects_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|folder| folder.join("memory").is_dir())
+            .collect();
+        folders.sort();
+        folders
+            .iter()
+            .map(|folder| {
+                let sessions = by_folder.get(folder).map(Vec::as_slice).unwrap_or_default();
+                self.memory_store(folder, sessions, &known)
+            })
+            .collect()
+    }
+
+    fn owns_memory_file(&self, path: &Path) -> bool {
+        path.is_file()
+            && path.extension().is_some_and(|ext| ext == "md")
+            && path
+                .parent()
+                .is_some_and(|folder| self.owns_memory_folder(folder))
+    }
+
+    /// Only `<projects>/<project>/memory` itself, after resolving symlinks and `..`.
+    fn owns_memory_folder(&self, folder: &Path) -> bool {
+        let (Ok(folder), Ok(root)) = (folder.canonicalize(), self.projects_dir.canonicalize())
+        else {
+            return false;
+        };
+        folder.file_name() == Some(OsStr::new("memory"))
+            && folder.parent().and_then(Path::parent) == Some(root.as_path())
+    }
+
+    /// Memory is per project: it's used while the project has any transcript left.
+    fn memory_in_use(&self, folder: &Path) -> bool {
+        folder
+            .parent()
+            .and_then(|project| fs::read_dir(project).ok())
+            .into_iter()
+            .flatten()
+            .flatten()
+            .any(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl"))
+    }
+
+    fn memory_left_behind(&self, deleting: &[&Session], all: &[Session]) -> Vec<MemoryStore> {
+        let known = self.known_projects();
+        let deleting_files: HashSet<&Path> = deleting
+            .iter()
+            .map(|session| session.primary_file.as_path())
+            .collect();
+        let folders: BTreeSet<&Path> = deleting
+            .iter()
+            .filter(|session| !session.part_of_parent)
+            .filter_map(|session| session.primary_file.parent())
+            .collect();
+        folders
+            .into_iter()
+            .filter(|folder| folder.join("memory").is_dir())
+            .filter(|folder| {
+                !all.iter().any(|session| {
+                    !session.part_of_parent
+                        && session.primary_file.parent() == Some(*folder)
+                        && !deleting_files.contains(session.primary_file.as_path())
+                })
+            })
+            .map(|folder| {
+                let in_folder: Vec<&Session> = deleting
+                    .iter()
+                    .copied()
+                    .filter(|session| session.primary_file.parent() == Some(folder))
+                    .collect();
+                MemoryStore {
+                    sessions: 0,
+                    ..self.memory_store(folder, &in_folder, &known)
+                }
+            })
+            .filter(|store| !store.files.is_empty())
+            .collect()
     }
 
     fn mechanics(&self) -> Mechanics {
@@ -438,6 +751,149 @@ mod tests {
             fs::write(dir.join(name), content).unwrap();
         }
         dir
+    }
+
+    const OTHER_ID: &str = "b1e2c3d4-0000-4000-8000-000000000002";
+
+    /// A project with two sessions and memory (an index, a listed memory, an unlisted one and
+    /// a link to a missing file), and a session-less project known only from `.claude.json`.
+    fn memory_fixture() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        let app = root.path().join("work").join("app");
+        fs::create_dir_all(&app).unwrap();
+        let app_str = app.to_string_lossy().into_owned();
+        let line = serde_json::json!({ "type": "user", "cwd": app_str, "message": { "role": "user", "content": "hi" } }).to_string();
+        let folder = write_project(
+            &config,
+            &project_folder_name(&app_str),
+            &[
+                (&format!("{ID}.jsonl"), &line),
+                (&format!("{OTHER_ID}.jsonl"), &line),
+            ],
+        );
+        let memory_dir = folder.join("memory");
+        fs::create_dir_all(&memory_dir).unwrap();
+        fs::write(
+            memory_dir.join("MEMORY.md"),
+            "- [Git](git.md) — hook\n- [Gone](gone.md) — hook\n",
+        )
+        .unwrap();
+        fs::write(
+            memory_dir.join("git.md"),
+            "---\nname: git-identity\ndescription: Use the personal email\nmetadata:\n  type: feedback\n  originSessionId: a9d8\n---\nBody\n",
+        )
+        .unwrap();
+        fs::write(memory_dir.join("stray.md"), "no frontmatter").unwrap();
+        let old = root.path().join("work").join("old");
+        let old_str = old.to_string_lossy().into_owned();
+        let old_memory = config
+            .join("projects")
+            .join(project_folder_name(&old_str))
+            .join("memory");
+        fs::create_dir_all(&old_memory).unwrap();
+        fs::write(old_memory.join("MEMORY.md"), "").unwrap();
+        fs::write(
+            config.join(".claude.json"),
+            serde_json::json!({ "projects": { app_str.clone(): {}, old_str: {} } }).to_string(),
+        )
+        .unwrap();
+        (root, config, folder)
+    }
+
+    #[test]
+    fn lists_project_memory_with_its_problems() {
+        let (_root, config, folder) = memory_fixture();
+        let adapter = ClaudeAdapter::new(config.clone());
+        let sessions = adapter.scan().sessions;
+
+        let stores = adapter.memory(&sessions);
+
+        assert_eq!(stores.len(), 2);
+        let app = stores
+            .iter()
+            .find(|store| store.folder == folder.join("memory"))
+            .unwrap();
+        assert_eq!(app.sessions, 2);
+        assert_eq!(app.project_exists, Some(true));
+        let titles: Vec<&str> = app.files.iter().map(|file| file.title.as_str()).collect();
+        assert_eq!(titles, ["MEMORY.md", "git-identity", "stray"]);
+        let git = &app.files[1];
+        assert_eq!(git.kind.as_deref(), Some("feedback"));
+        assert_eq!(git.session_id.as_deref(), Some("a9d8"));
+        assert_eq!(git.description.as_deref(), Some("Use the personal email"));
+        assert!(
+            app.problems
+                .iter()
+                .any(|problem| problem.contains("won't find it: stray.md"))
+        );
+        assert!(
+            app.problems
+                .iter()
+                .any(|problem| problem.contains("don't exist: gone.md"))
+        );
+
+        let old = stores
+            .iter()
+            .find(|store| store.folder != folder.join("memory"))
+            .unwrap();
+        assert_eq!(old.sessions, 0);
+        assert!(old.project_dir.as_deref().unwrap().ends_with("old"));
+        assert_eq!(old.project_exists, Some(false));
+        assert!(old.problems[0].contains("no longer exists"));
+    }
+
+    #[test]
+    fn warns_when_the_index_is_longer_than_claude_loads() {
+        let files = vec![MemoryFile {
+            path: PathBuf::from("MEMORY.md"),
+            title: "MEMORY.md".into(),
+            description: None,
+            kind: Some("index".into()),
+            session_id: None,
+            modified: None,
+            size: 0,
+        }];
+
+        let problems = memory_problems(None, None, Some(&"- line\n".repeat(201)), &files);
+
+        assert_eq!(
+            problems,
+            ["MEMORY.md has 201 lines; Claude Code only loads the first 200."]
+        );
+    }
+
+    #[test]
+    fn memory_is_left_behind_only_by_deleting_a_projects_last_session() {
+        let (_root, config, folder) = memory_fixture();
+        let adapter = ClaudeAdapter::new(config);
+        let sessions = adapter.scan().sessions;
+
+        let one = adapter.memory_left_behind(&[&sessions[0]], &sessions);
+        let both = adapter.memory_left_behind(&[&sessions[0], &sessions[1]], &sessions);
+
+        assert!(one.is_empty());
+        assert_eq!(both.len(), 1);
+        assert_eq!(both[0].folder, folder.join("memory"));
+        assert_eq!(both[0].sessions, 0);
+    }
+
+    #[test]
+    fn owns_only_memory_folders_and_their_markdown_files() {
+        let (root, config, folder) = memory_fixture();
+        let adapter = ClaudeAdapter::new(config);
+        let memory_dir = folder.join("memory");
+
+        assert!(adapter.owns_memory_folder(&memory_dir));
+        assert!(adapter.owns_memory_file(&memory_dir.join("git.md")));
+        assert!(!adapter.owns_memory_folder(&folder));
+        assert!(!adapter.owns_memory_folder(&memory_dir.join("..").join("..").join("..")));
+        assert!(!adapter.owns_memory_file(&folder.join(format!("{ID}.jsonl"))));
+        assert!(!adapter.owns_memory_folder(root.path()));
+        assert!(adapter.memory_in_use(&memory_dir));
+        fs::remove_file(folder.join(format!("{ID}.jsonl"))).unwrap();
+        fs::remove_file(folder.join(format!("{OTHER_ID}.jsonl"))).unwrap();
+        assert!(!adapter.memory_in_use(&memory_dir));
     }
 
     fn scan_one(config: &Path) -> Session {

@@ -29,6 +29,8 @@ const PHOTOS: &str = "Projects/photo-sorter";
 const RECIPES: &str = "Projects/recipes-app";
 const DOTFILES: &str = "Projects/dotfiles";
 const NOTES: &str = "Documents/notes";
+/// A project whose folder was deleted; only its Claude Code memory is left.
+const LEGACY: &str = "Projects/legacy-site";
 
 const LABELS: [(&str, &str); 5] = [
     ("bug", "red"),
@@ -98,6 +100,8 @@ impl DemoHome {
             labeled: Vec::new(),
         };
         writer.sessions()?;
+        writer.claude_memory()?;
+        writer.codex_memory()?;
         writer.save_labels()
     }
 
@@ -1128,6 +1132,195 @@ impl Writer<'_> {
         Ok(())
     }
 
+    /// Claude Code memory: a healthy project, one with a memory missing from its index, one
+    /// whose project folder is gone, and an empty memory folder. `.claude.json` lists them all.
+    fn claude_memory(&self) -> io::Result<()> {
+        let config = self.home.var("CLAUDE_CONFIG_DIR");
+        let path_of = |project: &str| {
+            project
+                .split('/')
+                .fold(self.home.root.clone(), |dir, part| dir.join(part))
+                .to_string_lossy()
+                .into_owned()
+        };
+        let memory_dir = |project: &str| {
+            config
+                .join("projects")
+                .join(claude_folder(&path_of(project)))
+                .join("memory")
+        };
+        let memory = |id: &str, kind: &str, description: &str, body: &str, ago: u64| {
+            format!(
+                "---\nname: {id}\ndescription: {description}\nmetadata:\n  type: {kind}\n  \
+                 originSessionId: {}\n  modified: {}\n---\n\n{body}\n",
+                uuid("Add dark mode to the settings page"),
+                self.stamp(ago)
+            )
+        };
+        let write = |dir: &Path, files: &[(&str, String)]| -> io::Result<()> {
+            fs::create_dir_all(dir)?;
+            for (name, text) in files {
+                fs::write(dir.join(name), text)?;
+            }
+            Ok(())
+        };
+        write(
+            &memory_dir(WEB),
+            &[
+                (
+                    "MEMORY.md",
+                    "- [Theme tokens](theme-tokens.md) — colors come from CSS variables in tokens.css\n\
+                     - [Test command](test-command.md) — run `pnpm test -- --run` before committing\n\
+                     - [Design review](design-review.md) — UI changes need a screenshot in the PR\n"
+                        .to_string(),
+                ),
+                (
+                    "theme-tokens.md",
+                    memory(
+                        "theme-tokens",
+                        "project",
+                        "Colors come from CSS variables in src/styles/tokens.css",
+                        "Never hard-code colors.\n\n**Why:** dark mode swaps the variables.\n\n**How to apply:** add new colors to tokens.css.",
+                        2 * HOUR,
+                    ),
+                ),
+                (
+                    "test-command.md",
+                    memory(
+                        "test-command",
+                        "feedback",
+                        "Run pnpm test -- --run before committing",
+                        "Watch mode never exits.\n\n**Why:** a hung commit hook.\n\n**How to apply:** always pass --run.",
+                        DAY,
+                    ),
+                ),
+                (
+                    "design-review.md",
+                    memory(
+                        "design-review",
+                        "reference",
+                        "UI changes need a screenshot in the pull request",
+                        "The design team reviews every UI change from screenshots.",
+                        3 * DAY,
+                    ),
+                ),
+            ],
+        )?;
+        write(
+            &memory_dir(DOTFILES),
+            &[
+                (
+                    "MEMORY.md",
+                    "- [Brewfile](brewfile.md) — keep the Brewfile sorted\n".to_string(),
+                ),
+                (
+                    "brewfile.md",
+                    memory(
+                        "brewfile",
+                        "feedback",
+                        "Keep the Brewfile sorted",
+                        "Sort entries alphabetically.",
+                        5 * HOUR,
+                    ),
+                ),
+                (
+                    "shell-prompt.md",
+                    memory(
+                        "shell-prompt",
+                        "project",
+                        "The prompt is Starship, configured in starship.toml",
+                        "Starship, not oh-my-zsh.",
+                        6 * HOUR,
+                    ),
+                ),
+            ],
+        )?;
+        write(
+            &memory_dir(LEGACY),
+            &[
+                (
+                    "MEMORY.md",
+                    "- [Deploys](deploys.md) — deploy with make deploy from the release branch\n"
+                        .to_string(),
+                ),
+                (
+                    "deploys.md",
+                    memory(
+                        "deploys",
+                        "project",
+                        "Deploy with make deploy from the release branch",
+                        "Never deploy from main.",
+                        120 * DAY,
+                    ),
+                ),
+            ],
+        )?;
+        write(&memory_dir(WEATHER), &[])?;
+        let projects: serde_json::Map<String, Value> =
+            [WEB, API, WEATHER, PHOTOS, RECIPES, DOTFILES, LEGACY]
+                .iter()
+                .map(|project| (path_of(project), json!({})))
+                .collect();
+        fs::create_dir_all(&config)?;
+        fs::write(
+            config.join(".claude.json"),
+            json!({ "projects": projects }).to_string(),
+        )
+    }
+
+    /// A Codex memory store with memories turned on, including a summary of a session that
+    /// still exists and one of a session that doesn't.
+    fn codex_memory(&self) -> io::Result<()> {
+        let codex = self.home.var("CODEX_HOME");
+        let memories = codex.join("memories");
+        let files = [
+            (
+                "memory_summary.md".to_string(),
+                "# Memory summary\n\n- The user prefers small, reviewable pull requests.\n- acme-api runs its tests with `cargo nextest run`.\n".to_string(),
+            ),
+            (
+                "MEMORY.md".to_string(),
+                "# Task Group: Date parsing in weather-cli\n\n## Task 1: Refactor date parsing, success\n\n### keywords\n\nchrono, parsing\n".to_string(),
+            ),
+            (
+                "raw_memories.md".to_string(),
+                "- weather-cli dates are ISO 8601 with offsets.\n".to_string(),
+            ),
+            (
+                format!(
+                    "rollout_summaries/{}-Ab12-refactor_date_parsing.md",
+                    self.datetime(4 * HOUR).format("%Y-%m-%dT%H-%M-%S")
+                ),
+                format!(
+                    "thread_id: {}\ncwd: {}\n\nOutcome: success\n",
+                    uuid("Refactor date parsing"),
+                    self.project(WEATHER)?
+                ),
+            ),
+            (
+                format!(
+                    "rollout_summaries/{}-Cd34-flaky_ci_cache.md",
+                    self.datetime(40 * DAY).format("%Y-%m-%dT%H-%M-%S")
+                ),
+                format!(
+                    "thread_id: {}\ncwd: {}\n\nOutcome: partial\n",
+                    uuid("A deleted session about CI"),
+                    self.project(RECIPES)?
+                ),
+            ),
+            (
+                "skills/run-nextest/SKILL.md".to_string(),
+                "# Run nextest\n\nUse `cargo nextest run` in acme-api.\n".to_string(),
+            ),
+        ];
+        for (name, text) in files {
+            let path = memories.join(name);
+            fs::create_dir_all(path.parent().unwrap_or(&memories))?;
+            fs::write(path, text)?;
+        }
+        fs::write(codex.join("config.toml"), "[features]\nmemories = true\n")
+    }
+
     fn save_labels(&self) -> io::Result<()> {
         let store = LabelStore::open(&self.home.var("MARDUK_DATA_DIR").join("labels.db"))
             .map_err(io::Error::other)?;
@@ -1339,6 +1532,42 @@ mod tests {
         assert!(chats.iter().all(|chat| {
             PathBuf::from(chat.project_dir.as_deref().unwrap()).starts_with(&chats_dir)
         }));
+
+        let claude = ClaudeAdapter::new(home.var("CLAUDE_CONFIG_DIR"));
+        let claude_sessions: Vec<Session> = sessions
+            .iter()
+            .filter(|session| session.agent == "claude")
+            .cloned()
+            .collect();
+        let memory = claude.memory(&claude_sessions);
+        assert_eq!(memory.len(), 4);
+        let problem = |project: &str| {
+            memory
+                .iter()
+                .find(|store| {
+                    store
+                        .project_dir
+                        .as_deref()
+                        .is_some_and(|dir| dir.ends_with(project))
+                })
+                .map(|store| store.problems.join(" "))
+                .unwrap()
+        };
+        assert_eq!(problem("acme-web"), "");
+        assert!(problem("dotfiles").contains("shell-prompt.md"));
+        assert!(problem("legacy-site").contains("no longer exists"));
+        assert!(problem("weather-cli").contains("empty"));
+        let codex = CodexAdapter::new(home.var("CODEX_HOME"), None);
+        let codex_memory = codex.memory(&sessions);
+        assert_eq!(codex_memory.len(), 1);
+        assert_eq!(codex_memory[0].sessions, 1);
+        assert!(
+            codex_memory[0]
+                .note
+                .as_deref()
+                .unwrap()
+                .starts_with("Codex treats")
+        );
 
         let store = LabelStore::open(&home.var("MARDUK_DATA_DIR").join("labels.db")).unwrap();
         assert_eq!(store.labels().unwrap().len(), LABELS.len());

@@ -432,8 +432,93 @@ impl From<marduk_core::catalog::AgentHelp> for AgentHelpDto {
     }
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryFileDto {
+    pub path: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub kind: Option<String>,
+    pub session_id: Option<String>,
+    pub modified: Option<String>,
+    pub size: u64,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryStoreDto {
+    pub agent: &'static str,
+    pub agent_name: &'static str,
+    pub folder: String,
+    pub project_dir: Option<String>,
+    pub project_exists: Option<bool>,
+    pub sessions: usize,
+    pub files: Vec<MemoryFileDto>,
+    pub problems: Vec<String>,
+    pub note: Option<String>,
+    pub can_trash: bool,
+}
+
+impl From<marduk_core::memory::MemoryStore> for MemoryStoreDto {
+    fn from(store: marduk_core::memory::MemoryStore) -> Self {
+        Self {
+            agent: store.agent,
+            agent_name: store.agent_name,
+            folder: store.folder.to_string_lossy().into_owned(),
+            project_dir: store.project_dir,
+            project_exists: store.project_exists,
+            sessions: store.sessions,
+            files: store
+                .files
+                .into_iter()
+                .map(|file| MemoryFileDto {
+                    path: file.path.to_string_lossy().into_owned(),
+                    title: file.title,
+                    description: file.description,
+                    kind: file.kind,
+                    session_id: file.session_id,
+                    modified: file.modified.map(|modified| modified.to_rfc3339()),
+                    size: file.size,
+                })
+                .collect(),
+            problems: store.problems,
+            note: store.note,
+            can_trash: store.can_trash,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn memory_store_carries_files_and_flags() {
+        let dto = MemoryStoreDto::from(marduk_core::memory::MemoryStore {
+            agent: "claude",
+            agent_name: "Claude Code",
+            folder: PathBuf::from("/c/projects/-w/memory"),
+            project_dir: Some("/w".into()),
+            project_exists: Some(false),
+            sessions: 0,
+            files: vec![marduk_core::memory::MemoryFile {
+                path: PathBuf::from("/c/projects/-w/memory/git.md"),
+                title: "git".into(),
+                description: None,
+                kind: Some("feedback".into()),
+                session_id: Some("s1".into()),
+                modified: None,
+                size: 12,
+            }],
+            problems: vec!["gone".into()],
+            note: None,
+            can_trash: true,
+        });
+
+        assert_eq!(dto.folder, "/c/projects/-w/memory");
+        assert_eq!(dto.files[0].path, "/c/projects/-w/memory/git.md");
+        assert_eq!(dto.files[0].session_id.as_deref(), Some("s1"));
+        assert!(dto.can_trash);
+    }
 
     #[test]
     fn agent_help_carries_folders_and_mechanics() {

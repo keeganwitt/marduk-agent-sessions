@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -14,6 +14,7 @@ use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, Mechanics, ScanResu
 use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl;
+use crate::memory::{self, MemoryFile, MemoryStore};
 use crate::session::Fingerprint;
 use crate::session::Session;
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
@@ -156,6 +157,31 @@ impl AgentAdapter for CodexAdapter {
                 .map(|(path, _)| path)
                 .collect::<Vec<_>>(),
         )
+    }
+
+    fn memory(&self, sessions: &[Session]) -> Vec<MemoryStore> {
+        let ids: HashSet<&str> = sessions.iter().map(|session| session.id.as_str()).collect();
+        let enabled = memories_enabled(&self.home.join("config.toml"));
+        MEMORY_FOLDERS
+            .iter()
+            .map(|name| self.home.join(name))
+            .filter(|folder| folder.is_dir())
+            .map(|folder| memory_store(&folder, &ids, enabled))
+            .collect()
+    }
+
+    fn owns_memory_file(&self, path: &Path) -> bool {
+        let Ok(path) = path.canonicalize() else {
+            return false;
+        };
+        path.is_file()
+            && !path.components().any(|part| part.as_os_str() == ".git")
+            && MEMORY_FOLDERS.iter().any(|name| {
+                self.home
+                    .join(name)
+                    .canonicalize()
+                    .is_ok_and(|folder| path.starts_with(folder))
+            })
     }
 
     fn mechanics(&self) -> Mechanics {
@@ -310,6 +336,189 @@ impl Parsed {
             (Some(task), None) => Some(task.to_string()),
             (None, who) => who,
         }
+    }
+}
+
+/// Codex's memory store: `memories_v2` on fresh installs, `memories` on older ones.
+const MEMORY_FOLDERS: [&str; 2] = ["memories_v2", "memories"];
+
+/// Whether `[features] memories = true` is set; Codex memories are off by default.
+fn memories_enabled(config: &Path) -> bool {
+    let Ok(text) = fs::read_to_string(config) else {
+        return false;
+    };
+    let mut table = String::new();
+    for line in text.lines().map(str::trim) {
+        if let Some(name) = line
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+        {
+            table = name.trim().to_string();
+        } else if let Some((key, value)) = line.split_once('=') {
+            let key = key.trim();
+            if (table == "features" && key == "memories")
+                || (table.is_empty() && key == "features.memories")
+            {
+                return value.split('#').next().unwrap_or_default().trim() == "true";
+            }
+        }
+    }
+    false
+}
+
+/// Codex generates every file here; Marduk only shows them.
+fn memory_store(folder: &Path, session_ids: &HashSet<&str>, enabled: bool) -> MemoryStore {
+    let mut files = Vec::new();
+    collect_memory_files(folder, folder, &mut files);
+    let rank = |file: &MemoryFile| match file.kind.as_deref() {
+        Some("loaded") => 0,
+        Some("index") => 1,
+        Some("raw notes") => 2,
+        Some("session summary") => 3,
+        Some("skill") => 4,
+        _ => 5,
+    };
+    files.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| a.path.cmp(&b.path)));
+    // Session summaries are named after when they were written; newest first.
+    let first = files.iter().position(|file| rank(file) == 3);
+    let count = files.iter().filter(|file| rank(file) == 3).count();
+    if let Some(first) = first {
+        files[first..first + count].reverse();
+    }
+    let summaries: Vec<&MemoryFile> = files
+        .iter()
+        .filter(|file| file.kind.as_deref() == Some("session summary"))
+        .collect();
+    let live = summaries
+        .iter()
+        .filter(|file| {
+            file.session_id
+                .as_deref()
+                .is_some_and(|id| session_ids.contains(id))
+        })
+        .count();
+    let mut problems = Vec::new();
+    if summaries.len() > live {
+        let gone = summaries.len() - live;
+        problems.push(format!(
+            "{gone} session {} from sessions that no longer exist.",
+            if gone == 1 {
+                "summary is"
+            } else {
+                "summaries are"
+            }
+        ));
+    }
+    let reset = "Codex treats these files as generated state. To clear them, use Settings › \
+                 Personalization › Delete Codex memories in Codex.";
+    MemoryStore {
+        agent: "codex",
+        agent_name: "Codex",
+        folder: folder.to_path_buf(),
+        project_dir: None,
+        project_exists: None,
+        sessions: live,
+        files,
+        problems,
+        note: Some(if enabled {
+            reset.to_string()
+        } else {
+            format!(
+                "Codex memories are turned off, so Codex neither uses nor updates these files. {reset}"
+            )
+        }),
+        can_trash: false,
+    }
+}
+
+fn collect_memory_files(root: &Path, dir: &Path, files: &mut Vec<MemoryFile>) {
+    let mut entries: Vec<PathBuf> = fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            !path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with('.'))
+        })
+        .collect();
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            collect_memory_files(root, &path, files);
+        } else if path.is_file() {
+            files.push(memory_file(root, path));
+        }
+    }
+}
+
+fn memory_file(root: &Path, path: PathBuf) -> MemoryFile {
+    let relative = path
+        .strip_prefix(root)
+        .unwrap_or(&path)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let stem = path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let (title, kind, description, session_id) = match relative.as_str() {
+        "memory_summary.md" => (
+            relative.clone(),
+            Some("loaded"),
+            Some("The summary Codex loads into new sessions."),
+            None,
+        ),
+        "MEMORY.md" => (
+            relative.clone(),
+            Some("index"),
+            Some("What Codex has learned, by task group."),
+            None,
+        ),
+        "raw_memories.md" => (
+            relative.clone(),
+            Some("raw notes"),
+            Some("Notes from individual sessions, before Codex combines them."),
+            None,
+        ),
+        _ if relative.starts_with("rollout_summaries/") => {
+            let header = fs::read_to_string(&path)
+                .map(|text| memory::header_fields(&text))
+                .unwrap_or_default();
+            // `2026-08-18T20-42-25-eXxg-vault_backed_services`: a timestamp, a tag, then the topic.
+            let topic = stem
+                .splitn(7, '-')
+                .nth(6)
+                .unwrap_or(&stem)
+                .replace('_', " ");
+            (
+                topic,
+                Some("session summary"),
+                None,
+                header.get("thread_id").cloned(),
+            )
+        }
+        _ if relative.starts_with("skills/") => (
+            path.parent()
+                .and_then(Path::file_name)
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or(stem),
+            Some("skill"),
+            None,
+            None,
+        ),
+        _ => (relative.clone(), None, None, None),
+    };
+    MemoryFile {
+        title,
+        description: description.map(str::to_string),
+        kind: kind.map(str::to_string),
+        session_id,
+        modified: memory::modified(&path),
+        size: memory::size(&path),
+        path,
     }
 }
 
@@ -755,6 +964,92 @@ mod tests {
         );
         assert!(!projectless(ids[2]), "a project");
         assert!(!projectless(ids[3]), "not a dated chat folder");
+    }
+
+    #[test]
+    fn lists_codex_memory_read_only_and_links_summaries_to_sessions() {
+        let home = tempfile::tempdir().unwrap();
+        write(
+            &home
+                .path()
+                .join(format!("sessions/2026/11/06/rollout-x-{ID}.jsonl")),
+            &rollout(ID),
+        );
+        let memories = home.path().join("memories");
+        write(&memories.join("memory_summary.md"), "summary");
+        write(&memories.join("MEMORY.md"), "# Task Group");
+        write(&memories.join("raw_memories.md"), "raw");
+        write(
+            &memories.join("rollout_summaries/2026-08-18T20-42-25-eXxg-vault_catalogue.md"),
+            &format!("thread_id: {ID}\ncwd: /work\n\nOutcome: success"),
+        );
+        write(
+            &memories.join("rollout_summaries/2026-08-19T10-00-00-AbCd-gone_session.md"),
+            "thread_id: 019e98e4-dead-7000-8000-000000000000\n\nOutcome: success",
+        );
+        write(&memories.join("skills/verify-save/SKILL.md"), "skill");
+        write(&memories.join(".git/HEAD"), "ref: refs/heads/main");
+        let codex = adapter(home.path(), None);
+        let sessions = codex.scan().sessions;
+
+        let stores = codex.memory(&sessions);
+
+        assert_eq!(stores.len(), 1);
+        let store = &stores[0];
+        assert!(!store.can_trash);
+        assert!(
+            store
+                .note
+                .as_deref()
+                .unwrap()
+                .starts_with("Codex memories are turned off")
+        );
+        let kinds: Vec<(&str, Option<&str>)> = store
+            .files
+            .iter()
+            .map(|file| (file.title.as_str(), file.kind.as_deref()))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("memory_summary.md", Some("loaded")),
+                ("MEMORY.md", Some("index")),
+                ("raw_memories.md", Some("raw notes")),
+                ("gone session", Some("session summary")),
+                ("vault catalogue", Some("session summary")),
+                ("verify-save", Some("skill")),
+            ]
+        );
+        let vault = store
+            .files
+            .iter()
+            .find(|file| file.title == "vault catalogue")
+            .unwrap();
+        assert_eq!(vault.session_id.as_deref(), Some(ID));
+        assert_eq!(store.sessions, 1);
+        assert_eq!(
+            store.problems,
+            ["1 session summary is from sessions that no longer exist."]
+        );
+        assert!(codex.owns_memory_file(&memories.join("MEMORY.md")));
+        assert!(!codex.owns_memory_file(&memories.join(".git/HEAD")));
+        assert!(!codex.owns_memory_file(&home.path().join("config.toml")));
+    }
+
+    #[test]
+    fn reads_whether_codex_memories_are_on() {
+        let home = tempfile::tempdir().unwrap();
+        let config = home.path().join("config.toml");
+        write(&config, "model = \"x\"\n[features]\nmemories = true # on\n");
+        assert!(memories_enabled(&config));
+        write(
+            &config,
+            "[features]\nmemories = false\n[memories]\nuse_memories = true\n",
+        );
+        assert!(!memories_enabled(&config));
+        write(&config, "features.memories = true\n");
+        assert!(memories_enabled(&config));
+        assert!(!memories_enabled(&home.path().join("missing.toml")));
     }
 
     #[test]

@@ -1,10 +1,15 @@
-import type { PreviewItem } from "../lib/types";
+import { useState } from "react";
+
+import { tildePath } from "../lib/format";
+import type { MemoryStore, PreviewItem } from "../lib/types";
 import { FileList } from "./FileList";
 
 interface Props {
   items: PreviewItem[];
+  /** Memory no session would use after this delete, offered for the Trash too. */
+  memory?: MemoryStore[];
   busy: boolean;
-  onConfirm: (uids: string[]) => void;
+  onConfirm: (uids: string[], memoryFolders: string[]) => void;
   onCancel: () => void;
   onReveal: (path: string) => void;
   homeDir: string;
@@ -16,12 +21,23 @@ function plural(count: number, word: string): string {
 
 export function DeleteDialog({
   items,
+  memory = [],
   busy,
   onConfirm,
   onCancel,
   onReveal,
   homeDir,
 }: Props) {
+  const [memoryChosen, setMemoryChosen] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const toggleMemory = (folder: string, chosen: boolean) =>
+    setMemoryChosen((current) => {
+      const next = new Set(current);
+      if (chosen) next.add(folder);
+      else next.delete(folder);
+      return next;
+    });
   const ready = items.filter((item) => item.refusedReason === null);
   const refused = items.filter((item) => item.refusedReason !== null);
   const toTrash = ready.filter((item) => !item.permanent);
@@ -79,6 +95,36 @@ export function DeleteDialog({
             ))}
           </ul>
         )}
+        {memory.length > 0 && ready.length > 0 && (
+          <div className="memory-offers">
+            <h3>Project memory</h3>
+            {memory.map((store) => (
+              <div key={store.folder} className="memory-offer">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={memoryChosen.has(store.folder)}
+                    onChange={(event) =>
+                      toggleMemory(store.folder, event.target.checked)
+                    }
+                  />
+                  Also move {store.agentName}'s memory for{" "}
+                  <code>
+                    {store.projectDir
+                      ? tildePath(store.projectDir, homeDir)
+                      : tildePath(store.folder, homeDir)}
+                  </code>{" "}
+                  to the Trash ({plural(store.files.length, "file")})
+                </label>
+                <p className="muted">
+                  {store.projectExists === false
+                    ? "Its project folder no longer exists, and this deletes the project's last session."
+                    : `This deletes the project's last session, but ${store.agentName} would still use this memory the next time you work there.`}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
         {refused.length > 0 && (
           <div className="refused">
             <h3>Skipped ({refused.length})</h3>
@@ -99,7 +145,14 @@ export function DeleteDialog({
           <button
             type="button"
             className="danger"
-            onClick={() => onConfirm(ready.map((item) => item.uid))}
+            onClick={() =>
+              onConfirm(
+                ready.map((item) => item.uid),
+                memory
+                  .map((store) => store.folder)
+                  .filter((folder) => memoryChosen.has(folder)),
+              )
+            }
             disabled={busy || ready.length === 0}
           >
             {busy

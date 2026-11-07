@@ -3,7 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import * as ipc from "./lib/ipc";
-import type { PreviewItem, ScanResponse, SessionRow } from "./lib/types";
+import type {
+  MemoryStore,
+  PreviewItem,
+  ScanResponse,
+  SessionRow,
+} from "./lib/types";
 import { makeSession } from "./test/factories";
 
 vi.mock("./lib/ipc", () => ({
@@ -14,6 +19,11 @@ vi.mock("./lib/ipc", () => ({
   revealSessionFile: vi.fn(),
   openProjectDir: vi.fn(),
   agentHelp: vi.fn(),
+  listMemory: vi.fn(),
+  memoryLeftBehind: vi.fn(),
+  readMemoryFile: vi.fn(),
+  trashMemory: vi.fn(),
+  revealMemory: vi.fn(),
   loadTranscript: vi.fn(),
   getTheme: vi.fn(),
   listLabels: vi.fn(),
@@ -56,6 +66,41 @@ function scanOf(...sessions: SessionRow[]): ScanResponse {
   };
 }
 
+function memoryStore(overrides: Partial<MemoryStore>): MemoryStore {
+  return {
+    agent: "claude",
+    agentName: "Claude Code",
+    folder: "/c/projects/-old/memory",
+    projectDir: "/Users/me/old",
+    projectExists: true,
+    sessions: 0,
+    files: [
+      {
+        path: "/c/projects/-old/memory/MEMORY.md",
+        title: "MEMORY.md",
+        description: null,
+        kind: "index",
+        sessionId: null,
+        modified: null,
+        size: 10,
+      },
+      {
+        path: "/c/projects/-old/memory/git.md",
+        title: "git",
+        description: "Use the personal email",
+        kind: "feedback",
+        sessionId: null,
+        modified: null,
+        size: 20,
+      },
+    ],
+    problems: [],
+    note: null,
+    canTrash: true,
+    ...overrides,
+  };
+}
+
 function previewOf(
   overrides: Partial<PreviewItem> & { uid: string },
 ): PreviewItem {
@@ -77,6 +122,7 @@ describe("App", () => {
     getTheme.mockResolvedValue("system");
     vi.mocked(ipc.listLabels).mockResolvedValue([]);
     vi.mocked(ipc.fileDetails).mockResolvedValue([]);
+    vi.mocked(ipc.memoryLeftBehind).mockResolvedValue([]);
   });
 
   it("labels selected sessions from the Labels menu, then filters by label", async () => {
@@ -205,6 +251,101 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Old work")).not.toBeInTheDocument();
     expect(screen.getByText("Other work")).toBeInTheDocument();
+  });
+
+  it("offers a project's memory with its last session, unchecked, and trashes it only if chosen", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({
+          uid: "u1",
+          title: "Last one",
+          projectDir: "/Users/me/old",
+        }),
+      ),
+    );
+    previewDelete.mockResolvedValue([
+      previewOf({ uid: "u1", title: "Last one" }),
+    ]);
+    deleteSessions.mockResolvedValue([
+      { status: "trashed", uid: "u1", files: ["/p/u1.jsonl"] },
+    ]);
+    vi.mocked(ipc.memoryLeftBehind).mockResolvedValue([
+      memoryStore({ projectDir: "/Users/me/old", projectExists: false }),
+    ]);
+    vi.mocked(ipc.trashMemory).mockResolvedValue();
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Last one" }),
+    );
+    await user.click(screen.getByRole("button", { name: /Delete 1/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(ipc.memoryLeftBehind).toHaveBeenCalledWith(["u1"]);
+    const offer = within(dialog).getByRole("checkbox", {
+      name: /Also move Claude Code's memory for ~\/old to the Trash \(2 files\)/,
+    });
+    expect(offer).not.toBeChecked();
+    expect(dialog).toHaveTextContent("Its project folder no longer exists");
+    await user.click(offer);
+    await user.click(
+      within(dialog).getByRole("button", { name: "Move to Trash" }),
+    );
+
+    expect(ipc.trashMemory).toHaveBeenCalledWith(
+      "/c/projects/-old/memory",
+      true,
+    );
+    expect(
+      await screen.findByText(/Moved its project's memory to the Trash/),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves memory alone when its offer isn't checked", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "u1", title: "Last one" })),
+    );
+    previewDelete.mockResolvedValue([
+      previewOf({ uid: "u1", title: "Last one" }),
+    ]);
+    deleteSessions.mockResolvedValue([
+      { status: "trashed", uid: "u1", files: ["/p/u1.jsonl"] },
+    ]);
+    vi.mocked(ipc.memoryLeftBehind).mockResolvedValue([memoryStore({})]);
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Last one" }),
+    );
+    await user.click(screen.getByRole("button", { name: /Delete 1/ }));
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Move to Trash",
+      }),
+    );
+
+    expect(
+      await screen.findByText(/Moved 1 session to the Trash/),
+    ).toBeInTheDocument();
+    expect(ipc.trashMemory).not.toHaveBeenCalled();
+  });
+
+  it("switches to the Memory tab", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(scanOf(makeSession({ title: "A session" })));
+    vi.mocked(ipc.listMemory).mockResolvedValue([memoryStore({})]);
+
+    render(<App />);
+    await screen.findByText("A session");
+    await user.click(screen.getByRole("tab", { name: "Memory" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "~/old" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("search")).not.toBeInTheDocument();
+    expect(screen.queryByText("A session")).not.toBeInTheDocument();
   });
 
   it("reveals a file from the confirmation dialog", async () => {

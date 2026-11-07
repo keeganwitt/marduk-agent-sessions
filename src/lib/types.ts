@@ -108,6 +108,32 @@ export function isSelectable(session: SessionRow): boolean {
   );
 }
 
+export interface MemoryFile {
+  path: string;
+  title: string;
+  description: string | null;
+  /** A memory type (`feedback`, `project`, …) or a role (`index`, `loaded`, …). */
+  kind: string | null;
+  /** The session the memory came from, when the agent records it. */
+  sessionId: string | null;
+  modified: string | null;
+  size: number;
+}
+
+/** Claude Code keeps memory per project; Codex keeps one global store. */
+export interface MemoryStore {
+  agent: string;
+  agentName: string;
+  folder: string;
+  projectDir: string | null;
+  projectExists: boolean | null;
+  sessions: number;
+  files: MemoryFile[];
+  problems: string[];
+  note: string | null;
+  canTrash: boolean;
+}
+
 export interface AgentHelp {
   id: string;
   name: string;
