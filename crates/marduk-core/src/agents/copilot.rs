@@ -16,9 +16,9 @@ use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
 /// Copilot's delete is an in-session slash command (`/session delete`), so Marduk moves the
 /// folder to the Trash, which leaves Copilot's search index pointing at it.
-const INDEX_WARNING: &str = "Copilot's session search index keeps an entry for this session until you run `/chronicle reindex` in Copilot.";
+const INDEX_WARNING: &str = "Copilot's session search index keeps an entry for this session until you run `/chronicle reindex` in Copilot, and a copy synced to your GitHub account stays until you delete it in the GitHub Copilot app.";
 
-/// GitHub Copilot CLI keeps one folder per session at `session-state/<id>/`, holding an
+/// Copilot CLI and the GitHub Copilot app (built on it) keep one folder per session at `session-state/<id>/`, holding an
 /// `events.jsonl` event log and a flat `workspace.yaml` with the name, summary and folders.
 pub struct CopilotAdapter {
     sessions_dir: PathBuf,
@@ -75,7 +75,7 @@ impl AgentAdapter for CopilotAdapter {
     }
 
     fn display_name(&self) -> &'static str {
-        "GitHub Copilot CLI"
+        "GitHub Copilot"
     }
 
     fn roots(&self) -> Vec<PathBuf> {
@@ -109,11 +109,15 @@ impl AgentAdapter for CopilotAdapter {
 
     fn mechanics(&self) -> Mechanics {
         Mechanics {
-            delete: "Moves the session folder to the Trash. Copilot's own delete is only a slash \
-                     command inside a session. Run `/chronicle reindex` in Copilot afterwards to \
-                     update its search index."
+            delete:
+                "Covers Copilot CLI and the GitHub Copilot app, which share this folder. Moves \
+                     the session folder to the Trash; Copilot's own delete is only in its \
+                     interactive UI. Run `/chronicle reindex` in Copilot afterwards to update its \
+                     search index. A copy synced to your GitHub account isn't affected."
+                    .to_string(),
+            archive: "The GitHub Copilot app's archive is only in its UI, and Copilot CLI has \
+                      none."
                 .to_string(),
-            archive: "GitHub Copilot CLI has no archive.".to_string(),
         }
     }
 

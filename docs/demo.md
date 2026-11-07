@@ -17,9 +17,10 @@ The sessions come from `crates/marduk-core/src/demo.rs`, which writes each agent
 
 - **Claude Code:** JSONL transcripts in `.claude/projects/<folder>/`, one of them running with four subagents in `<id>/subagents/`.
 - **Codex:** rollouts in `.codex/sessions/YYYY/MM/DD/` and `.codex/archived_sessions/`, with spawned subagents and one subagent whose parent is gone (shown with _Parent deleted_).
-- **GitHub Copilot CLI:** `events.jsonl` and `workspace.yaml` folders in `.copilot/session-state/`.
+- **GitHub Copilot:** `events.jsonl` and `workspace.yaml` folders in `.copilot/session-state/`.
 - **OpenCode:** a SQLite database with the current `session_v2` tables, including a child session and an archived one.
 - **Kilo:** a SQLite database with OpenCode's older `session`/`message`/`part` tables.
+- **Copilot Chat (VS Code):** a `.json` chat and a `.jsonl` change-log chat in `vscode/User/workspaceStorage/`.
 - **Pi:** JSONL session trees in `.pi/agent/sessions/`, each with a reply the user rewound past, which Marduk should hide.
 - **Labels:** five labels applied to eight sessions, in `marduk/labels.db`.
 - **Memory:** Claude Code memory for four projects (healthy, a memory missing from its index, a deleted project, an empty folder), and a Codex memory store with memories turned on.

@@ -4,6 +4,7 @@ pub mod codex;
 pub mod copilot;
 pub mod opencode;
 pub mod pi;
+pub mod vscode_chat;
 
 use std::path::{Path, PathBuf};
 

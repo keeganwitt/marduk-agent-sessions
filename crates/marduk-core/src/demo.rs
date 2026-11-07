@@ -73,6 +73,10 @@ impl DemoHome {
         vec![
             ("MARDUK_HOME", self.root.clone()),
             ("MARDUK_DATA_DIR", self.root.join("marduk")),
+            (
+                "MARDUK_VSCODE_USER_DIR",
+                self.root.join("vscode").join("User"),
+            ),
             ("CLAUDE_CONFIG_DIR", self.root.join(".claude")),
             ("CODEX_HOME", self.root.join(".codex")),
             ("COPILOT_HOME", self.root.join(".copilot")),
@@ -100,6 +104,7 @@ impl DemoHome {
             labeled: Vec::new(),
         };
         writer.sessions()?;
+        writer.vscode_chats()?;
         writer.claude_memory()?;
         writer.codex_memory()?;
         writer.save_labels()
@@ -1138,6 +1143,90 @@ impl Writer<'_> {
         Ok(())
     }
 
+    /// Copilot Chat in VS Code: a chat in the older `.json` format and one in the newer `.jsonl`
+    /// change log, each in its workspace's storage.
+    fn vscode_chats(&mut self) -> io::Result<()> {
+        let user = self.home.var("MARDUK_VSCODE_USER_DIR");
+        let chats = [
+            (
+                spec("Explain the flaky snapshot test", WEB, 2 * DAY, 2 * DAY, 0),
+                false,
+            ),
+            (
+                spec(
+                    "Rename props in the settings form",
+                    RECIPES,
+                    8 * DAY,
+                    8 * DAY,
+                    0,
+                ),
+                true,
+            ),
+        ];
+        for (spec, log) in chats {
+            let cwd = self.project(spec.project)?;
+            let id = uuid(spec.title);
+            let workspace = user
+                .join("workspaceStorage")
+                .join(format!("{:032x}", u128::from(fnv(spec.project, 5))));
+            fs::create_dir_all(workspace.join("chatSessions"))?;
+            let uri = format!(
+                "file://{}{}",
+                if cwd.starts_with('/') { "" } else { "/" },
+                cwd.replace('\\', "/").replace(' ', "%20")
+            );
+            fs::write(
+                workspace.join("workspace.json"),
+                json!({ "folder": uri }).to_string(),
+            )?;
+            let request = json!({
+                "requestId": "r1",
+                "timestamp": self.millis(spec.created),
+                "responseTimestamp": self.millis(spec.last),
+                "modelId": format!("copilot/{}", model("vscode", spec.title)),
+                "message": { "text": spec.title },
+                "response": [
+                    { "value": PLAN },
+                    { "kind": "toolInvocationSerialized", "toolId": "run_in_terminal",
+                      "toolCallId": "t1", "invocationMessage": { "value": COMMAND },
+                      "resultDetails": { "input": COMMAND, "output": [{ "value": LISTING }] } },
+                    { "value": summary(spec.title) },
+                ],
+            });
+            let path = if log {
+                let path = workspace.join("chatSessions").join(format!("{id}.jsonl"));
+                let lines = [
+                    json!({ "kind": 0, "v": { "version": 3, "sessionId": id,
+                            "creationDate": self.millis(spec.created), "requests": [] } }),
+                    json!({ "kind": 2, "k": ["requests"], "v": [request] }),
+                ];
+                fs::write(
+                    &path,
+                    lines
+                        .iter()
+                        .map(Value::to_string)
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                )?;
+                path
+            } else {
+                let path = workspace.join("chatSessions").join(format!("{id}.json"));
+                fs::write(
+                    &path,
+                    json!({ "version": 3, "sessionId": id,
+                            "creationDate": self.millis(spec.created),
+                            "lastMessageDate": self.millis(spec.last),
+                            "requests": [request] })
+                    .to_string(),
+                )?;
+                path
+            };
+            self.set_modified(&path, spec.last)?;
+            self.label(format!("vscode-copilot:{id}"), &spec);
+        }
+        Ok(())
+    }
+
     /// Claude Code memory: a healthy project, one with a memory missing from its index, one
     /// whose project folder is gone, and an empty memory folder. `.claude.json` lists them all.
     fn claude_memory(&self) -> io::Result<()> {
@@ -1441,6 +1530,9 @@ mod tests {
             Box::new(PiAdapter::new(
                 home.var("PI_CODING_AGENT_DIR").join("sessions"),
             )),
+            Box::new(crate::agents::vscode_chat::VsCodeChatAdapter::new(vec![
+                home.var("MARDUK_VSCODE_USER_DIR"),
+            ])),
         ]
     }
 

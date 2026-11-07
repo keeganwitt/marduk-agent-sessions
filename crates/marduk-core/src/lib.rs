@@ -43,6 +43,7 @@ pub fn default_adapters(
             overrides,
         )),
         Box::new(agents::pi::PiAdapter::from_env()),
+        Box::new(agents::vscode_chat::VsCodeChatAdapter::from_env()),
     ]
 }
 
