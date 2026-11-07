@@ -190,3 +190,35 @@ export function setHidden(
   const rest = prefs.hidden.filter((candidate) => candidate !== id);
   return { ...prefs, hidden: hidden ? [...rest, id] : rest };
 }
+
+/**
+ * Every shown column's width: the saved widths, except that with `fit`, Session shrinks
+ * (never below its minimum, and never wider than saved) so the table fits in `available`.
+ * Fitting follows window and screen changes; a Session width the user just dragged wins.
+ */
+export function layoutWidths(
+  prefs: ColumnPrefs,
+  available: number | null,
+  fixed: number,
+  fit: boolean,
+): Map<ColumnId, number> {
+  const widths = new Map<ColumnId, number>();
+  let others = fixed;
+  for (const def of visibleColumns(prefs)) {
+    const width = columnWidth(prefs, def);
+    widths.set(def.id, width);
+    if (def.id !== "session") others += width;
+  }
+  const session = column("session");
+  const saved = widths.get("session")!;
+  if (fit && available !== null) {
+    widths.set(
+      "session",
+      Math.max(
+        session.minWidth,
+        Math.min(saved, Math.floor(available - others)),
+      ),
+    );
+  }
+  return widths;
+}

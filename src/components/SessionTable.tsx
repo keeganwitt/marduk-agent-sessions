@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -7,9 +8,9 @@ import {
 } from "react";
 import {
   COLUMNS,
-  columnWidth,
   DEFAULT_PREFS,
   isHidden,
+  layoutWidths,
   resize,
   setHidden,
   visibleColumns,
@@ -139,6 +140,31 @@ const ACTIONS_WIDTH = 64;
 const KEYBOARD_STEP = 16;
 
 /** Drag to resize; double-click resets; arrow keys resize when focused. */
+/**
+ * The width of the table's scroll container, without its scrollbar; null until measured.
+ * `onResize` runs whenever it changes (window resize, moving to another screen).
+ */
+function useContainerWidth(onResize: () => void) {
+  const [width, setWidth] = useState<number | null>(null);
+  const observer = useRef<ResizeObserver | null>(null);
+  const measure = useCallback(
+    (table: HTMLTableElement | null) => {
+      observer.current?.disconnect();
+      const container = table?.parentElement;
+      if (!container || typeof ResizeObserver === "undefined") return;
+      const update = () => {
+        setWidth(container.clientWidth);
+        onResize();
+      };
+      observer.current = new ResizeObserver(update);
+      observer.current.observe(container);
+      update();
+    },
+    [onResize],
+  );
+  return [width, measure] as const;
+}
+
 function ResizeHandle({
   column,
   width,
@@ -351,6 +377,17 @@ export function SessionTable(props: Props) {
     columns,
     onColumnsChange,
   } = props;
+  const [fit, setFit] = useState(true);
+  const fitAgain = useCallback(() => setFit(true), []);
+  const [available, measureContainer] = useContainerWidth(fitAgain);
+  /** Dragging Session means the user picked its width, even if the table then overflows. */
+  const changeColumns = useCallback(
+    (change: SetStateAction<ColumnPrefs>, column: ColumnId) => {
+      if (column === "session") setFit(false);
+      onColumnsChange(change);
+    },
+    [onColumnsChange],
+  );
   const selectable = rows
     .map((row) => row.session)
     .filter(isSelectable)
@@ -358,10 +395,17 @@ export function SessionTable(props: Props) {
   const allSelected =
     selectable.length > 0 && selectable.every((uid) => selected.has(uid));
   const shown = visibleColumns(columns);
+  const widths = layoutWidths(
+    columns,
+    available,
+    CHECK_WIDTH + ACTIONS_WIDTH,
+    fit,
+  );
+  const widthOf = (column: ColumnDef) => widths.get(column.id)!;
   const tableWidth =
     CHECK_WIDTH +
     ACTIONS_WIDTH +
-    shown.reduce((total, column) => total + columnWidth(columns, column), 0);
+    shown.reduce((total, column) => total + widthOf(column), 0);
 
   if (rows.length === 0) {
     return <p className="empty">No sessions match these filters.</p>;
@@ -488,14 +532,15 @@ export function SessionTable(props: Props) {
   };
 
   return (
-    <table className="sessions" style={{ width: tableWidth }}>
+    <table
+      className="sessions"
+      style={{ width: tableWidth }}
+      ref={measureContainer}
+    >
       <colgroup>
         <col style={{ width: CHECK_WIDTH }} />
         {shown.map((column) => (
-          <col
-            key={column.id}
-            style={{ width: columnWidth(columns, column) }}
-          />
+          <col key={column.id} style={{ width: widthOf(column) }} />
         ))}
         <col style={{ width: ACTIONS_WIDTH }} />
       </colgroup>
@@ -532,8 +577,8 @@ export function SessionTable(props: Props) {
                 )}
                 <ResizeHandle
                   column={column}
-                  width={columnWidth(columns, column)}
-                  onColumnsChange={onColumnsChange}
+                  width={widthOf(column)}
+                  onColumnsChange={(change) => changeColumns(change, column.id)}
                 />
               </th>
             );

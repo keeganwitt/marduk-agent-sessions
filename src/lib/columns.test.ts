@@ -3,6 +3,7 @@ import {
   COLUMNS,
   DEFAULT_PREFS,
   columnWidth,
+  layoutWidths,
   loadColumnPrefs,
   resize,
   saveColumnPrefs,
@@ -80,5 +81,36 @@ describe("column prefs", () => {
     expect(loadColumnPrefs()).toEqual(DEFAULT_PREFS);
     localStorage.setItem("marduk.columns", "{ not json");
     expect(loadColumnPrefs()).toEqual(DEFAULT_PREFS);
+  });
+
+  describe("layoutWidths", () => {
+    // Default widths other than Session add up to 790, plus 100 for the fixed columns.
+    const fixed = 100;
+    const others = COLUMNS.filter(
+      (c) => !c.defaultHidden && c.id !== "session",
+    ).reduce((total, c) => total + c.defaultWidth, fixed);
+
+    it("uses saved widths when the table fits or isn't measured", () => {
+      const roomy = layoutWidths(DEFAULT_PREFS, others + 1000, fixed, true);
+      expect(roomy.get("session")).toBe(column("session").defaultWidth);
+      expect(
+        layoutWidths(DEFAULT_PREFS, null, fixed, true).get("session"),
+      ).toBe(column("session").defaultWidth);
+    });
+
+    it("shrinks only Session to fit a narrower window, down to its minimum", () => {
+      const narrow = layoutWidths(DEFAULT_PREFS, others + 250, fixed, true);
+      expect(narrow.get("session")).toBe(250);
+      expect(narrow.get("project")).toBe(column("project").defaultWidth);
+      const tiny = layoutWidths(DEFAULT_PREFS, others + 10, fixed, true);
+      expect(tiny.get("session")).toBe(column("session").minWidth);
+    });
+
+    it("keeps a Session width the user dragged, even past the window", () => {
+      const wide = resize(DEFAULT_PREFS, "session", 900);
+      expect(
+        layoutWidths(wide, others + 250, fixed, false).get("session"),
+      ).toBe(900);
+    });
   });
 });
