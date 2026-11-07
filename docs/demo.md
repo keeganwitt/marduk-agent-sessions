@@ -5,7 +5,7 @@
 ```sh
 pnpm demo                                    # tauri dev on a fresh demo home
 pnpm demo --dir ~/tmp/marduk-demo            # somewhere other than the system temp folder
-pnpm demo --app /Applications/Marduk.app/Contents/MacOS/marduk  # a built app instead of tauri dev
+pnpm demo --app /Applications/Marduk.app/Contents/MacOS/Marduk  # a built app instead of tauri dev
 pnpm demo --no-padding                       # small files (see "Sizes" below)
 ```
 
