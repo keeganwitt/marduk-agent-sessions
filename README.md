@@ -2,9 +2,11 @@
 
 <img src="assets/marduk.svg" alt="Marduk holding a spade" width="192" height="192">
 
-Marduk is a cross-platform desktop app for finding and cleaning up old AI coding-agent sessions.
+In the Babylonian creation epic, the _Enūma Eliš_, the world begins as Tiamat, the primordial salt sea, mingled with Apsu, the fresh water. When the younger gods kill Apsu, Tiamat raises an army of monsters against them, and none of the gods will face her until Marduk agrees to, on the condition that he rule them if he wins. He catches Tiamat in his net, drives the winds into her and splits her with an arrow. Then he puts the pieces in order: half of her becomes the sky and half the earth, and he gives the stars their stations and the year its months. His symbol is the _marru_, a spade, which is what he's holding above.
 
-It scans the transcripts that coding agents keep on disk and shows them in one list. You can filter by agent, age, size or project, then delete the sessions you don't need, or archive them when the agent supports archiving.
+Your coding agents are less monstrous than Tiamat, but left alone they make their own kind of chaos: thousands of sessions spread across Claude Code, Codex, OpenCode and the rest, each stored in its own format and folder, most of which nobody will open again. Marduk is a cross-platform desktop app that puts them in order. It finds every agent's sessions, shows them in one list, and helps you clean up the ones you no longer need.
+
+It reads the transcripts that coding agents keep on disk. You can filter by agent, age, size or project, then delete the sessions you don't need, or archive them when the agent supports archiving.
 
 ![Marduk listing Claude Code, Codex, OpenCode, GitHub Copilot CLI and Pi sessions, with labels, a running session and expanded subagents](docs/screenshot.png)
 
