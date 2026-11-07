@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from "../i18n/context";
+import type { MessageKey } from "../i18n/messages";
 import { loadTranscript } from "../lib/ipc";
 import type {
   Label,
@@ -15,16 +17,12 @@ interface Props {
   onClose: () => void;
 }
 
-const ROLE_LABELS: Record<TranscriptMessage["role"], string> = {
-  user: "You",
-  assistant: "Assistant",
-  tool: "Tool",
-  context: "Injected context",
+const ROLE_LABELS: Record<TranscriptMessage["role"], MessageKey> = {
+  user: "transcript.role.user",
+  assistant: "transcript.role.assistant",
+  tool: "transcript.role.tool",
+  context: "transcript.role.context",
 };
-
-function time(timestamp: string | null): string | null {
-  return timestamp ? new Date(timestamp).toLocaleString() : null;
-}
 
 function MessageView({
   message,
@@ -33,7 +31,8 @@ function MessageView({
   message: TranscriptMessage;
   id: string;
 }) {
-  const timestamp = time(message.timestamp);
+  const { t, dateTime } = useI18n();
+  const timestamp = message.timestamp ? dateTime(message.timestamp) : null;
   if (message.tool) {
     return (
       <details className="message tool" id={id}>
@@ -44,7 +43,7 @@ function MessageView({
         {message.text && <pre>{message.text}</pre>}
         {message.tool.output !== null && (
           <>
-            <div className="tool-output-label">Output</div>
+            <div className="tool-output-label">{t("transcript.output")}</div>
             <pre>{message.tool.output}</pre>
           </>
         )}
@@ -54,7 +53,7 @@ function MessageView({
   if (message.role === "context") {
     return (
       <details className="message context" id={id}>
-        <summary>{ROLE_LABELS.context}</summary>
+        <summary>{t(ROLE_LABELS.context)}</summary>
         <pre>{message.text}</pre>
       </details>
     );
@@ -62,7 +61,7 @@ function MessageView({
   return (
     <article className={`message ${message.role}`} id={id}>
       <header>
-        <span className="role">{ROLE_LABELS[message.role]}</span>
+        <span className="role">{t(ROLE_LABELS[message.role])}</span>
         {timestamp && <span className="when">{timestamp}</span>}
       </header>
       <Markdown text={message.text} />
@@ -80,6 +79,7 @@ export function TranscriptPanel({
   labelsById = new Map(),
   onClose,
 }: Props) {
+  const { t } = useI18n();
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showTools, setShowTools] = useState(true);
@@ -146,8 +146,12 @@ export function TranscriptPanel({
             {session.projectDir && ` · ${session.projectDir}`}
           </p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close transcript">
-          Close
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t("transcript.closeLabel")}
+        >
+          {t("transcript.close")}
         </button>
       </header>
       <div className="transcript-controls">
@@ -157,7 +161,7 @@ export function TranscriptPanel({
             checked={showTools}
             onChange={(event) => setShowTools(event.target.checked)}
           />
-          Tool calls
+          {t("transcript.toolCalls")}
         </label>
         <label>
           <input
@@ -165,16 +169,16 @@ export function TranscriptPanel({
             checked={showContext}
             onChange={(event) => setShowContext(event.target.checked)}
           />
-          Injected context
+          {t("transcript.role.context")}
         </label>
         {prompts.length > 1 && (
           <select
-            aria-label="Jump to prompt"
+            aria-label={t("transcript.jumpLabel")}
             value=""
             onChange={(event) => jumpTo(event.target.value)}
           >
             <option value="" disabled>
-              Jump to prompt ({prompts.length})
+              {t("transcript.jumpCount", { count: prompts.length })}
             </option>
             {prompts.map((prompt) => (
               <option key={prompt.id} value={prompt.id}>
@@ -190,30 +194,25 @@ export function TranscriptPanel({
             {error}
           </div>
         )}
-        {!transcript && !error && <p className="muted">Loading…</p>}
+        {!transcript && !error && (
+          <p className="muted">{t("transcript.loading")}</p>
+        )}
         {transcript &&
           transcript.head.length + transcript.tail.length === 0 &&
           !transcript.note && (
-            <p className="muted">This session has no messages to show.</p>
+            <p className="muted">{t("transcript.noMessages")}</p>
           )}
         {transcript &&
           transcript.head.length + transcript.tail.length > 0 &&
           !transcript.head.concat(transcript.tail).some(visible) && (
-            <p className="muted">
-              Everything in this session is hidden by the filters above. Turn on
-              Tool calls or Injected context to see it.
-            </p>
+            <p className="muted">{t("transcript.allHidden")}</p>
           )}
         {transcript?.note && <p className="muted note">{transcript.note}</p>}
         {session.running && (
-          <p className="muted note">
-            This session is still running, so the transcript may be incomplete.
-          </p>
+          <p className="muted note">{t("transcript.running")}</p>
         )}
         {transcript?.shortened && (
-          <p className="muted note">
-            Some long messages or tool outputs are shortened.
-          </p>
+          <p className="muted note">{t("transcript.shortened")}</p>
         )}
         {transcript?.head.map(
           (message, index) =>
@@ -227,8 +226,7 @@ export function TranscriptPanel({
         )}
         {transcript && transcript.omitted > 0 && (
           <p className="omitted">
-            {transcript.omitted} messages in the middle of this session aren't
-            shown. Use Files to open the full transcript.
+            {t("transcript.omitted", { count: transcript.omitted })}
           </p>
         )}
         {transcript?.tail.map(

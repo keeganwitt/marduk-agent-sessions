@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 
+import { useI18n } from "../i18n/context";
 import { tildePath } from "../lib/format";
 import type { MemoryStore, PreviewItem } from "../lib/types";
 import { FileList } from "./FileList";
@@ -15,8 +16,19 @@ interface Props {
   homeDir: string;
 }
 
-function plural(count: number, word: string): string {
-  return `${count} ${count === 1 ? word : `${word}s`}`;
+/** A translated sentence with `{name}` placeholders filled by React nodes, in its own order. */
+function withNodes(
+  text: string,
+  nodes: Record<string, ReactNode>,
+): ReactNode[] {
+  return text.split(/(\{\w+\})/).map((part, index) => {
+    const name = /^\{(\w+)\}$/.exec(part)?.[1];
+    return name !== undefined && name in nodes ? (
+      <Fragment key={index}>{nodes[name]}</Fragment>
+    ) : (
+      part
+    );
+  });
 }
 
 export function DeleteDialog({
@@ -28,6 +40,7 @@ export function DeleteDialog({
   onReveal,
   homeDir,
 }: Props) {
+  const { t } = useI18n();
   const [memoryChosen, setMemoryChosen] = useState<ReadonlySet<string>>(
     new Set(),
   );
@@ -44,8 +57,8 @@ export function DeleteDialog({
   const permanent = ready.filter((item) => item.permanent);
   const title =
     permanent.length === 0
-      ? `Move ${plural(ready.length, "session")} to the Trash?`
-      : `Delete ${plural(ready.length, "session")}?`;
+      ? t("dialogs.delete.titleTrash", { count: ready.length })
+      : t("dialogs.delete.titleDelete", { count: ready.length });
 
   return (
     <div className="overlay">
@@ -57,16 +70,16 @@ export function DeleteDialog({
       >
         <h2 id="delete-title">{title}</h2>
         {toTrash.length > 0 && (
-          <p>
-            {plural(toTrash.length, "session")} will be moved to the system
-            Trash. You can restore them from there.
-          </p>
+          <p>{t("dialogs.delete.trashNote", { count: toTrash.length })}</p>
         )}
         {permanent.length > 0 && (
           <p className="permanent-warning" role="alert">
-            {plural(permanent.length, "session")} will be{" "}
-            <strong>permanently deleted</strong> by the agent's own command and
-            can't be restored.
+            {withNodes(
+              t("dialogs.delete.permanentNote", { count: permanent.length }),
+              {
+                permanently: <strong>{t("dialogs.delete.permanently")}</strong>,
+              },
+            )}
           </p>
         )}
         {ready.length > 0 && (
@@ -79,7 +92,9 @@ export function DeleteDialog({
                     <span className="muted"> · {item.agentName}</span>
                   )}
                   {item.permanent && (
-                    <span className="badge danger">Permanent</span>
+                    <span className="badge danger">
+                      {t("dialogs.delete.permanentBadge")}
+                    </span>
                   )}
                 </div>
                 {item.command && (
@@ -97,7 +112,7 @@ export function DeleteDialog({
         )}
         {memory.length > 0 && ready.length > 0 && (
           <div className="memory-offers">
-            <h3>Project memory</h3>
+            <h3>{t("dialogs.delete.memoryHeading")}</h3>
             {memory.map((store) => (
               <div key={store.folder} className="memory-offer">
                 <label>
@@ -108,18 +123,28 @@ export function DeleteDialog({
                       toggleMemory(store.folder, event.target.checked)
                     }
                   />
-                  Also move {store.agentName}'s memory for{" "}
-                  <code>
-                    {store.projectDir
-                      ? tildePath(store.projectDir, homeDir)
-                      : tildePath(store.folder, homeDir)}
-                  </code>{" "}
-                  to the Trash ({plural(store.files.length, "file")})
+                  {withNodes(
+                    t("dialogs.delete.memoryOffer", {
+                      agent: store.agentName,
+                      count: store.files.length,
+                    }),
+                    {
+                      path: (
+                        <code>
+                          {store.projectDir
+                            ? tildePath(store.projectDir, homeDir)
+                            : tildePath(store.folder, homeDir)}
+                        </code>
+                      ),
+                    },
+                  )}
                 </label>
                 <p className="muted">
                   {store.projectExists === false
-                    ? "Its project folder no longer exists, and this deletes the project's last session."
-                    : `This deletes the project's last session, but ${store.agentName} would still use this memory the next time you work there.`}
+                    ? t("dialogs.delete.memoryProjectGone")
+                    : t("dialogs.delete.memoryProjectExists", {
+                        agent: store.agentName,
+                      })}
                 </p>
               </div>
             ))}
@@ -127,7 +152,7 @@ export function DeleteDialog({
         )}
         {refused.length > 0 && (
           <div className="refused">
-            <h3>Skipped ({refused.length})</h3>
+            <h3>{t("dialogs.delete.skipped", { count: refused.length })}</h3>
             <ul>
               {refused.map((item) => (
                 <li key={item.uid}>
@@ -140,7 +165,7 @@ export function DeleteDialog({
         )}
         <div className="actions">
           <button type="button" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t("dialogs.cancel")}
           </button>
           <button
             type="button"
@@ -156,10 +181,10 @@ export function DeleteDialog({
             disabled={busy || ready.length === 0}
           >
             {busy
-              ? "Working…"
+              ? t("dialogs.working")
               : permanent.length > 0
-                ? "Delete"
-                : "Move to Trash"}
+                ? t("dialogs.delete.confirmDelete")
+                : t("dialogs.delete.confirmTrash")}
           </button>
         </div>
       </div>

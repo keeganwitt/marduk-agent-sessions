@@ -6,6 +6,7 @@ import {
   type ProjectOption,
   type SessionFilter,
 } from "../lib/filter";
+import { useI18n } from "../i18n/context";
 import { ProjectFilter } from "./ProjectFilter";
 import type { AgentSummary, Label } from "../lib/types";
 
@@ -38,17 +39,18 @@ export function Filters({
   filter,
   onChange,
 }: Props) {
+  const { t } = useI18n();
   return (
     <div className="filters" role="search">
       <label>
-        Agent
+        {t("table.filter.agent")}
         <select
           value={filter.agent}
           onChange={(event) =>
             onChange({ ...filter, agent: event.target.value })
           }
         >
-          <option value={ALL_AGENTS}>All agents</option>
+          <option value={ALL_AGENTS}>{t("table.filter.allAgents")}</option>
           {agents.map((agent) => (
             <option key={agent.id} value={agent.id}>
               {agent.name} ({agent.sessionCount})
@@ -58,14 +60,14 @@ export function Filters({
       </label>
       {models.length > 0 && (
         <label>
-          Model
+          {t("table.filter.model")}
           <select
             value={filter.model}
             onChange={(event) =>
               onChange({ ...filter, model: event.target.value })
             }
           >
-            <option value={ALL_MODELS}>All models</option>
+            <option value={ALL_MODELS}>{t("table.filter.allModels")}</option>
             {models.map(({ model, count }) => (
               <option key={model} value={model}>
                 {model} ({count})
@@ -75,7 +77,7 @@ export function Filters({
         </label>
       )}
       <label>
-        Status
+        {t("table.filter.status")}
         <select
           value={filter.archive}
           onChange={(event) =>
@@ -85,21 +87,21 @@ export function Filters({
             })
           }
         >
-          <option value="all">Active and archived</option>
-          <option value="active">Active</option>
-          <option value="archived">Archived</option>
+          <option value="all">{t("table.filter.statusAll")}</option>
+          <option value="active">{t("table.filter.statusActive")}</option>
+          <option value="archived">{t("table.filter.statusArchived")}</option>
         </select>
       </label>
       <label>
-        Label
+        {t("table.filter.label")}
         <select
           value={String(filter.label)}
           onChange={(event) =>
             onChange({ ...filter, label: parseLabelFilter(event.target.value) })
           }
         >
-          <option value="any">Any label</option>
-          <option value="none">No label</option>
+          <option value="any">{t("table.filter.anyLabel")}</option>
+          <option value="none">{t("table.filter.noLabel")}</option>
           {labels.map((label) => (
             <option key={label.id} value={label.id}>
               {label.name} ({label.count})
@@ -114,7 +116,7 @@ export function Filters({
         onChange={(project) => onChange({ ...filter, project })}
       />
       <label>
-        Older than (days)
+        {t("table.filter.olderThan")}
         <input
           type="number"
           min={0}
@@ -129,7 +131,7 @@ export function Filters({
         />
       </label>
       <label>
-        Min size (MB)
+        {t("table.filter.minSize")}
         <input
           type="number"
           min={0}
@@ -144,10 +146,10 @@ export function Filters({
         />
       </label>
       <label className="grow">
-        Search
+        {t("table.filter.search")}
         <input
           type="search"
-          placeholder="Title or project folder"
+          placeholder={t("table.filter.searchPlaceholder")}
           value={filter.query}
           onChange={(event) =>
             onChange({ ...filter, query: event.target.value })

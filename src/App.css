@@ -112,7 +112,13 @@ button.danger:not(:disabled) {
 
 .filters .grow {
   flex: 1;
-  min-width: 200px;
+  min-width: 140px;
+}
+
+/* Long options (agent names, translations) would otherwise widen the bar past one row. */
+.filters select {
+  max-width: 160px;
+  text-overflow: ellipsis;
 }
 
 .filters input,

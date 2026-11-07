@@ -6,6 +6,7 @@ import {
   projectLabel,
   type ProjectOption,
 } from "../lib/filter";
+import { useI18n } from "../i18n/context";
 import { shortenPath } from "../lib/format";
 
 /** With hundreds of projects, a full list is no help; typing narrows it instead. */
@@ -18,16 +19,43 @@ interface Props {
   onChange: (project: string | null) => void;
 }
 
-function shownValue(value: string, homeDir: string): string {
-  return value === NO_PROJECT ? "No project" : shortenPath(value, homeDir);
+function shownValue(value: string, homeDir: string, noProject: string): string {
+  return value === NO_PROJECT ? noProject : shortenPath(value, homeDir);
+}
+
+/** The "No project" entry also matches its name in the current language. */
+function withTranslatedNoProject(
+  matches: ProjectOption[],
+  options: ProjectOption[],
+  text: string,
+  noProject: string,
+): ProjectOption[] {
+  const needle = text.trim().toLowerCase();
+  const entry = options.find((option) => option.dir === NO_PROJECT);
+  if (
+    !entry ||
+    matches.includes(entry) ||
+    !noProject.toLowerCase().includes(needle)
+  )
+    return matches;
+  return [entry, ...matches];
 }
 
 export function ProjectFilter({ options, value, homeDir, onChange }: Props) {
+  const { t } = useI18n();
+  const noProject = t("table.project.noProject");
   const id = useId();
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const matches = open ? matchProjects(options, text, homeDir) : [];
+  const matches = open
+    ? withTranslatedNoProject(
+        matchProjects(options, text, homeDir),
+        options,
+        text,
+        noProject,
+      )
+    : [];
   const shown = matches.slice(0, SHOWN);
 
   const close = () => {
@@ -42,7 +70,7 @@ export function ProjectFilter({ options, value, homeDir, onChange }: Props) {
 
   return (
     <div className="field">
-      <span id={`${id}-label`}>Project</span>
+      <span id={`${id}-label`}>{t("table.filter.project")}</span>
       <div className="combo">
         <input
           type="text"
@@ -54,9 +82,11 @@ export function ProjectFilter({ options, value, homeDir, onChange }: Props) {
           aria-activedescendant={
             open && shown.length > 0 ? `${id}-option-${active}` : undefined
           }
-          placeholder="Any project"
+          placeholder={t("table.filter.anyProject")}
           title={value && value !== NO_PROJECT ? value : undefined}
-          value={open ? text : value ? shownValue(value, homeDir) : ""}
+          value={
+            open ? text : value ? shownValue(value, homeDir, noProject) : ""
+          }
           onFocus={() => setOpen(true)}
           onBlur={close}
           onChange={(event) => {
@@ -87,8 +117,8 @@ export function ProjectFilter({ options, value, homeDir, onChange }: Props) {
           <button
             type="button"
             className="combo-clear"
-            aria-label="Show every project"
-            title="Show every project"
+            aria-label={t("table.filter.everyProject")}
+            title={t("table.filter.everyProject")}
             onClick={() => onChange(null)}
           >
             ×
@@ -115,19 +145,21 @@ export function ProjectFilter({ options, value, homeDir, onChange }: Props) {
                       : "combo-path"
                   }
                 >
-                  {projectLabel(option.dir, homeDir)}
+                  {option.dir === NO_PROJECT
+                    ? noProject
+                    : projectLabel(option.dir, homeDir)}
                 </span>
                 <span className="combo-count">{option.count}</span>
               </li>
             ))}
             {matches.length === 0 && (
               <li className="combo-note" aria-disabled="true">
-                No matching projects
+                {t("table.filter.noMatches")}
               </li>
             )}
             {matches.length > SHOWN && (
               <li className="combo-note" aria-disabled="true">
-                {matches.length - SHOWN} more; keep typing to narrow the list
+                {t("table.filter.more", { count: matches.length - SHOWN })}
               </li>
             )}
           </ul>

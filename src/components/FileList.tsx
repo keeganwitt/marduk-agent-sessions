@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { formatBytes, shortenPath } from "../lib/format";
+import { useI18n } from "../i18n/context";
+import { shortenPath } from "../lib/format";
 import { fileDetails } from "../lib/ipc";
 import { sharedFolder, splitPath } from "../lib/paths";
 import type { FileDetail } from "../lib/types";
@@ -42,6 +43,7 @@ function FileIcon({ folder }: { folder: boolean }) {
  * share is shown once above them, shortened; each row's full path is in its tooltip.
  */
 export function FileList({ paths, homeDir, onReveal }: Props) {
+  const { t, bytes } = useI18n();
   const [details, setDetails] = useState<Map<string, FileDetail>>(new Map());
   const pathsKey = paths.join("\n");
 
@@ -87,8 +89,8 @@ export function FileList({ paths, homeDir, onReveal }: Props) {
               <span className="file-size">
                 {detail
                   ? detail.exists
-                    ? formatBytes(detail.sizeBytes)
-                    : "missing"
+                    ? bytes(detail.sizeBytes)
+                    : t("dialogs.files.missing")
                   : ""}
               </span>
               <button
@@ -96,7 +98,7 @@ export function FileList({ paths, homeDir, onReveal }: Props) {
                 className="link"
                 onClick={() => onReveal(path)}
               >
-                Show in folder
+                {t("dialogs.files.showInFolder")}
               </button>
             </li>
           );

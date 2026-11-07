@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "../i18n/context";
+import type { MessageKey } from "../i18n/messages";
 import { deleteLabel, listLabels, updateLabel } from "../lib/ipc";
 import { COLOR_NAMES, LABEL_COLORS, labelStyle } from "../lib/labels";
 import type { Label } from "../lib/types";
@@ -21,6 +23,7 @@ function LabelRow({
   onSave: (name: string, color: string) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState(label.name);
   const [confirming, setConfirming] = useState(false);
 
@@ -36,7 +39,7 @@ function LabelRow({
         {label.name}
       </span>
       <input
-        aria-label={`Name of ${label.name}`}
+        aria-label={t("settings.labels.nameOf", { name: label.name })}
         value={name}
         onChange={(event) => setName(event.target.value)}
         onBlur={commitName}
@@ -47,7 +50,7 @@ function LabelRow({
       <span
         className="swatches"
         role="radiogroup"
-        aria-label={`Color of ${label.name}`}
+        aria-label={t("settings.labels.colorOf", { name: label.name })}
       >
         {COLOR_NAMES.map((color) => (
           <button
@@ -55,7 +58,7 @@ function LabelRow({
             type="button"
             role="radio"
             aria-checked={color === label.color}
-            aria-label={LABEL_COLORS[color].name}
+            aria-label={t(`settings.color.${color}` as MessageKey)}
             className={
               color === label.color ? "swatch-button active" : "swatch-button"
             }
@@ -72,20 +75,19 @@ function LabelRow({
             className="danger"
             onClick={() => void onDelete()}
           >
-            Delete from {label.count}{" "}
-            {label.count === 1 ? "session" : "sessions"}
+            {t("settings.labels.deleteFrom", { count: label.count })}
           </button>
           <button type="button" onClick={() => setConfirming(false)}>
-            Keep
+            {t("settings.labels.keep")}
           </button>
         </span>
       ) : (
         <button
           type="button"
           onClick={() => setConfirming(true)}
-          aria-label={`Delete label ${label.name}`}
+          aria-label={t("settings.labels.deleteLabel", { name: label.name })}
         >
-          Delete
+          {t("settings.labels.delete")}
         </button>
       )}
     </li>
@@ -94,6 +96,7 @@ function LabelRow({
 
 /** Rename, recolor and delete labels. Labels are created from the Labels menu. */
 export function LabelManager({ onChanged, onError }: Props) {
+  const { t } = useI18n();
   const [labels, setLabels] = useState<Label[] | null>(null);
 
   const reload = useCallback(
@@ -118,13 +121,9 @@ export function LabelManager({ onChanged, onError }: Props) {
     await reload();
   };
 
-  if (!labels) return <p className="muted">Loading…</p>;
+  if (!labels) return <p className="muted">{t("settings.labels.loading")}</p>;
   if (labels.length === 0) {
-    return (
-      <p className="muted">
-        No labels yet. Select sessions and use Labels ▾ to create one.
-      </p>
-    );
+    return <p className="muted">{t("settings.labels.empty")}</p>;
   }
   return (
     <ul className="label-list">

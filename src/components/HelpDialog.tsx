@@ -1,5 +1,7 @@
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { useI18n } from "../i18n/context";
+import type { MessageKey } from "../i18n/messages";
 import { tildePath } from "../lib/format";
 import { agentHelp } from "../lib/ipc";
 import type { AgentHelp } from "../lib/types";
@@ -10,12 +12,12 @@ interface Props {
 }
 
 const TABS = [
-  { id: "deleting", label: "Deleting" },
-  { id: "archiving", label: "Archiving" },
-  { id: "safety", label: "Safety" },
-  { id: "subagents", label: "Subagents & labels" },
-  { id: "agents", label: "Agents" },
-] as const;
+  { id: "deleting", label: "help.tab.deleting" },
+  { id: "archiving", label: "help.tab.archiving" },
+  { id: "safety", label: "help.tab.safety" },
+  { id: "subagents", label: "help.tab.subagents" },
+  { id: "agents", label: "help.tab.agents" },
+] as const satisfies readonly { id: string; label: MessageKey }[];
 
 type TabId = (typeof TABS)[number]["id"];
 
@@ -30,6 +32,26 @@ function WithCode({ text }: { text: string }) {
         )}
     </>
   );
+}
+
+const RICH_TAGS = { strong: "strong", em: "em", code: "code" } as const;
+
+/** A message with `<strong>`, `<em>` and `<code>` tags, rendered as that markup. */
+function Rich({ text }: { text: string }) {
+  const parts = text.split(/(<(strong|em|code)>[\s\S]*?<\/\2>)/g);
+  const nodes: ReactNode[] = [];
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index];
+    const match = /^<(strong|em|code)>([\s\S]*)<\/\1>$/.exec(part);
+    if (match) {
+      const Tag = RICH_TAGS[match[1] as keyof typeof RICH_TAGS];
+      nodes.push(<Tag key={index}>{match[2]}</Tag>);
+      index += 1;
+    } else if (part) {
+      nodes.push(part);
+    }
+  }
+  return <>{nodes}</>;
 }
 
 /** Left and right arrows move between tabs, as in native tab bars. */
@@ -62,77 +84,58 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function DeletingTab() {
+  const { t } = useI18n();
   return (
     <>
-      <Section title="Before anything happens">
+      <Section title={t("help.deleting.before.title")}>
         <p>
-          <strong>Delete…</strong> lists every file that will be moved and every
-          command that will run. Nothing changes until you confirm.
+          <Rich text={t("help.deleting.before.body")} />
         </p>
       </Section>
-      <Section title="Trash">
-        <p>
-          Agents without a delete command of their own have their files moved to
-          the system Trash (the Recycle Bin on Windows), where you can restore
-          them. If a file can't be moved to the Trash, Marduk reports the error
-          rather than deleting it permanently.
-        </p>
+      <Section title={t("help.deleting.trash.title")}>
+        <p>{t("help.deleting.trash.body")}</p>
       </Section>
-      <Section title="Permanent">
+      <Section title={t("help.deleting.permanent.title")}>
         <p>
-          When an agent has its own delete command, Marduk runs it, so the
-          agent's own indexes stay consistent. These deletes can't be undone.
-          The confirmation marks them <em>Permanent</em> and shows the exact
-          command.
+          <Rich text={t("help.deleting.permanent.body")} />
         </p>
       </Section>
       <p className="muted">
-        The <strong>Agents</strong> tab says which applies to each agent.
+        <Rich text={t("help.deleting.seeAgents")} />
       </p>
     </>
   );
 }
 
 function ArchivingTab() {
+  const { t } = useI18n();
   return (
     <>
-      <Section title="Only through the agent">
+      <Section title={t("help.archiving.agent.title")}>
         <p>
-          <strong>Archive</strong> is offered only for agents with their own
-          archive command, and runs that command. The session stays in the
-          agent, which can still open it.
+          <Rich text={t("help.archiving.agent.body")} />
         </p>
       </Section>
-      <Section title="No invented archives">
-        <p>
-          Marduk never makes archive folders that an agent doesn't know about.
-          For agents without an archive, delete or keep the session instead.
-        </p>
+      <Section title={t("help.archiving.none.title")}>
+        <p>{t("help.archiving.none.body")}</p>
       </Section>
     </>
   );
 }
 
 function SafetyTab() {
+  const { t } = useI18n();
   return (
-    <Section title="What Marduk refuses to do">
+    <Section title={t("help.safety.title")}>
       <ul>
         <li>
-          Change a <em>Running</em> session, one written to in the last 5
-          minutes.
+          <Rich text={t("help.safety.running")} />
         </li>
+        <li>{t("help.safety.changed")}</li>
+        <li>{t("help.safety.outside")}</li>
+        <li>{t("help.safety.database")}</li>
         <li>
-          Change a session that changed after the last scan. Rescan, then try
-          again.
-        </li>
-        <li>Touch files outside the agent's own session folders.</li>
-        <li>
-          Write to an agent's database. Database-backed agents are changed only
-          through their own command-line tool, and are read-only without it.
-        </li>
-        <li>
-          Install or update an agent's command-line tool. Choose where yours is
-          in <strong>Settings</strong>.
+          <Rich text={t("help.safety.install")} />
         </li>
       </ul>
     </Section>
@@ -140,29 +143,23 @@ function SafetyTab() {
 }
 
 function SubagentsTab() {
+  const { t } = useI18n();
   return (
     <>
-      <Section title="Subagents">
+      <Section title={t("help.subagents.title")}>
         <p>
-          Sessions an agent started on its own are nested under the session that
-          started them; expand the parent to see them. Some agents delete them
-          along with the parent, and the confirmation says when that happens. A
-          subagent whose parent is gone shows <em>Parent deleted</em>.
+          <Rich text={t("help.subagents.body")} />
         </p>
       </Section>
-      <Section title="Labels">
-        <p>
-          Labels are kept by Marduk, not the agent, so they survive archiving.
-          Deleting a session in Marduk removes its labels. Labels of sessions
-          deleted some other way are removed once the session has been missing
-          for 7 days.
-        </p>
+      <Section title={t("help.labels.title")}>
+        <p>{t("help.labels.body")}</p>
       </Section>
     </>
   );
 }
 
 function AgentsTab({ homeDir }: { homeDir: string }) {
+  const { t } = useI18n();
   const [agents, setAgents] = useState<AgentHelp[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -178,8 +175,9 @@ function AgentsTab({ homeDir }: { homeDir: string }) {
       </div>
     );
   }
-  if (!agents) return <p className="muted">Loading…</p>;
-  if (agents.length === 0) return <p className="muted">No agents.</p>;
+  if (!agents) return <p className="muted">{t("help.agents.loading")}</p>;
+  if (agents.length === 0)
+    return <p className="muted">{t("help.agents.none")}</p>;
 
   const ids = agents.map((agent) => agent.id);
   const current = agents.find((agent) => agent.id === selected) ?? agents[0];
@@ -188,7 +186,7 @@ function AgentsTab({ homeDir }: { homeDir: string }) {
       <div
         className="agent-list"
         role="tablist"
-        aria-label="Agent"
+        aria-label={t("help.agents.list")}
         aria-orientation="vertical"
         onKeyDown={(event) =>
           arrowStep(event, ids, current.id, setSelected, [
@@ -219,17 +217,17 @@ function AgentsTab({ homeDir }: { homeDir: string }) {
         id="agent-panel"
         aria-labelledby={`agent-tab-${current.id}`}
       >
-        <Section title="Delete">
+        <Section title={t("help.agents.delete")}>
           <p>
             <WithCode text={current.delete} />
           </p>
         </Section>
-        <Section title="Archive">
+        <Section title={t("help.agents.archive")}>
           <p>
             <WithCode text={current.archive} />
           </p>
         </Section>
-        <Section title="Reads sessions from">
+        <Section title={t("help.agents.reads")}>
           <ul className="paths">
             {current.roots.map((root) => (
               <li key={root}>
@@ -244,6 +242,7 @@ function AgentsTab({ homeDir }: { homeDir: string }) {
 }
 
 export function HelpDialog({ homeDir, onClose }: Props) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<TabId>("deleting");
 
   useEffect(() => {
@@ -262,11 +261,11 @@ export function HelpDialog({ homeDir, onClose }: Props) {
         aria-modal="true"
         aria-labelledby="help-title"
       >
-        <h2 id="help-title">How Marduk changes sessions</h2>
+        <h2 id="help-title">{t("help.title")}</h2>
         <div
           className="tabs"
           role="tablist"
-          aria-label="Help topics"
+          aria-label={t("help.topics")}
           onKeyDown={(event) =>
             arrowStep(
               event,
@@ -288,7 +287,7 @@ export function HelpDialog({ homeDir, onClose }: Props) {
               tabIndex={item.id === tab ? 0 : -1}
               onClick={() => setTab(item.id)}
             >
-              {item.label}
+              {t(item.label)}
             </button>
           ))}
         </div>
@@ -306,7 +305,7 @@ export function HelpDialog({ homeDir, onClose }: Props) {
         </div>
         <div className="actions">
           <button type="button" onClick={onClose}>
-            Done
+            {t("help.done")}
           </button>
         </div>
       </div>

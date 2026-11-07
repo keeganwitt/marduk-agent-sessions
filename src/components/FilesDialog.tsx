@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useI18n } from "../i18n/context";
 import type { SessionRow } from "../lib/types";
 import { FileList } from "./FileList";
 
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function FilesDialog({ session, homeDir, onReveal, onClose }: Props) {
+  const { t } = useI18n();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -33,10 +35,7 @@ export function FilesDialog({ session, homeDir, onReveal, onClose }: Props) {
         {session.database && (
           <div className="database-note">
             <p>
-              {session.agentName} keeps all sessions in one shared database, so
-              this session has no files of its own. Deleting it removes its rows
-              through {session.agentName}'s own command; the database file
-              stays.
+              {t("dialogs.files.databaseNote", { agent: session.agentName })}
             </p>
             <FileList
               paths={[session.database]}
@@ -48,7 +47,7 @@ export function FilesDialog({ session, homeDir, onReveal, onClose }: Props) {
         <FileList paths={session.files} homeDir={homeDir} onReveal={onReveal} />
         <div className="actions">
           <button type="button" onClick={onClose}>
-            Close
+            {t("dialogs.close")}
           </button>
         </div>
       </div>

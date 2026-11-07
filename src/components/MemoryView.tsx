@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { formatAge, tildePath } from "../lib/format";
+import { useI18n, type I18n } from "../i18n/context";
+import { tildePath } from "../lib/format";
 import {
   listMemory,
   readMemoryFile,
@@ -23,13 +24,9 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function storeLabel(store: MemoryStore, homeDir: string): string {
+function storeLabel(store: MemoryStore, homeDir: string, t: I18n["t"]): string {
   if (store.projectDir) return tildePath(store.projectDir, homeDir);
-  return `${store.agentName} (all projects)`;
-}
-
-function plural(count: number, word: string): string {
-  return `${count} ${count === 1 ? word : `${word}s`}`;
+  return t("memory.allProjects", { agent: store.agentName });
 }
 
 function FilePanel({
@@ -41,6 +38,7 @@ function FilePanel({
   homeDir: string;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,8 +68,12 @@ function FilePanel({
           <h2 id="memory-file-title">{file.title}</h2>
           <p className="muted">{tildePath(file.path, homeDir)}</p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close memory file">
-          Close
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t("memory.closeFile")}
+        >
+          {t("memory.close")}
         </button>
       </header>
       <div className="transcript-body">
@@ -80,7 +82,9 @@ function FilePanel({
             {error}
           </div>
         )}
-        {text === null && !error && <p className="muted">Loading…</p>}
+        {text === null && !error && (
+          <p className="muted">{t("memory.loading")}</p>
+        )}
         {text !== null && (
           <article className="message memory-text">
             <Markdown text={text} />
@@ -104,6 +108,7 @@ function TrashDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="overlay">
       <div
@@ -113,13 +118,15 @@ function TrashDialog({
         aria-labelledby="trash-memory-title"
       >
         <h2 id="trash-memory-title">
-          Move {store.agentName} memory for {storeLabel(store, homeDir)} to the
-          Trash?
+          {t("memory.trash.title", {
+            agent: store.agentName,
+            target: storeLabel(store, homeDir, t),
+          })}
         </h2>
         <p>
-          The whole memory folder goes to the Trash, where you can restore it.
+          {t("memory.trash.body")}
           {store.projectExists &&
-            ` The project folder still exists, so ${store.agentName} would start its memory over the next time you work there.`}
+            ` ${t("memory.trash.projectExists", { agent: store.agentName })}`}
         </p>
         <ul className="files">
           {store.files.map((file) => (
@@ -128,7 +135,7 @@ function TrashDialog({
         </ul>
         <div className="actions">
           <button type="button" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t("memory.cancel")}
           </button>
           <button
             type="button"
@@ -136,7 +143,7 @@ function TrashDialog({
             onClick={onConfirm}
             disabled={busy}
           >
-            {busy ? "Working…" : "Move to Trash"}
+            {busy ? t("memory.working") : t("memory.moveToTrash")}
           </button>
         </div>
       </div>
@@ -151,6 +158,7 @@ export function MemoryView({
   reloadKey,
   onOpenSession,
 }: Props) {
+  const { t, age, dateTime } = useI18n();
   const [stores, setStores] = useState<MemoryStore[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -184,7 +192,10 @@ export function MemoryView({
     try {
       await trashMemory(store.folder, false);
       setNotice(
-        `Moved ${store.agentName} memory for ${storeLabel(store, homeDir)} to the Trash.`,
+        t("memory.trashed", {
+          agent: store.agentName,
+          target: storeLabel(store, homeDir, t),
+        }),
       );
       setTrashing(null);
       setSelected(null);
@@ -204,19 +215,14 @@ export function MemoryView({
       </div>
     );
   }
-  if (!stores) return <p className="muted">Loading memory…</p>;
+  if (!stores) return <p className="muted">{t("memory.loadingMemory")}</p>;
   if (stores.length === 0) {
-    return (
-      <p className="muted">
-        No agent memory found. Claude Code keeps memory per project, and Codex
-        keeps it only when its memories feature has been turned on.
-      </p>
-    );
+    return <p className="muted">{t("memory.none")}</p>;
   }
 
   return (
     <div className="memory-view">
-      <nav className="memory-list" aria-label="Memory">
+      <nav className="memory-list" aria-label={t("memory.navLabel")}>
         {stores.map((store) => (
           <button
             key={store.folder}
@@ -228,13 +234,14 @@ export function MemoryView({
             }}
           >
             <span className="memory-list-title">
-              {storeLabel(store, homeDir)}
+              {storeLabel(store, homeDir, t)}
             </span>
             <span className="memory-list-meta">
-              {store.agentName} · {plural(store.files.length, "file")}
+              {store.agentName} ·{" "}
+              {t("memory.files", { count: store.files.length })}
               {store.problems.length > 0 && (
                 <span className="badge warn">
-                  {plural(store.problems.length, "warning")}
+                  {t("memory.warnings", { count: store.problems.length })}
                 </span>
               )}
             </span>
@@ -242,7 +249,10 @@ export function MemoryView({
         ))}
       </nav>
       {current && (
-        <section className="memory-detail" aria-label="Memory details">
+        <section
+          className="memory-detail"
+          aria-label={t("memory.detailsLabel")}
+        >
           {notice && (
             <div className="banner" role="status">
               {notice}
@@ -255,13 +265,17 @@ export function MemoryView({
           )}
           <header className="memory-header">
             <div>
-              <h2>{storeLabel(current, homeDir)}</h2>
+              <h2>{storeLabel(current, homeDir, t)}</h2>
               <p className="muted">
                 {current.agentName}
                 {current.projectDir &&
-                  (current.sessions > 0
-                    ? ` · ${plural(current.sessions, "session")} in this project`
-                    : " · No sessions left in this project")}
+                  ` · ${
+                    current.sessions > 0
+                      ? t("memory.sessionsInProject", {
+                          count: current.sessions,
+                        })
+                      : t("memory.noSessionsLeft")
+                  }`}
               </p>
             </div>
             <div className="memory-actions">
@@ -273,7 +287,7 @@ export function MemoryView({
                   )
                 }
               >
-                Show folder
+                {t("memory.showFolder")}
               </button>
               {current.canTrash && (
                 <button
@@ -281,7 +295,7 @@ export function MemoryView({
                   className="danger"
                   onClick={() => setTrashing(current)}
                 >
-                  Move to Trash…
+                  {t("memory.moveToTrashEllipsis")}
                 </button>
               )}
             </div>
@@ -295,16 +309,16 @@ export function MemoryView({
             </ul>
           )}
           {current.files.length === 0 ? (
-            <p className="muted">This memory folder is empty.</p>
+            <p className="muted">{t("memory.folderEmpty")}</p>
           ) : (
             <table className="memory-files">
               <thead>
                 <tr>
-                  <th>File</th>
-                  <th>Type</th>
-                  <th>Description</th>
-                  <th>Updated</th>
-                  <th>From session</th>
+                  <th>{t("memory.column.file")}</th>
+                  <th>{t("memory.column.type")}</th>
+                  <th>{t("memory.column.description")}</th>
+                  <th>{t("memory.column.updated")}</th>
+                  <th>{t("memory.column.fromSession")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -318,7 +332,7 @@ export function MemoryView({
                         <button
                           type="button"
                           className="link"
-                          title={`Read ${file.path}`}
+                          title={t("memory.readFile", { path: file.path })}
                           onClick={() => setOpenFile(file)}
                         >
                           {file.title}
@@ -333,12 +347,10 @@ export function MemoryView({
                       <td
                         className="muted"
                         title={
-                          file.modified
-                            ? new Date(file.modified).toLocaleString()
-                            : undefined
+                          file.modified ? dateTime(file.modified) : undefined
                         }
                       >
-                        {file.modified ? formatAge(file.modified, now) : "—"}
+                        {file.modified ? age(file.modified, now) : "—"}
                       </td>
                       <td>
                         {source ? (
@@ -352,9 +364,11 @@ export function MemoryView({
                         ) : file.sessionId ? (
                           <span
                             className="muted"
-                            title={`Session ${file.sessionId}`}
+                            title={t("memory.sessionId", {
+                              id: file.sessionId,
+                            })}
                           >
-                            Deleted session
+                            {t("memory.deletedSession")}
                           </span>
                         ) : (
                           <span className="muted">—</span>

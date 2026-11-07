@@ -65,7 +65,7 @@ export const COLUMNS: readonly ColumnDef[] = [
   {
     id: "created",
     label: "Created",
-    defaultWidth: 90,
+    defaultWidth: 105,
     minWidth: 60,
     hideable: true,
     numeric: true,

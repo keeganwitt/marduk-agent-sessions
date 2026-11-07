@@ -19,7 +19,9 @@ import {
   type ColumnPrefs,
 } from "../lib/columns";
 import { NO_PROJECT } from "../lib/filter";
-import { formatAge, formatBytes, shortenPath } from "../lib/format";
+import { useI18n, type I18n } from "../i18n/context";
+import type { MessageKey } from "../i18n/messages";
+import { shortenPath } from "../lib/format";
 import type { SortKey, SortState } from "../lib/sort";
 import type { TreeRow } from "../lib/tree";
 import { LabelChips } from "./LabelChip";
@@ -52,36 +54,36 @@ function StatusBadges({
   session: SessionRow;
   nested: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {session.running && (
-        <span
-          className="badge running"
-          title="Written to in the last few minutes, so it can't be changed."
-        >
-          Running
+        <span className="badge running" title={t("table.badge.runningTitle")}>
+          {t("table.badge.running")}
         </span>
       )}
       {session.parentId && session.parentMissing && (
         <span
           className="badge warn"
-          title={`Started by session ${session.parentId}, which no longer exists`}
+          title={t("table.badge.parentDeletedTitle", { id: session.parentId })}
         >
-          Parent deleted
+          {t("table.badge.parentDeleted")}
         </span>
       )}
       {session.parentId && !session.parentMissing && !nested && (
         <span
           className="badge muted"
-          title={`Started by session ${session.parentId}`}
+          title={t("table.badge.subagentTitle", { id: session.parentId })}
         >
-          Subagent
+          {t("table.badge.subagent")}
         </span>
       )}
-      {session.archived && <span className="badge archived">Archived</span>}
+      {session.archived && (
+        <span className="badge archived">{t("table.badge.archived")}</span>
+      )}
       {session.readOnlyReason && !session.partOfParent && (
         <span className="badge muted" title={session.readOnlyReason}>
-          Read-only
+          {t("table.badge.readOnly")}
         </span>
       )}
     </>
@@ -135,6 +137,10 @@ const SORT_KEYS: Partial<Record<ColumnId, SortKey>> = {
   size: "size",
 };
 
+function columnLabel(t: I18n["t"], column: ColumnDef): string {
+  return t(`table.column.${column.id}` satisfies MessageKey);
+}
+
 const CHECK_WIDTH = 36;
 const ACTIONS_WIDTH = 64;
 const KEYBOARD_STEP = 16;
@@ -174,6 +180,7 @@ function ResizeHandle({
   width: number;
   onColumnsChange: Dispatch<SetStateAction<ColumnPrefs>>;
 }) {
+  const { t } = useI18n();
   const drag = useRef<{ startX: number; startWidth: number } | null>(null);
 
   useEffect(() => {
@@ -201,7 +208,7 @@ function ResizeHandle({
       className="resize-handle"
       role="separator"
       aria-orientation="vertical"
-      aria-label={`Resize ${column.label} column`}
+      aria-label={t("table.resizeColumn", { column: columnLabel(t, column) })}
       aria-valuenow={width}
       aria-valuemin={column.minWidth}
       tabIndex={0}
@@ -235,6 +242,7 @@ export function ColumnsMenu({
   columns: ColumnPrefs;
   onColumnsChange: Dispatch<SetStateAction<ColumnPrefs>>;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
 
@@ -262,10 +270,14 @@ export function ColumnsMenu({
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        Columns ▾
+        {t("table.columns.button")}
       </button>
       {open && (
-        <div className="columns-menu" role="group" aria-label="Show columns">
+        <div
+          className="columns-menu"
+          role="group"
+          aria-label={t("table.columns.group")}
+        >
           {COLUMNS.filter((column) => column.hideable).map((column) => (
             <label key={column.id}>
               <input
@@ -277,7 +289,7 @@ export function ColumnsMenu({
                   )
                 }
               />
-              {column.label}
+              {columnLabel(t, column)}
             </label>
           ))}
           <button
@@ -285,7 +297,7 @@ export function ColumnsMenu({
             className="link"
             onClick={() => onColumnsChange(DEFAULT_PREFS)}
           >
-            Reset widths and columns
+            {t("table.columns.reset")}
           </button>
         </div>
       )}
@@ -294,10 +306,11 @@ export function ColumnsMenu({
 }
 
 function DateCell({ value, now }: { value: string | null; now: Date }) {
+  const { age, dateTime } = useI18n();
   if (value === null) return <td className="num muted">—</td>;
   return (
-    <td className="num" title={new Date(value).toLocaleString()}>
-      {formatAge(value, now)}
+    <td className="num" title={dateTime(value)}>
+      {age(value, now)}
     </td>
   );
 }
@@ -315,6 +328,7 @@ function ProjectCell({
   onOpenProject: (session: SessionRow) => void;
   onFilterProject: (project: string) => void;
 }) {
+  const { t } = useI18n();
   const chat = session.projectless;
   return (
     <div className="project-cell">
@@ -322,25 +336,31 @@ function ProjectCell({
         type="button"
         className={chat ? "link no-project" : "link"}
         title={
-          chat ? `No project. Open its chat folder, ${dir}` : `Open ${dir}`
+          chat
+            ? t("table.project.openChatTitle", { dir })
+            : t("table.project.openTitle", { dir })
         }
-        aria-label={`Open ${chat ? "chat" : "project"} folder ${dir}`}
+        aria-label={
+          chat
+            ? t("table.project.openChat", { dir })
+            : t("table.project.openProject", { dir })
+        }
         onClick={() => onOpenProject(session)}
       >
-        {chat ? "No project" : shortenPath(dir, homeDir)}
+        {chat ? t("table.project.noProject") : shortenPath(dir, homeDir)}
       </button>
       <button
         type="button"
         className="filter-project"
         title={
           chat
-            ? "Show only sessions without a project"
-            : "Show only this project"
+            ? t("table.project.filterNoProject")
+            : t("table.project.filterTitle")
         }
         aria-label={
           chat
-            ? "Show only sessions without a project"
-            : `Show only sessions in ${dir}`
+            ? t("table.project.filterNoProject")
+            : t("table.project.filterLabel", { dir })
         }
         onClick={() => onFilterProject(chat ? NO_PROJECT : dir)}
       >
@@ -377,6 +397,7 @@ export function SessionTable(props: Props) {
     columns,
     onColumnsChange,
   } = props;
+  const { t, bytes } = useI18n();
   const [fit, setFit] = useState(true);
   const fitAgain = useCallback(() => setFit(true), []);
   const [available, measureContainer] = useContainerWidth(fitAgain);
@@ -408,7 +429,7 @@ export function SessionTable(props: Props) {
     shown.reduce((total, column) => total + widthOf(column), 0);
 
   if (rows.length === 0) {
-    return <p className="empty">No sessions match these filters.</p>;
+    return <p className="empty">{t("table.empty")}</p>;
   }
 
   const cell = (column: ColumnDef, row: TreeRow) => {
@@ -428,7 +449,10 @@ export function SessionTable(props: Props) {
                   type="button"
                   className="expander"
                   aria-expanded={expanded}
-                  aria-label={`${expanded ? "Hide" : "Show"} ${childCount} subagent ${childCount === 1 ? "session" : "sessions"} of ${label}`}
+                  aria-label={t(
+                    expanded ? "table.expand.hide" : "table.expand.show",
+                    { count: childCount, title: label },
+                  )}
                   onClick={() => onToggleExpand(session.uid)}
                 >
                   <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -448,7 +472,10 @@ export function SessionTable(props: Props) {
               <button
                 type="button"
                 className="link title-link"
-                title={`${label}\nRead transcript (${session.id})`}
+                title={t("table.readTranscript", {
+                  title: label,
+                  id: session.id,
+                })}
                 onClick={() => onOpenTranscript(session)}
               >
                 {label}
@@ -462,7 +489,7 @@ export function SessionTable(props: Props) {
                   aria-hidden="true"
                   onClick={() => onToggleExpand(session.uid)}
                 >
-                  {childCount} {childCount === 1 ? "subagent" : "subagents"}
+                  {t("table.childCount", { count: childCount })}
                 </button>
               )}
             </div>
@@ -525,7 +552,7 @@ export function SessionTable(props: Props) {
       case "size":
         return (
           <td key={column.id} className="num">
-            {formatBytes(session.sizeBytes)}
+            {bytes(session.sizeBytes)}
           </td>
         );
     }
@@ -549,7 +576,7 @@ export function SessionTable(props: Props) {
           <th className="check">
             <input
               type="checkbox"
-              aria-label="Select all sessions shown"
+              aria-label={t("table.selectAll")}
               checked={allSelected}
               disabled={selectable.length === 0}
               onChange={() => onSetMany(selectable, !allSelected)}
@@ -562,18 +589,18 @@ export function SessionTable(props: Props) {
                 key={column.id}
                 className={column.numeric ? "num" : undefined}
                 aria-sort={ariaSortFor(sort, sortKey)}
-                aria-label={sortKey ? undefined : column.label}
+                aria-label={sortKey ? undefined : columnLabel(t, column)}
               >
                 {sortKey ? (
                   <SortableHeader
-                    label={column.label}
+                    label={columnLabel(t, column)}
                     sortKey={sortKey}
                     sort={sort}
                     onSort={onSort}
                     numeric={column.numeric}
                   />
                 ) : (
-                  <span className="header-label">{column.label}</span>
+                  <span className="header-label">{columnLabel(t, column)}</span>
                 )}
                 <ResizeHandle
                   column={column}
@@ -584,7 +611,7 @@ export function SessionTable(props: Props) {
             );
           })}
           <th className="actions-col">
-            <span className="visually-hidden">Actions</span>
+            <span className="visually-hidden">{t("table.actions")}</span>
           </th>
         </tr>
       </thead>
@@ -603,7 +630,7 @@ export function SessionTable(props: Props) {
               <td className="check">
                 <input
                   type="checkbox"
-                  aria-label={`Select ${label}`}
+                  aria-label={t("table.select", { title: label })}
                   checked={selected.has(session.uid)}
                   disabled={!isSelectable(session)}
                   onChange={(event) => {
@@ -620,10 +647,10 @@ export function SessionTable(props: Props) {
                 <button
                   type="button"
                   className="link"
-                  aria-label={`Show files for ${label}`}
+                  aria-label={t("table.showFiles", { title: label })}
                   onClick={() => onShowFiles(session)}
                 >
-                  Files
+                  {t("table.files")}
                 </button>
               </td>
             </tr>

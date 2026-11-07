@@ -9,6 +9,7 @@ import {
   matchLocale,
   systemLanguages,
 } from "../i18n/locales";
+import type { MessageKey } from "../i18n/messages";
 import { LabelManager } from "./LabelManager";
 import type { CliStatus } from "../lib/types";
 
@@ -20,11 +21,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-const THEME_LABELS: Record<Theme, string> = {
-  system: "System",
-  light: "Light",
-  dark: "Dark",
-};
+const THEME_LABELS = {
+  system: "settings.theme.system",
+  light: "settings.theme.light",
+  dark: "settings.theme.dark",
+} as const satisfies Record<Theme, MessageKey>;
 
 function CliRow({
   status,
@@ -37,15 +38,16 @@ function CliRow({
   onChoose: () => void;
   onReset: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <li className="cli-row">
       <div className="cli-heading">
         <strong>{status.agentName}</strong> <code>{status.program}</code>
         {status.overridden ? (
-          <span className="badge">Custom location</span>
+          <span className="badge">{t("settings.cli.custom")}</span>
         ) : (
           status.path && (
-            <span className="badge muted">Found automatically</span>
+            <span className="badge muted">{t("settings.cli.automatic")}</span>
           )
         )}
       </div>
@@ -56,9 +58,10 @@ function CliRow({
         </div>
       ) : (
         <div className="cli-detail missing">
-          Not found. {status.agentName} sessions are read-only until it's
-          installed or located.{" "}
-          <a href={status.installUrl}>How to install {status.program}</a>
+          {t("settings.cli.missing", { agent: status.agentName })}{" "}
+          <a href={status.installUrl}>
+            {t("settings.cli.install", { program: status.program })}
+          </a>
         </div>
       )}
       {status.problem && (
@@ -66,11 +69,11 @@ function CliRow({
       )}
       <div className="cli-actions">
         <button type="button" disabled={busy} onClick={onChoose}>
-          Choose…
+          {t("settings.cli.choose")}
         </button>
         {status.overridden && (
           <button type="button" disabled={busy} onClick={onReset}>
-            Use automatic
+            {t("settings.cli.useAutomatic")}
           </button>
         )}
       </div>
@@ -106,6 +109,7 @@ function LanguageSetting() {
 }
 
 export function SettingsDialog({ onClose }: Props) {
+  const { t } = useI18n();
   const [statuses, setStatuses] = useState<CliStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -151,7 +155,7 @@ export function SettingsDialog({ onClose }: Props) {
     const picked = await open({
       multiple: false,
       directory: false,
-      title: `Choose the ${status.program} CLI`,
+      title: t("settings.cli.pickTitle", { program: status.program }),
     });
     if (typeof picked === "string") await save(status.agent, picked);
   };
@@ -164,9 +168,13 @@ export function SettingsDialog({ onClose }: Props) {
         aria-modal="true"
         aria-labelledby="settings-title"
       >
-        <h2 id="settings-title">Settings</h2>
-        <h3>Appearance</h3>
-        <div className="segmented" role="radiogroup" aria-label="Theme">
+        <h2 id="settings-title">{t("settings.title")}</h2>
+        <h3>{t("settings.appearance")}</h3>
+        <div
+          className="segmented"
+          role="radiogroup"
+          aria-label={t("settings.theme")}
+        >
           {THEMES.map((option) => (
             <label
               key={option}
@@ -179,25 +187,23 @@ export function SettingsDialog({ onClose }: Props) {
                 checked={option === theme}
                 onChange={() => chooseTheme(option)}
               />
-              {THEME_LABELS[option]}
+              {t(THEME_LABELS[option])}
             </label>
           ))}
         </div>
         <LanguageSetting />
-        <h3>Labels</h3>
+        <h3>{t("settings.labels")}</h3>
         <LabelManager onChanged={() => setChanged(true)} onError={setError} />
-        <h3>Agent CLIs</h3>
-        <p className="muted">
-          Some agents can only be changed through their own command-line tool.
-          Marduk finds them automatically; choose a location here if yours is
-          installed somewhere else.
-        </p>
+        <h3>{t("settings.cli.title")}</h3>
+        <p className="muted">{t("settings.cli.intro")}</p>
         {error && (
           <div className="banner error" role="alert">
             {error}
           </div>
         )}
-        {!statuses && !error && <p className="muted">Checking…</p>}
+        {!statuses && !error && (
+          <p className="muted">{t("settings.cli.checking")}</p>
+        )}
         {statuses && (
           <ul className="cli-list">
             {statuses.map((status) => (
@@ -213,7 +219,7 @@ export function SettingsDialog({ onClose }: Props) {
         )}
         <div className="actions">
           <button type="button" onClick={close}>
-            Done
+            {t("settings.done")}
           </button>
         </div>
       </div>

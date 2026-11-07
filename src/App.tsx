@@ -18,7 +18,7 @@ import { rangeBetween } from "./lib/selection";
 import { applyTheme, isTheme } from "./lib/theme";
 import { nextColor } from "./lib/labels";
 import { buildTree } from "./lib/tree";
-import { formatBytes } from "./lib/format";
+import { useI18n, type I18n } from "./i18n/context";
 import {
   applyLabels,
   createLabel,
@@ -71,11 +71,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function plural(count: number, word: string): string {
-  return `${count} ${count === 1 ? word : `${word}s`}`;
-}
-
-function deleteNotice(results: DeleteResult[]): Notice {
+function deleteNotice(results: DeleteResult[], t: I18n["t"]): Notice {
   const trashed = results.filter(
     (result) => result.status === "trashed",
   ).length;
@@ -88,15 +84,18 @@ function deleteNotice(results: DeleteResult[]): Notice {
       : [],
   );
   const parts = [
-    trashed > 0 && `Moved ${plural(trashed, "session")} to the Trash.`,
-    deleted > 0 && `Permanently deleted ${plural(deleted, "session")}.`,
+    trashed > 0 && t("app.notice.trashed", { count: trashed }),
+    deleted > 0 && t("app.notice.deleted", { count: deleted }),
     problems.length > 0 &&
-      `${plural(problems.length, "session")} couldn't be deleted.`,
+      t("app.notice.deleteFailed", { count: problems.length }),
   ].filter(Boolean);
-  return { text: parts.join(" ") || "Nothing was deleted.", problems };
+  return {
+    text: parts.join(" ") || t("app.notice.nothingDeleted"),
+    problems,
+  };
 }
 
-function archiveNotice(results: ArchiveResult[]): Notice {
+function archiveNotice(results: ArchiveResult[], t: I18n["t"]): Notice {
   const archived = results.filter(
     (result) => result.status === "done" && result.archived,
   ).length;
@@ -107,12 +106,15 @@ function archiveNotice(results: ArchiveResult[]): Notice {
     result.status === "done" ? [] : [result.message],
   );
   const parts = [
-    archived > 0 && `Archived ${plural(archived, "session")}.`,
-    restored > 0 && `Unarchived ${plural(restored, "session")}.`,
+    archived > 0 && t("app.notice.archived", { count: archived }),
+    restored > 0 && t("app.notice.unarchived", { count: restored }),
     problems.length > 0 &&
-      `${plural(problems.length, "session")} couldn't be changed.`,
+      t("app.notice.changeFailed", { count: problems.length }),
   ].filter(Boolean);
-  return { text: parts.join(" ") || "Nothing was changed.", problems };
+  return {
+    text: parts.join(" ") || t("app.notice.nothingChanged"),
+    problems,
+  };
 }
 
 function NoticeBanner({
@@ -122,6 +124,7 @@ function NoticeBanner({
   notice: Notice;
   onDismiss: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div
       className={notice.problems.length > 0 ? "banner warn" : "banner"}
@@ -136,7 +139,7 @@ function NoticeBanner({
         </ul>
       )}
       <button type="button" onClick={onDismiss}>
-        Dismiss
+        {t("app.dismiss")}
       </button>
     </div>
   );
@@ -151,6 +154,7 @@ function BusyIndicator({
   progress: ScanProgress | null;
   overlay?: boolean;
 }) {
+  const { t } = useI18n();
   const percent =
     progress && progress.total > 0
       ? Math.min(100, Math.floor((progress.done / progress.total) * 100))
@@ -168,11 +172,13 @@ function BusyIndicator({
           className="scan-progress"
           max={100}
           value={percent}
-          aria-label="Scan progress"
+          aria-label={t("app.scanProgress")}
         />
       )}
       <span>
-        {progress?.agent ? `Scanning ${progress.agent}…` : label}
+        {progress?.agent
+          ? t("app.scanningAgent", { agent: progress.agent })
+          : label}
         {percent !== null && ` ${percent}%`}
       </span>
     </div>
@@ -180,9 +186,12 @@ function BusyIndicator({
 }
 
 export default function App() {
+  const { t, bytes } = useI18n();
   const [scan, setScan] = useState<ScanResponse | null>(null);
   const [scannedAt, setScannedAt] = useState(() => new Date());
-  const [activity, setActivity] = useState<string | null>("Scanning sessions…");
+  const [activity, setActivity] = useState<string | null>(() =>
+    t("app.scanning"),
+  );
   const busy = activity !== null;
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -264,11 +273,11 @@ export default function App() {
   );
 
   const rescan = useCallback(async () => {
-    setActivity("Scanning sessions…");
+    setActivity(t("app.scanning"));
     setError(null);
     setProgress(null);
     await finishScan(scanSessions(setProgress));
-  }, [finishScan]);
+  }, [finishScan, t]);
 
   useEffect(() => {
     void finishScan(scanSessions(setProgress));
@@ -409,13 +418,13 @@ export default function App() {
           memoryProblems.push(errorMessage(caught));
         }
       }
-      const result = deleteNotice(outcome);
+      const result = deleteNotice(outcome, t);
       setNotice({
         text: [
           result.text,
-          memoryTrashed === 1 && "Moved its project's memory to the Trash.",
+          memoryTrashed === 1 && t("app.notice.memoryOne"),
           memoryTrashed > 1 &&
-            `Moved ${memoryTrashed} projects' memory to the Trash.`,
+            t("app.notice.memoryMany", { count: memoryTrashed }),
         ]
           .filter(Boolean)
           .join(" "),
@@ -432,11 +441,11 @@ export default function App() {
   };
 
   const runArchive = async (uids: string[]) => {
-    setActivity("Updating archive…");
+    setActivity(t("app.updatingArchive"));
     setError(null);
     try {
       const outcome = await toggleArchive(uids);
-      setNotice(archiveNotice(outcome));
+      setNotice(archiveNotice(outcome, t));
     } catch (caught) {
       setError(errorMessage(caught));
     }
@@ -507,11 +516,11 @@ export default function App() {
     <main className="app">
       <header className="toolbar">
         <h1 className="visually-hidden">Marduk</h1>
-        <div className="view-tabs" role="tablist" aria-label="View">
+        <div className="view-tabs" role="tablist" aria-label={t("app.view")}>
           {(
             [
-              ["sessions", "Sessions"],
-              ["memory", "Memory"],
+              ["sessions", t("app.view.sessions")],
+              ["memory", t("app.view.memory")],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -527,14 +536,18 @@ export default function App() {
         </div>
         <span className="summary">
           {scan && view === "sessions"
-            ? `${matching.length} of ${scan.sessions.length} sessions · ${formatBytes(matchingBytes)}`
+            ? t("app.summary", {
+                shown: matching.length,
+                count: scan.sessions.length,
+                size: bytes(matchingBytes),
+              })
             : ""}
         </span>
         <button type="button" onClick={() => setHelpOpen(true)}>
-          Help
+          {t("app.help")}
         </button>
         <button type="button" onClick={() => setSettingsOpen(true)}>
-          Settings
+          {t("app.settings")}
         </button>
         {view === "sessions" && (
           <div className="menu-anchor">
@@ -545,7 +558,7 @@ export default function App() {
               disabled={selectedVisible.length === 0 || busy}
               onClick={() => setLabelMenuOpen((open) => !open)}
             >
-              Labels ▾
+              {t("app.labels")}
             </button>
             {labelMenuOpen && (
               <LabelMenu
@@ -559,7 +572,7 @@ export default function App() {
           </div>
         )}
         <button type="button" onClick={() => void rescan()} disabled={busy}>
-          Rescan
+          {t("app.rescan")}
         </button>
         {view === "sessions" && (
           <>
@@ -569,7 +582,7 @@ export default function App() {
                 disabled={busy}
                 onClick={() => void runArchive(toArchive.map((s) => s.uid))}
               >
-                Archive {toArchive.length}
+                {t("app.archive", { count: toArchive.length })}
               </button>
             )}
             {toUnarchive.length > 0 && (
@@ -578,7 +591,7 @@ export default function App() {
                 disabled={busy}
                 onClick={() => void runArchive(toUnarchive.map((s) => s.uid))}
               >
-                Unarchive {toUnarchive.length}
+                {t("app.unarchive", { count: toUnarchive.length })}
               </button>
             )}
             <button
@@ -588,8 +601,11 @@ export default function App() {
               onClick={() => void openPreview()}
             >
               {toDelete.length === 0
-                ? "Delete…"
-                : `Delete ${toDelete.length} (${formatBytes(deleteBytes)})…`}
+                ? t("app.delete")
+                : t("app.deleteCount", {
+                    count: toDelete.length,
+                    size: bytes(deleteBytes),
+                  })}
             </button>
           </>
         )}
@@ -602,9 +618,12 @@ export default function App() {
       )}
       {incompleteAgents.map((agent) => (
         <div key={agent.id} className="banner warn" role="status">
-          Some {agent.name} sessions couldn't be read:{" "}
-          {agent.errors.slice(0, 3).join("; ")}
-          {agent.errors.length > 3 && ` (and ${agent.errors.length - 3} more)`}
+          {t("app.unreadable", {
+            agent: agent.name,
+            errors: agent.errors.slice(0, 3).join("; "),
+          })}
+          {agent.errors.length > 3 &&
+            t("app.unreadableMore", { count: agent.errors.length - 3 })}
         </div>
       ))}
       {notice && (

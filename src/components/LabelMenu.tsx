@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "../i18n/context";
 import { labelState, labelStyle, type LabelState } from "../lib/labels";
 import type { Label } from "../lib/types";
 
@@ -21,6 +22,7 @@ export function LabelMenu({
   onCreate,
   onClose,
 }: Props) {
+  const { t } = useI18n();
   const initial = useMemo(
     () =>
       new Map(
@@ -79,11 +81,15 @@ export function LabelMenu({
   };
 
   return (
-    <div className="label-menu" role="dialog" aria-label="Labels">
+    <div
+      className="label-menu"
+      role="dialog"
+      aria-label={t("settings.labelMenu.title")}
+    >
       <input
         ref={search}
         type="search"
-        placeholder="Find or create a label"
+        placeholder={t("settings.labelMenu.placeholder")}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
@@ -115,7 +121,7 @@ export function LabelMenu({
           );
         })}
         {shown.length === 0 && !trimmed && (
-          <li className="muted">No labels yet. Type a name to create one.</li>
+          <li className="muted">{t("settings.labelMenu.empty")}</li>
         )}
       </ul>
       {trimmed && !exists && (
@@ -124,15 +130,15 @@ export function LabelMenu({
           className="link create"
           onClick={() => void create()}
         >
-          Create “{trimmed}”
+          {t("settings.labelMenu.create", { name: trimmed })}
         </button>
       )}
       <div className="actions">
         <button type="button" onClick={onClose}>
-          Cancel
+          {t("settings.labelMenu.cancel")}
         </button>
         <button type="button" disabled={changed.length === 0} onClick={apply}>
-          Apply
+          {t("settings.labelMenu.apply")}
         </button>
       </div>
     </div>
