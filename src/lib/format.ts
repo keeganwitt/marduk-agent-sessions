@@ -35,13 +35,8 @@ export function formatAge(isoTimestamp: string, now: Date): string {
  * shortened path still reads as absolute (`~/…/team/app`, `/…/c/d`, `C:\\…\\team\\app`).
  */
 export function shortenPath(path: string, homeDir: string): string {
-  const home = homeDir.replace(/[\\/]+$/, "");
-  const inHome =
-    home !== "" &&
-    (path === home ||
-      path.startsWith(`${home}/`) ||
-      path.startsWith(`${home}\\`));
-  const display = inHome ? `~${path.slice(home.length)}` : path;
+  const display = tildePath(path, homeDir);
+  const inHome = display !== path;
   const separator =
     display.includes("\\") && !display.includes("/") ? "\\" : "/";
   const parts = display.split(/[\\/]/).filter(Boolean);
@@ -49,4 +44,15 @@ export function shortenPath(path: string, homeDir: string): string {
   const rest = root === "" ? parts : parts.slice(1);
   if (rest.length <= 3) return display;
   return [root, "…", ...rest.slice(-2)].join(separator);
+}
+
+/** `path` with the home folder written as `~`. */
+export function tildePath(path: string, homeDir: string): string {
+  const home = homeDir.replace(/[\\/]+$/, "");
+  const inHome =
+    home !== "" &&
+    (path === home ||
+      path.startsWith(`${home}/`) ||
+      path.startsWith(`${home}\\`));
+  return inHome ? `~${path.slice(home.length)}` : path;
 }

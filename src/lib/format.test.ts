@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ageInDays, formatAge, formatBytes, shortenPath } from "./format";
+import {
+  ageInDays,
+  formatAge,
+  formatBytes,
+  shortenPath,
+  tildePath,
+} from "./format";
 
 describe("formatBytes", () => {
   it.each([
@@ -54,5 +60,14 @@ describe("shortenPath", () => {
     ["C:\\Users\\me\\src\\team\\app", "C:\\Users\\me", "~\\src\\team\\app"],
   ])("shortens %s (home %s) to %s", (path, home, expected) => {
     expect(shortenPath(path, home)).toBe(expected);
+  });
+});
+
+describe("tildePath", () => {
+  it("writes the home folder as ~ without shortening the rest", () => {
+    expect(tildePath("/Users/me/a/b/c/d", "/Users/me/")).toBe("~/a/b/c/d");
+    expect(tildePath("/Users/me", "/Users/me")).toBe("~");
+    expect(tildePath("/Users/meg/x", "/Users/me")).toBe("/Users/meg/x");
+    expect(tildePath("/x", "")).toBe("/x");
   });
 });

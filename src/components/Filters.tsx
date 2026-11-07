@@ -2,13 +2,17 @@ import {
   ALL_AGENTS,
   type ArchiveFilter,
   type LabelFilter,
+  type ProjectOption,
   type SessionFilter,
 } from "../lib/filter";
+import { ProjectFilter } from "./ProjectFilter";
 import type { AgentSummary, Label } from "../lib/types";
 
 interface Props {
   agents: AgentSummary[];
   labels: Label[];
+  projects: ProjectOption[];
+  homeDir: string;
   filter: SessionFilter;
   onChange: (filter: SessionFilter) => void;
 }
@@ -23,7 +27,14 @@ function parseLabelFilter(value: string): LabelFilter {
   return value === "any" || value === "none" ? value : Number(value);
 }
 
-export function Filters({ agents, labels, filter, onChange }: Props) {
+export function Filters({
+  agents,
+  labels,
+  projects,
+  homeDir,
+  filter,
+  onChange,
+}: Props) {
   return (
     <div className="filters" role="search">
       <label>
@@ -75,6 +86,12 @@ export function Filters({ agents, labels, filter, onChange }: Props) {
           ))}
         </select>
       </label>
+      <ProjectFilter
+        options={projects}
+        value={filter.project}
+        homeDir={homeDir}
+        onChange={(project) => onChange({ ...filter, project })}
+      />
       <label>
         Older than (days)
         <input

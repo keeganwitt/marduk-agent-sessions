@@ -34,6 +34,7 @@ interface Props {
   onToggle: (uid: string, extend: boolean) => void;
   onSetMany: (uids: string[], selected: boolean) => void;
   onOpenProject: (session: SessionRow) => void;
+  onFilterProject: (project: string) => void;
   onShowFiles: (session: SessionRow) => void;
   onOpenTranscript: (session: SessionRow) => void;
   columns: ColumnPrefs;
@@ -284,6 +285,7 @@ export function SessionTable(props: Props) {
     onToggle,
     onSetMany,
     onOpenProject,
+    onFilterProject,
     onShowFiles,
     onOpenTranscript,
     columns,
@@ -387,15 +389,34 @@ export function SessionTable(props: Props) {
         return (
           <td key={column.id} className="project">
             {session.projectDir ? (
-              <button
-                type="button"
-                className="link"
-                title={`Open ${session.projectDir}`}
-                aria-label={`Open project folder ${session.projectDir}`}
-                onClick={() => onOpenProject(session)}
-              >
-                {shortenPath(session.projectDir, homeDir)}
-              </button>
+              <div className="project-cell">
+                <button
+                  type="button"
+                  className="link"
+                  title={`Open ${session.projectDir}`}
+                  aria-label={`Open project folder ${session.projectDir}`}
+                  onClick={() => onOpenProject(session)}
+                >
+                  {shortenPath(session.projectDir, homeDir)}
+                </button>
+                <button
+                  type="button"
+                  className="filter-project"
+                  title="Show only this project"
+                  aria-label={`Show only sessions in ${session.projectDir}`}
+                  onClick={() => onFilterProject(session.projectDir!)}
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path
+                      d="M2.5 3.5h11L9.25 8.5v4L6.75 13.5v-5z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
             ) : (
               <span className="muted">—</span>
             )}

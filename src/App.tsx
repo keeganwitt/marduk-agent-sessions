@@ -6,7 +6,7 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { TranscriptPanel } from "./components/TranscriptPanel";
 import { Filters } from "./components/Filters";
 import { ColumnsMenu, SessionTable } from "./components/SessionTable";
-import { EMPTY_FILTER, sessionMatcher } from "./lib/filter";
+import { EMPTY_FILTER, projectOptions, sessionMatcher } from "./lib/filter";
 import { rangeBetween } from "./lib/selection";
 import { applyTheme, isTheme } from "./lib/theme";
 import { nextColor } from "./lib/labels";
@@ -239,6 +239,7 @@ export default function App() {
     );
   }, []);
 
+  const projects = useMemo(() => projectOptions(scan?.sessions ?? []), [scan]);
   const matcher = useMemo(
     () => sessionMatcher(filter, scannedAt),
     [filter, scannedAt],
@@ -517,6 +518,8 @@ export default function App() {
           <Filters
             agents={scan.agents}
             labels={labels}
+            projects={projects}
+            homeDir={scan.homeDir}
             filter={filter}
             onChange={setFilter}
           />
@@ -548,6 +551,9 @@ export default function App() {
               onToggle={toggle}
               onSetMany={setMany}
               onOpenProject={(session) => void openProject(session)}
+              onFilterProject={(project) =>
+                setFilter((current) => ({ ...current, project }))
+              }
               onShowFiles={setFilesFor}
               onOpenTranscript={setTranscriptFor}
             />

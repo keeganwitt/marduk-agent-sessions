@@ -101,7 +101,8 @@ button.danger:not(:disabled) {
   align-items: end;
 }
 
-.filters label {
+.filters label,
+.filters .field {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -125,7 +126,7 @@ button.danger:not(:disabled) {
 }
 
 .filters input[type="number"] {
-  width: 110px;
+  width: 96px;
 }
 
 .table-wrap {
@@ -1118,4 +1119,132 @@ progress.scan-progress::-moz-progress-bar {
 .title-cell .badge,
 .title-cell button.child-count {
   margin-left: 0;
+}
+
+.combo {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.filters .combo input {
+  width: 170px;
+  padding-right: 24px;
+}
+
+.combo-clear {
+  position: absolute;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.combo-clear:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  color: CanvasText;
+}
+
+.combo-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 6;
+  width: 420px;
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  font-size: 13px;
+  color: CanvasText;
+}
+
+.combo-list li[role="option"] {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.combo-list li[aria-selected="true"] {
+  background: var(--row-selected);
+}
+
+.combo-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combo-count {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.combo-note {
+  padding: 4px 8px;
+  color: var(--muted);
+}
+
+.project-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.project-cell > button.link {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+button.filter-project {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.sessions tr:hover button.filter-project,
+button.filter-project:focus-visible {
+  opacity: 1;
+}
+
+button.filter-project:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: var(--accent);
+}
+
+button.filter-project:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button.filter-project svg {
+  width: 14px;
+  height: 14px;
 }

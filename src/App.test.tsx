@@ -629,6 +629,70 @@ describe("App", () => {
     );
   });
 
+  it("filters to a project from the table, and clears it", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "a", title: "API work", projectDir: "/work/api" }),
+        makeSession({ uid: "w", title: "Web work", projectDir: "/work/web" }),
+      ),
+    );
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Show only sessions in /work/api",
+      }),
+    );
+
+    expect(rowTitles()).toEqual(["API work"]);
+    expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue(
+      "/work/api",
+    );
+    expect(openProjectDir).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: "Show every project" }),
+    );
+
+    expect(rowTitles()).toHaveLength(2);
+  });
+
+  it("picks a project by typing part of its path", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({
+          uid: "a",
+          title: "API work",
+          projectDir: "/Users/me/Projects/api",
+        }),
+        makeSession({
+          uid: "a2",
+          title: "API tests",
+          projectDir: "/Users/me/Projects/api/tests",
+        }),
+        makeSession({ uid: "w", title: "Web work", projectDir: "/srv/web" }),
+      ),
+    );
+
+    render(<App />);
+    const input = await screen.findByRole("combobox", { name: "Project" });
+    await user.type(input, "~/projects/api");
+
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "~/Projects/api1",
+      "~/Projects/api/tests1",
+    ]);
+
+    await user.keyboard("{Enter}");
+
+    expect(rowTitles().sort()).toEqual(["API tests", "API work"]);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(input).toHaveValue("~/Projects/api");
+  });
+
   it("filters to old sessions", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
