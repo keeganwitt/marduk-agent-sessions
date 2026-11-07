@@ -3,7 +3,7 @@ import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useI18n } from "../i18n/context";
 import type { MessageKey } from "../i18n/messages";
 import { tildePath } from "../lib/format";
-import { agentHelp } from "../lib/ipc";
+import { agentHelp, appVersion } from "../lib/ipc";
 import type { AgentHelp } from "../lib/types";
 
 interface Props {
@@ -244,6 +244,10 @@ function AgentsTab({ homeDir }: { homeDir: string }) {
 export function HelpDialog({ homeDir, onClose }: Props) {
   const { t } = useI18n();
   const [tab, setTab] = useState<TabId>("deleting");
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    appVersion().then(setVersion, () => {});
+  }, []);
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -304,6 +308,7 @@ export function HelpDialog({ homeDir, onClose }: Props) {
           {tab === "agents" && <AgentsTab homeDir={homeDir} />}
         </div>
         <div className="actions">
+          {version && <span className="help-version">Marduk {version}</span>}
           <button type="button" onClick={onClose}>
             {t("help.done")}
           </button>

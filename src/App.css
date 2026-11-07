@@ -1358,6 +1358,13 @@ button.filter-project svg {
   font-style: italic;
 }
 
+.help-version {
+  margin-right: auto;
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .help-dialog {
   width: min(720px, 92vw);
 }

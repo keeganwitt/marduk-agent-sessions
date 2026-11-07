@@ -4,13 +4,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as ipc from "../lib/ipc";
 import { HelpDialog } from "./HelpDialog";
 
-vi.mock("../lib/ipc", () => ({ agentHelp: vi.fn() }));
+vi.mock("../lib/ipc", () => ({ agentHelp: vi.fn(), appVersion: vi.fn() }));
 
 const agentHelp = vi.mocked(ipc.agentHelp);
 
 describe("HelpDialog", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(ipc.appVersion).mockResolvedValue("1.2.3");
+  });
+
+  it("shows the installed version", async () => {
+    render(<HelpDialog homeDir="" onClose={() => {}} />);
+
+    expect(await screen.findByText("Marduk 1.2.3")).toBeInTheDocument();
   });
 
   it("opens on Deleting and switches topics with tabs or arrow keys", async () => {

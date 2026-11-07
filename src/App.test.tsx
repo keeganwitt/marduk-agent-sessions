@@ -19,6 +19,7 @@ vi.mock("./lib/ipc", () => ({
   revealSessionFile: vi.fn(),
   openProjectDir: vi.fn(),
   agentHelp: vi.fn(),
+  appVersion: vi.fn(),
   getColumns: vi.fn(),
   saveColumns: vi.fn(),
   getUiPref: vi.fn(),
@@ -131,6 +132,7 @@ describe("App", () => {
     vi.mocked(ipc.saveColumns).mockResolvedValue();
     vi.mocked(ipc.getUiPref).mockResolvedValue(null);
     vi.mocked(ipc.saveUiPref).mockResolvedValue();
+    vi.mocked(ipc.appVersion).mockResolvedValue("1.2.3");
     localStorage.clear();
   });
 

@@ -1,3 +1,4 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { ColumnPrefs } from "./columns";
 import type { Theme } from "./theme";
@@ -151,4 +152,9 @@ export function applyLabels(
 
 export function fileDetails(paths: string[]): Promise<FileDetail[]> {
   return invoke("file_details", { paths });
+}
+
+/** The app's version, from its bundle configuration. */
+export function appVersion(): Promise<string> {
+  return getVersion();
 }
