@@ -21,6 +21,9 @@ pub struct Settings {
     pub cli_paths: BTreeMap<String, PathBuf>,
     #[serde(default)]
     pub theme: Theme,
+    /// Column widths and visibility, as the UI stores them; Rust doesn't interpret them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub columns: Option<serde_json::Value>,
 }
 
 /// Settings persisted as JSON in the app's config folder.
@@ -89,6 +92,25 @@ mod tests {
             SettingsStore::load(path).get().cli_paths.get("codex"),
             Some(&PathBuf::from("/opt/codex"))
         );
+    }
+
+    #[test]
+    fn column_prefs_round_trip_and_default_to_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"cliPaths":{},"theme":"dark"}"#).unwrap();
+        let store = SettingsStore::load(path.clone());
+        assert_eq!(store.get().columns, None);
+        let prefs =
+            serde_json::json!({ "widths": { "size": 120 }, "hidden": [], "shown": ["model"] });
+
+        store
+            .update(|settings| settings.columns = Some(prefs.clone()))
+            .unwrap();
+
+        let reloaded = SettingsStore::load(path).get();
+        assert_eq!(reloaded.columns, Some(prefs));
+        assert_eq!(reloaded.theme, Theme::Dark);
     }
 
     #[test]

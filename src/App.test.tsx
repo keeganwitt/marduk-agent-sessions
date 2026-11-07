@@ -19,6 +19,8 @@ vi.mock("./lib/ipc", () => ({
   revealSessionFile: vi.fn(),
   openProjectDir: vi.fn(),
   agentHelp: vi.fn(),
+  getColumns: vi.fn(),
+  saveColumns: vi.fn(),
   listMemory: vi.fn(),
   memoryLeftBehind: vi.fn(),
   readMemoryFile: vi.fn(),
@@ -123,6 +125,9 @@ describe("App", () => {
     vi.mocked(ipc.listLabels).mockResolvedValue([]);
     vi.mocked(ipc.fileDetails).mockResolvedValue([]);
     vi.mocked(ipc.memoryLeftBehind).mockResolvedValue([]);
+    vi.mocked(ipc.getColumns).mockResolvedValue(null);
+    vi.mocked(ipc.saveColumns).mockResolvedValue();
+    localStorage.clear();
   });
 
   it("labels selected sessions from the Labels menu, then filters by label", async () => {
@@ -732,6 +737,61 @@ describe("App", () => {
     expect(
       screen.queryByText("Explain the flaky test"),
     ).not.toBeInTheDocument();
+  });
+
+  it("restores column settings saved in the settings file", async () => {
+    vi.mocked(ipc.getColumns).mockResolvedValue({
+      widths: {},
+      hidden: ["labels"],
+      shown: ["model"],
+    });
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ title: "A session", models: ["claude-opus-5-5"] })),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("columnheader", { name: /Model/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("claude-opus-5-5")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: "Labels" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("copies columns from the webview's storage into an empty settings file", async () => {
+    localStorage.setItem(
+      "marduk.columns",
+      JSON.stringify({ widths: { size: 120 }, hidden: [], shown: [] }),
+    );
+    scanSessions.mockResolvedValue(scanOf(makeSession({ title: "A session" })));
+
+    render(<App />);
+
+    await vi.waitFor(() =>
+      expect(ipc.saveColumns).toHaveBeenCalledWith({
+        widths: { size: 120 },
+        hidden: [],
+        shown: [],
+      }),
+    );
+  });
+
+  it("saves column changes to the settings file", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(scanOf(makeSession({ title: "A session" })));
+
+    render(<App />);
+    await screen.findByText("A session");
+    await user.click(screen.getByRole("button", { name: /Columns/ }));
+    await user.click(screen.getByRole("checkbox", { name: "Model" }));
+
+    await vi.waitFor(() =>
+      expect(ipc.saveColumns).toHaveBeenLastCalledWith(
+        expect.objectContaining({ shown: ["model"] }),
+      ),
+    );
   });
 
   it("opens the help dialog", async () => {

@@ -23,18 +23,21 @@ import {
   applyLabels,
   createLabel,
   deleteSessions,
+  getColumns,
   getTheme,
   listLabels,
   memoryLeftBehind,
   openProjectDir,
   previewDelete,
   revealSessionFile,
+  saveColumns,
   scanSessions,
   toggleArchive,
   trashMemory,
 } from "./lib/ipc";
 import {
   loadColumnPrefs,
+  parseColumnPrefs,
   saveColumnPrefs,
   type ColumnPrefs,
 } from "./lib/columns";
@@ -200,7 +203,33 @@ export default function App() {
   const [labelMenuOpen, setLabelMenuOpen] = useState(false);
   const [columns, setColumns] = useState<ColumnPrefs>(loadColumnPrefs);
 
-  useEffect(() => saveColumnPrefs(columns), [columns]);
+  const columnsLoaded = useRef(false);
+  useEffect(() => {
+    getColumns()
+      .then(
+        (saved) => {
+          if (saved === null || saved === undefined) {
+            void saveColumns(loadColumnPrefs()).catch(() => {});
+          } else {
+            setColumns(parseColumnPrefs(saved));
+          }
+        },
+        () => {},
+      )
+      .finally(() => {
+        columnsLoaded.current = true;
+      });
+  }, []);
+  // Resizing changes widths continuously; only the settled width is written to disk.
+  useEffect(() => {
+    saveColumnPrefs(columns);
+    if (!columnsLoaded.current) return;
+    const timer = setTimeout(
+      () => void saveColumns(columns).catch(() => {}),
+      400,
+    );
+    return () => clearTimeout(timer);
+  }, [columns]);
   const labelsById = useMemo(
     () => new Map(labels.map((label) => [label.id, label])),
     [labels],

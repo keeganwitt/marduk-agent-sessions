@@ -1,4 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
+import type { ColumnPrefs } from "./columns";
 import type { Theme } from "./theme";
 import type {
   AgentHelp,
@@ -44,6 +45,15 @@ export function openProjectDir(uid: string): Promise<void> {
 
 export function loadTranscript(uid: string): Promise<Transcript> {
   return invoke("load_transcript", { uid });
+}
+
+/** Saved column prefs from the settings file, or null before any were saved there. */
+export function getColumns(): Promise<unknown> {
+  return invoke("get_columns");
+}
+
+export function saveColumns(columns: ColumnPrefs): Promise<void> {
+  return invoke("set_columns", { columns });
 }
 
 export function listMemory(): Promise<MemoryStore[]> {

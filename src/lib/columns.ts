@@ -107,25 +107,33 @@ function isColumnId(value: unknown): value is ColumnId {
   return COLUMNS.some((column) => column.id === value);
 }
 
+/** Prefs from storage, keeping only known columns and valid values. */
+export function parseColumnPrefs(value: unknown): ColumnPrefs {
+  if (!value || typeof value !== "object") return DEFAULT_PREFS;
+  const parsed = value as Partial<Record<keyof ColumnPrefs, unknown>>;
+  const widths: ColumnPrefs["widths"] = {};
+  const savedWidths =
+    parsed.widths && typeof parsed.widths === "object" ? parsed.widths : {};
+  for (const [id, width] of Object.entries(savedWidths)) {
+    if (isColumnId(id) && typeof width === "number" && Number.isFinite(width))
+      widths[id] = width;
+  }
+  const ids = (list: unknown): unknown[] => (Array.isArray(list) ? list : []);
+  const hidden = ids(parsed.hidden).filter(
+    (id): id is ColumnId => isColumnId(id) && column(id).hideable,
+  );
+  const shown = ids(parsed.shown).filter(
+    (id): id is ColumnId => isColumnId(id) && column(id).defaultHidden === true,
+  );
+  return { widths, hidden, shown };
+}
+
+/** The copy in the webview's storage, for the first paint before settings load. */
 export function loadColumnPrefs(): ColumnPrefs {
   try {
-    const parsed = JSON.parse(
-      localStorage.getItem(STORAGE_KEY) ?? "null",
-    ) as Partial<ColumnPrefs> | null;
-    if (!parsed || typeof parsed !== "object") return DEFAULT_PREFS;
-    const widths: ColumnPrefs["widths"] = {};
-    for (const [id, width] of Object.entries(parsed.widths ?? {})) {
-      if (isColumnId(id) && typeof width === "number" && Number.isFinite(width))
-        widths[id] = width;
-    }
-    const hidden = (parsed.hidden ?? []).filter(
-      (id): id is ColumnId => isColumnId(id) && column(id).hideable,
+    return parseColumnPrefs(
+      JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null"),
     );
-    const shown = (parsed.shown ?? []).filter(
-      (id): id is ColumnId =>
-        isColumnId(id) && column(id).defaultHidden === true,
-    );
-    return { widths, hidden, shown };
   } catch {
     return DEFAULT_PREFS;
   }

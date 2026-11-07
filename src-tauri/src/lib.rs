@@ -325,6 +325,22 @@ async fn set_cli_path(
 }
 
 #[tauri::command]
+fn get_columns(settings: tauri::State<'_, AppSettings>) -> Option<serde_json::Value> {
+    settings.store.get().columns
+}
+
+#[tauri::command]
+fn set_columns(
+    settings: tauri::State<'_, AppSettings>,
+    columns: serde_json::Value,
+) -> Result<(), String> {
+    settings
+        .store
+        .update(|current| current.columns = Some(columns))
+        .map(|_| ())
+}
+
+#[tauri::command]
 fn get_theme(settings: tauri::State<'_, AppSettings>) -> settings::Theme {
     settings.store.get().theme
 }
@@ -429,6 +445,8 @@ pub fn run() {
             set_cli_path,
             get_theme,
             set_theme,
+            get_columns,
+            set_columns,
             list_labels,
             create_label,
             update_label,
