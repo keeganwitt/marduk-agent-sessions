@@ -289,6 +289,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         part_of_parent: false,
         projectless: false,
         models: parsed.models,
+        agent_type: None,
     }
 }
 

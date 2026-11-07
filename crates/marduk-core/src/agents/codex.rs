@@ -320,18 +320,14 @@ impl Parsed {
         matches!((self.history_start, ordinal), (Some(start), Some(ordinal)) if ordinal < start)
     }
 
-    /// "review_consent · Volta" from a spawned subagent's task name and nickname.
+    /// "review_consent · Volta" from a spawned subagent's task name and nickname; its role is
+    /// the session's agent type.
     fn subagent_title(&self) -> Option<String> {
         let task = self
             .agent_path
             .as_deref()
             .and_then(|path| path.rsplit('/').find(|part| !part.is_empty()));
-        let who = match (self.agent_nickname.as_deref(), self.agent_role.as_deref()) {
-            (Some(nickname), Some(role)) => Some(format!("{nickname} ({role})")),
-            (Some(nickname), None) => Some(nickname.to_string()),
-            (None, Some(role)) => Some(role.to_string()),
-            (None, None) => None,
-        };
+        let who = self.agent_nickname.clone();
         match (task, who) {
             (Some(task), Some(who)) => Some(format!("{task} · {who}")),
             (Some(task), None) => Some(task.to_string()),
@@ -845,6 +841,7 @@ fn session_from(
             }
             models
         }),
+        agent_type: first.agent_role.clone(),
     }
 }
 
@@ -1311,16 +1308,13 @@ mod tests {
     }
 
     #[test]
-    fn subagents_without_a_task_name_use_nickname_and_role_or_their_own_prompt() {
+    fn subagents_without_a_task_name_use_their_nickname_or_their_own_prompt() {
         let parsed = Parsed {
             agent_nickname: Some("Kepler".into()),
             agent_role: Some("explorer".into()),
             ..Parsed::default()
         };
-        assert_eq!(
-            parsed.subagent_title().as_deref(),
-            Some("Kepler (explorer)")
-        );
+        assert_eq!(parsed.subagent_title().as_deref(), Some("Kepler"));
         assert_eq!(Parsed::default().subagent_title(), None);
     }
 

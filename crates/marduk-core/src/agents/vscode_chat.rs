@@ -450,6 +450,7 @@ impl AgentAdapter for VsCodeChatAdapter {
                 part_of_parent: false,
                 projectless: false,
                 models: parsed.models,
+                agent_type: None,
             });
         }
         self.cache.retain(&seen.into_iter().collect());

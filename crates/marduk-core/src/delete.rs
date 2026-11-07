@@ -310,6 +310,7 @@ mod tests {
             part_of_parent: false,
             projectless: false,
             models: Vec::new(),
+            agent_type: None,
         }
     }
 

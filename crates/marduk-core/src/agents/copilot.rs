@@ -310,6 +310,7 @@ fn session_from(
         part_of_parent: false,
         projectless: false,
         models: parsed.models,
+        agent_type: None,
     }
 }
 

@@ -2,6 +2,7 @@ export type ColumnId =
   | "session"
   | "labels"
   | "agent"
+  | "agentType"
   | "model"
   | "project"
   | "created"
@@ -44,6 +45,15 @@ export const COLUMNS: readonly ColumnDef[] = [
     minWidth: 60,
     hideable: true,
     numeric: false,
+  },
+  {
+    id: "agentType",
+    label: "Agent type",
+    defaultWidth: 130,
+    minWidth: 60,
+    hideable: true,
+    numeric: false,
+    defaultHidden: true,
   },
   {
     id: "model",

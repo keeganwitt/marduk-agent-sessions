@@ -47,6 +47,9 @@ pub struct Session {
     pub projectless: bool,
     /// Models the session used, least recently used first; the last is the current one.
     pub models: Vec<String>,
+    /// The agent definition the session ran as: a custom top-level agent (`claude --agent`),
+    /// a subagent's type (`Explore`) or role (`explorer`).
+    pub agent_type: Option<String>,
 }
 
 /// Records that `model` was used, keeping `models` in order of last use. Ignores blanks and

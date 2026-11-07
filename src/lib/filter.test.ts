@@ -3,6 +3,7 @@ import {
   EMPTY_FILTER,
   filterSessions,
   inProject,
+  agentTypeOptions,
   matchProjects,
   modelOptions,
   NO_PROJECT,
@@ -185,6 +186,31 @@ describe("model filter", () => {
     expect(modelOptions(sessions)).toEqual([
       { model: "claude-opus-5-5", count: 2 },
       { model: "claude-opus-5", count: 1 },
+    ]);
+  });
+});
+
+describe("agent type filter", () => {
+  const sessions = [
+    makeSession({ uid: "a", agentType: "Explore" }),
+    makeSession({ uid: "b", agentType: "Explore" }),
+    makeSession({ uid: "c", agentType: "architect" }),
+    makeSession({ uid: "d", agentType: null }),
+  ];
+
+  it("matches the agent type a session ran as", () => {
+    const shown = filterSessions(
+      sessions,
+      { ...EMPTY_FILTER, agentType: "architect" },
+      now,
+    );
+    expect(shown.map((s) => s.uid)).toEqual(["c"]);
+  });
+
+  it("lists agent types by how many sessions ran as them", () => {
+    expect(agentTypeOptions(sessions)).toEqual([
+      { agentType: "Explore", count: 2 },
+      { agentType: "architect", count: 1 },
     ]);
   });
 });

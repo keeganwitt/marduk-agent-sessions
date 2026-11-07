@@ -1,4 +1,5 @@
 import {
+  ALL_AGENT_TYPES,
   ALL_AGENTS,
   ALL_MODELS,
   type ArchiveFilter,
@@ -15,6 +16,7 @@ interface Props {
   labels: Label[];
   projects: ProjectOption[];
   models: { model: string; count: number }[];
+  agentTypes: { agentType: string; count: number }[];
   homeDir: string;
   filter: SessionFilter;
   onChange: (filter: SessionFilter) => void;
@@ -35,6 +37,7 @@ export function Filters({
   labels,
   projects,
   models,
+  agentTypes,
   homeDir,
   filter,
   onChange,
@@ -71,6 +74,26 @@ export function Filters({
             {models.map(({ model, count }) => (
               <option key={model} value={model}>
                 {model} ({count})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {agentTypes.length > 0 && (
+        <label>
+          {t("table.filter.agentType")}
+          <select
+            value={filter.agentType}
+            onChange={(event) =>
+              onChange({ ...filter, agentType: event.target.value })
+            }
+          >
+            <option value={ALL_AGENT_TYPES}>
+              {t("table.filter.allAgentTypes")}
+            </option>
+            {agentTypes.map(({ agentType, count }) => (
+              <option key={agentType} value={agentType}>
+                {agentType} ({count})
               </option>
             ))}
           </select>
@@ -142,17 +165,6 @@ export function Filters({
               ...filter,
               minSizeMb: parseOptionalNumber(event.target.value),
             })
-          }
-        />
-      </label>
-      <label className="grow">
-        {t("table.filter.search")}
-        <input
-          type="search"
-          placeholder={t("table.filter.searchPlaceholder")}
-          value={filter.query}
-          onChange={(event) =>
-            onChange({ ...filter, query: event.target.value })
           }
         />
       </label>

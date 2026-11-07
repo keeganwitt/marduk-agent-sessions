@@ -10,6 +10,7 @@ import { Filters } from "./components/Filters";
 import { ColumnsMenu, SessionTable } from "./components/SessionTable";
 import {
   EMPTY_FILTER,
+  agentTypeOptions,
   modelOptions,
   projectOptions,
   sessionMatcher,
@@ -292,6 +293,10 @@ export default function App() {
 
   const projects = useMemo(() => projectOptions(scan?.sessions ?? []), [scan]);
   const models = useMemo(() => modelOptions(scan?.sessions ?? []), [scan]);
+  const agentTypes = useMemo(
+    () => agentTypeOptions(scan?.sessions ?? []),
+    [scan],
+  );
   const matcher = useMemo(
     () => sessionMatcher(filter, scannedAt),
     [filter, scannedAt],
@@ -543,6 +548,21 @@ export default function App() {
               })
             : ""}
         </span>
+        {scan && view === "sessions" && (
+          <input
+            type="search"
+            className="toolbar-search"
+            aria-label={t("table.filter.search")}
+            placeholder={t("table.filter.searchPlaceholder")}
+            value={filter.query}
+            onChange={(event) =>
+              setFilter((current) => ({
+                ...current,
+                query: event.target.value,
+              }))
+            }
+          />
+        )}
         <button type="button" onClick={() => setHelpOpen(true)}>
           {t("app.help")}
         </button>
@@ -637,6 +657,7 @@ export default function App() {
             labels={labels}
             projects={projects}
             models={models}
+            agentTypes={agentTypes}
             homeDir={scan.homeDir}
             filter={filter}
             onChange={setFilter}

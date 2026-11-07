@@ -110,11 +110,6 @@ button.danger:not(:disabled) {
   color: var(--muted);
 }
 
-.filters .grow {
-  flex: 1;
-  min-width: 140px;
-}
-
 /* Long options (agent names, translations) would otherwise widen the bar past one row. */
 .filters select {
   max-width: 160px;
@@ -288,6 +283,10 @@ body.resizing-column * {
 
 .badge.archived {
   --badge: #7a6fd0;
+}
+
+.badge.agent-type {
+  --badge: #2b7bb9;
 }
 
 .empty {
@@ -1564,4 +1563,14 @@ button.filter-project svg {
   max-height: min(420px, 50vh);
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.toolbar-search {
+  width: min(320px, 28vw);
+  font: inherit;
+  color: inherit;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
 }

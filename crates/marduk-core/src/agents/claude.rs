@@ -445,22 +445,21 @@ fn subagent_transcripts(transcript: &Path) -> Vec<PathBuf> {
     files
 }
 
-/// "Check codex delete cascades to guardians · general-purpose" from a subagent's
-/// `agent-<id>.meta.json`.
-fn subagent_meta_title(meta: &Path) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(meta).ok()?).ok()?;
-    let description = value["description"]
-        .as_str()
-        .filter(|text| !text.trim().is_empty());
-    let kind = value["agentType"]
-        .as_str()
-        .filter(|text| !text.trim().is_empty());
-    match (description, kind) {
-        (Some(description), Some(kind)) => Some(format!("{description} · {kind}")),
-        (Some(description), None) => Some(description.to_string()),
-        (None, Some(kind)) => Some(kind.to_string()),
-        (None, None) => None,
-    }
+/// A subagent's description (its title) and agent type, from its `.meta.json`.
+fn subagent_meta(meta: &Path) -> (Option<String>, Option<String>) {
+    let Some(value) = fs::read_to_string(meta)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+    else {
+        return (None, None);
+    };
+    let field = |name: &str| {
+        value[name]
+            .as_str()
+            .filter(|text| !text.trim().is_empty())
+            .map(str::to_string)
+    };
+    (field("description"), field("agentType"))
 }
 
 fn user_role(is_meta: bool, text: &str) -> Role {
@@ -551,6 +550,7 @@ struct Record<'a> {
     custom_title: Option<String>,
     summary: Option<String>,
     is_meta: Option<bool>,
+    agent_setting: Option<String>,
     #[serde(borrow)]
     message: Option<&'a RawValue>,
 }
@@ -565,6 +565,8 @@ struct MessageModel<'a> {
 #[derive(Default, Clone)]
 struct Parsed {
     models: Vec<String>,
+    /// The custom agent the session ran as (`claude --agent`), from `agent-setting` records.
+    agent_type: Option<String>,
     cwd: Option<String>,
     custom_title: Option<String>,
     ai_title: Option<String>,
@@ -602,6 +604,12 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
             parsed.custom_title = record.custom_title.or(parsed.custom_title.take())
         }
         Some("ai-title") => parsed.ai_title = record.ai_title.or(parsed.ai_title.take()),
+        Some("agent-setting") => {
+            parsed.agent_type = record
+                .agent_setting
+                .filter(|name| !name.trim().is_empty())
+                .or(parsed.agent_type.take())
+        }
         Some("summary") => parsed.summary = record.summary.or(parsed.summary.take()),
         Some("user") if parsed.first_prompt.is_none() && record.is_meta != Some(true) => {
             parsed.first_prompt = record.message.and_then(user_prompt_text);
@@ -664,7 +672,10 @@ impl ClaudeAdapter {
             .to_string_lossy()
             .into_owned();
         let meta = path.with_file_name(format!("{stem}.meta.json"));
-        let title = subagent_meta_title(&meta).or_else(|| parsed.clone().title());
+        let (description, agent_type) = subagent_meta(&meta);
+        let title = description
+            .or_else(|| parsed.clone().title())
+            .or_else(|| agent_type.clone());
         let mut files = vec![path.to_path_buf()];
         if meta.is_file() {
             files.push(meta);
@@ -689,12 +700,14 @@ impl ClaudeAdapter {
             part_of_parent: true,
             projectless: false,
             models: parsed.models.clone(),
+            agent_type,
         })
     }
 }
 
 fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Session {
     let models = parsed.models.clone();
+    let agent_type = parsed.agent_type.clone();
     let id = path
         .file_stem()
         .unwrap_or_default()
@@ -723,6 +736,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         part_of_parent: false,
         projectless: false,
         models,
+        agent_type,
     }
 }
 
@@ -914,6 +928,29 @@ mod tests {
         fs::remove_file(folder.join(format!("{ID}.jsonl"))).unwrap();
         fs::remove_file(folder.join(format!("{OTHER_ID}.jsonl"))).unwrap();
         assert!(!adapter.memory_in_use(&memory_dir));
+    }
+
+    #[test]
+    fn records_the_custom_agent_a_session_ran_as() {
+        let config = tempfile::tempdir().unwrap();
+        write_project(
+            config.path(),
+            "p",
+            &[(
+                &format!("{ID}.jsonl"),
+                &[
+                    r#"{"type":"agent-setting","agentSetting":"marduk-probe"}"#,
+                    r#"{"type":"user","message":{"role":"user","content":"hi"}}"#,
+                    r#"{"type":"agent-setting","agentSetting":"reviewer"}"#,
+                ]
+                .join("\n"),
+            )],
+        );
+
+        assert_eq!(
+            scan_one(config.path()).agent_type.as_deref(),
+            Some("reviewer")
+        );
     }
 
     #[test]

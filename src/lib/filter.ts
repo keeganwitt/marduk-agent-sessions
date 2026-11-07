@@ -10,6 +10,8 @@ export interface SessionFilter {
   agent: string;
   /** A model the session used at any point, or `ALL_MODELS`. */
   model: string;
+  /** The agent definition the session ran as, or `ALL_AGENT_TYPES`. */
+  agentType: string;
   archive: ArchiveFilter;
   label: LabelFilter;
   /** A project folder (its subfolders match too), or `NO_PROJECT`. */
@@ -21,6 +23,7 @@ export interface SessionFilter {
 
 export const ALL_AGENTS = "all";
 export const ALL_MODELS = "all";
+export const ALL_AGENT_TYPES = "all";
 
 /** Sessions started without a project, or with no folder at all. Never a real path. */
 export const NO_PROJECT = "<no project>";
@@ -28,6 +31,7 @@ export const NO_PROJECT = "<no project>";
 export const EMPTY_FILTER: SessionFilter = {
   agent: ALL_AGENTS,
   model: ALL_MODELS,
+  agentType: ALL_AGENT_TYPES,
   archive: "all",
   label: "any",
   project: null,
@@ -46,6 +50,8 @@ export function sessionMatcher(
   return (session) =>
     (filter.agent === ALL_AGENTS || session.agent === filter.agent) &&
     (filter.model === ALL_MODELS || session.models.includes(filter.model)) &&
+    (filter.agentType === ALL_AGENT_TYPES ||
+      session.agentType === filter.agentType) &&
     (filter.archive === "all" ||
       session.archived === (filter.archive === "archived")) &&
     (filter.label === "any" ||
@@ -141,4 +147,19 @@ export function modelOptions(
   return [...counts]
     .map(([model, count]) => ({ model, count }))
     .sort((a, b) => b.count - a.count || a.model.localeCompare(b.model));
+}
+
+/** Every agent type sessions ran as, with how many did, the most common first. */
+export function agentTypeOptions(
+  sessions: SessionRow[],
+): { agentType: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const { agentType } of sessions) {
+    if (agentType) counts.set(agentType, (counts.get(agentType) ?? 0) + 1);
+  }
+  return [...counts]
+    .map(([agentType, count]) => ({ agentType, count }))
+    .sort(
+      (a, b) => b.count - a.count || a.agentType.localeCompare(b.agentType),
+    );
 }

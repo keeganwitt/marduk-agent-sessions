@@ -794,6 +794,44 @@ describe("App", () => {
     );
   });
 
+  it("shows a badge for the agent a session ran as, and filters by it", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({
+          uid: "a",
+          title: "Plan the data model",
+          agentType: "architect",
+        }),
+        makeSession({ uid: "b", title: "Plain session" }),
+      ),
+    );
+
+    render(<App />);
+    const badge = await screen.findByText("architect", { selector: ".badge" });
+    expect(badge).toHaveAttribute("title", "Ran as the architect agent");
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Agent type" }),
+      "architect",
+    );
+
+    expect(
+      rowTitles().map((title) => title.replace("architect", "").trim()),
+    ).toEqual(["Plan the data model"]);
+  });
+
+  it("hides the Agent type filter when no session has one", async () => {
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ title: "Plain session" })),
+    );
+
+    render(<App />);
+    await screen.findByText("Plain session");
+
+    expect(screen.queryByRole("combobox", { name: "Agent type" })).toBeNull();
+  });
+
   it("opens the help dialog", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(scanOf(makeSession()));

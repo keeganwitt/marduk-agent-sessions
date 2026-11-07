@@ -88,4 +88,19 @@ describe("sortSessions", () => {
 
     expect(order.map((s) => s.uid)).toEqual(["b", "z", "none"]);
   });
+
+  it("sorts by agent type, with sessions that have none last", () => {
+    const sessions = [
+      makeSession({ uid: "none", agentType: null }),
+      makeSession({ uid: "p", agentType: "Plan" }),
+      makeSession({ uid: "e", agentType: "Explore" }),
+    ];
+
+    const order = sortSessions(sessions, {
+      key: "agentType",
+      direction: "asc",
+    });
+
+    expect(order.map((s) => s.uid)).toEqual(["e", "p", "none"]);
+  });
 });

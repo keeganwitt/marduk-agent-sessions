@@ -898,10 +898,8 @@ mod tests {
         let sub = sessions.iter().find(|s| s.part_of_parent).unwrap();
         let main = sessions.iter().find(|s| !s.part_of_parent).unwrap();
 
-        assert_eq!(
-            sub.title.as_deref(),
-            Some("Research the API · general-purpose")
-        );
+        assert_eq!(sub.title.as_deref(), Some("Research the API"));
+        assert_eq!(sub.agent_type.as_deref(), Some("general-purpose"));
         assert_eq!(sub.parent_id.as_deref(), Some(id));
         assert_eq!(sub.files.len(), 2);
         assert!(matches!(

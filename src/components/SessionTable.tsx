@@ -57,6 +57,14 @@ function StatusBadges({
   const { t } = useI18n();
   return (
     <>
+      {session.agentType && (
+        <span
+          className="badge agent-type"
+          title={t("table.badge.agentTypeTitle", { name: session.agentType })}
+        >
+          {session.agentType}
+        </span>
+      )}
       {session.running && (
         <span className="badge running" title={t("table.badge.runningTitle")}>
           {t("table.badge.running")}
@@ -128,6 +136,7 @@ function ariaSortFor(
 }
 
 const SORT_KEYS: Partial<Record<ColumnId, SortKey>> = {
+  agentType: "agentType",
   model: "model",
   session: "title",
   agent: "agent",
@@ -514,6 +523,12 @@ export function SessionTable(props: Props) {
         return (
           <td key={column.id} title={session.agentName}>
             {session.agentName}
+          </td>
+        );
+      case "agentType":
+        return (
+          <td key={column.id} title={session.agentType ?? undefined}>
+            {session.agentType ?? <span className="muted">—</span>}
           </td>
         );
       case "model": {

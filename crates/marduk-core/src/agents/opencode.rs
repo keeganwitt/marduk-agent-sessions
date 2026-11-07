@@ -308,6 +308,7 @@ impl OpenCodeAdapter {
             part_of_parent: false,
             projectless: false,
             models: row.model.into_iter().collect(),
+            agent_type: None,
             parent_id: row.parent_id,
         }
     }

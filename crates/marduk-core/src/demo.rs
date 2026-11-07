@@ -139,6 +139,8 @@ struct Spec {
     running: bool,
     /// A Codex Desktop chat started without a project; `project` is ignored.
     chat: bool,
+    /// The custom agent a Claude Code session ran as (`claude --agent`).
+    agent: Option<&'static str>,
     labels: &'static [&'static str],
 }
 
@@ -158,6 +160,7 @@ const fn spec(
         archived: false,
         running: false,
         chat: false,
+        agent: None,
         labels: &[],
     }
 }
@@ -165,6 +168,11 @@ const fn spec(
 impl Spec {
     const fn archived(mut self) -> Self {
         self.archived = true;
+        self
+    }
+
+    const fn as_agent(mut self, agent: &'static str) -> Self {
+        self.agent = Some(agent);
         self
     }
 
@@ -472,7 +480,8 @@ impl Writer<'_> {
                 6 * HOUR,
                 5 * HOUR,
                 763 * KB,
-            ),
+            )
+            .as_agent("architect"),
             &[],
         )?;
         self.copilot(spec(
@@ -678,6 +687,12 @@ impl Writer<'_> {
             1,
             json!({ "type": "ai-title", "aiTitle": spec.title, "sessionId": id }),
         );
+        if let Some(agent) = spec.agent {
+            records.insert(
+                0,
+                json!({ "type": "agent-setting", "agentSetting": agent, "sessionId": id }),
+            );
+        }
         self.write_jsonl(&folder.join(format!("{id}.jsonl")), &records, &spec)?;
         for (subagent, agent_type) in subagents {
             let stem = format!("agent-{:016x}", fnv(subagent.title, 2));
@@ -1683,6 +1698,16 @@ mod tests {
                 .unwrap()
                 .starts_with("Codex treats")
         );
+
+        let agent_type = |title: &str| {
+            sessions
+                .iter()
+                .find(|session| session.title.as_deref() == Some(title))
+                .and_then(|session| session.agent_type.as_deref())
+        };
+        assert_eq!(agent_type("Plan the v2 data model"), Some("architect"));
+        assert_eq!(agent_type("Find theme token usages"), Some("Explore"));
+        assert_eq!(agent_type("parser_tests · Kepler"), Some("explorer"));
 
         let store = LabelStore::open(&home.var("MARDUK_DATA_DIR").join("labels.db")).unwrap();
         assert_eq!(store.labels().unwrap().len(), LABELS.len());

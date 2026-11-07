@@ -28,6 +28,8 @@ export interface SessionRow {
   projectless: boolean;
   /** Models the session used, the current one last. */
   models: string[];
+  /** The agent definition the session ran as (custom agent, subagent type or role). */
+  agentType: string | null;
   archived: boolean;
   running: boolean;
   readOnlyReason: string | null;
