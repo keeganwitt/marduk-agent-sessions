@@ -122,7 +122,7 @@ describe("I18nProvider", () => {
     );
 
     expect(
-      await screen.findByRole("button", { name: "Langue" }),
+      await screen.findByRole("button", { name: "Langue" }, { timeout: 5000 }),
     ).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("fr");
 

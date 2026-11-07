@@ -11,6 +11,10 @@ import {
 } from "../i18n/locales";
 import type { MessageKey } from "../i18n/messages";
 import { LabelManager } from "./LabelManager";
+import { panelId, tabId } from "../lib/tabs";
+import { Tabs } from "./Tabs";
+
+type SettingsTab = "appearance" | "labels" | "cli";
 import type { CliStatus } from "../lib/types";
 
 interface Props {
@@ -87,7 +91,7 @@ function LanguageSetting() {
   const systemName = LOCALES.find((locale) => locale.id === system)!.name;
   return (
     <label className="setting-row">
-      {t("language.label")}
+      <span>{t("language.label")}</span>
       <select
         value={language}
         onChange={(event) => {
@@ -115,6 +119,7 @@ export function SettingsDialog({ onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [changed, setChanged] = useState(false);
   const [theme, setTheme] = useState<Theme>(cachedTheme);
+  const [tab, setTab] = useState<SettingsTab>("appearance");
 
   useEffect(() => {
     cliStatuses().then(setStatuses, (caught: unknown) =>
@@ -169,54 +174,85 @@ export function SettingsDialog({ onClose }: Props) {
         aria-labelledby="settings-title"
       >
         <h2 id="settings-title">{t("settings.title")}</h2>
-        <h3>{t("settings.appearance")}</h3>
-        <div
-          className="segmented"
-          role="radiogroup"
-          aria-label={t("settings.theme")}
-        >
-          {THEMES.map((option) => (
-            <label
-              key={option}
-              className={option === theme ? "active" : undefined}
-            >
-              <input
-                type="radio"
-                name="theme"
-                value={option}
-                checked={option === theme}
-                onChange={() => chooseTheme(option)}
-              />
-              {t(THEME_LABELS[option])}
-            </label>
-          ))}
-        </div>
-        <LanguageSetting />
-        <h3>{t("settings.labels")}</h3>
-        <LabelManager onChanged={() => setChanged(true)} onError={setError} />
-        <h3>{t("settings.cli.title")}</h3>
-        <p className="muted">{t("settings.cli.intro")}</p>
+        <Tabs
+          label={t("settings.title")}
+          idPrefix="settings"
+          tabs={[
+            { id: "appearance", label: t("settings.appearance") },
+            { id: "labels", label: t("settings.labels") },
+            { id: "cli", label: t("settings.cli.title") },
+          ]}
+          selected={tab}
+          onSelect={setTab}
+        />
         {error && (
           <div className="banner error" role="alert">
             {error}
           </div>
         )}
-        {!statuses && !error && (
-          <p className="muted">{t("settings.cli.checking")}</p>
-        )}
-        {statuses && (
-          <ul className="cli-list">
-            {statuses.map((status) => (
-              <CliRow
-                key={status.agent}
-                status={status}
-                busy={busy}
-                onChoose={() => void choose(status)}
-                onReset={() => void save(status.agent, null)}
-              />
-            ))}
-          </ul>
-        )}
+        <div
+          className="settings-panel"
+          role="tabpanel"
+          id={panelId("settings")}
+          aria-labelledby={tabId("settings", tab)}
+        >
+          {tab === "appearance" && (
+            <>
+              <div className="setting-row">
+                <span id="settings-theme-label">{t("settings.theme")}</span>
+                <div
+                  className="segmented"
+                  role="radiogroup"
+                  aria-labelledby="settings-theme-label"
+                >
+                  {THEMES.map((option) => (
+                    <label
+                      key={option}
+                      className={option === theme ? "active" : undefined}
+                    >
+                      <input
+                        type="radio"
+                        name="theme"
+                        value={option}
+                        checked={option === theme}
+                        onChange={() => chooseTheme(option)}
+                      />
+                      {t(THEME_LABELS[option])}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <LanguageSetting />
+            </>
+          )}
+          {tab === "labels" && (
+            <LabelManager
+              onChanged={() => setChanged(true)}
+              onError={setError}
+            />
+          )}
+          {tab === "cli" && (
+            <>
+              <p className="muted">{t("settings.cli.intro")}</p>
+              {!statuses && !error && (
+                <p className="muted">{t("settings.cli.checking")}</p>
+              )}
+              {statuses && (
+                <ul className="cli-list">
+                  {statuses.map((status) => (
+                    <CliRow
+                      key={status.agent}
+                      status={status}
+                      busy={busy}
+                      onChoose={() => void choose(status)}
+                      onReset={() => void save(status.agent, null)}
+                    />
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
         <div className="actions">
           <button type="button" onClick={close}>
             {t("settings.done")}

@@ -1538,11 +1538,30 @@ button.filter-project svg {
 
 .setting-row {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
-  margin-top: 10px;
+}
+
+.setting-row + .setting-row {
+  margin-top: 18px;
+}
+
+/* Rows' labels share a width so their controls line up. */
+.settings-panel .setting-row > :first-child {
+  min-width: 90px;
 }
 
 .setting-row select {
   font: inherit;
+}
+
+.settings-panel {
+  min-height: 280px;
+}
+
+/* Long label lists scroll inside the tab, keeping the dialog's buttons in view. */
+.settings-panel .label-list {
+  max-height: min(420px, 50vh);
+  overflow-y: auto;
+  padding-right: 4px;
 }

@@ -57,6 +57,7 @@ describe("SettingsDialog", () => {
     vi.mocked(ipc.deleteLabel).mockResolvedValue();
 
     render(<SettingsDialog onClose={onClose} />);
+    await user.click(screen.getByRole("tab", { name: "Labels" }));
     const name = await screen.findByRole("textbox", { name: "Name of Work" });
     await user.clear(name);
     await user.type(name, "Job{Enter}");
@@ -91,6 +92,7 @@ describe("SettingsDialog", () => {
   });
 
   it("shows found and missing CLIs with an install link for the missing one", async () => {
+    const user = userEvent.setup();
     cliStatuses.mockResolvedValue([
       status({
         path: "/Users/me/.local/bin/codex",
@@ -105,6 +107,7 @@ describe("SettingsDialog", () => {
     ]);
 
     render(<SettingsDialog onClose={() => {}} />);
+    await user.click(screen.getByRole("tab", { name: "Agent CLIs" }));
 
     expect(
       await screen.findByText("/Users/me/.local/bin/codex"),
@@ -130,6 +133,7 @@ describe("SettingsDialog", () => {
     ]);
 
     render(<SettingsDialog onClose={onClose} />);
+    await user.click(screen.getByRole("tab", { name: "Agent CLIs" }));
     await user.click(await screen.findByRole("button", { name: "Choose…" }));
 
     expect(setCliPath).toHaveBeenCalledWith("codex", "/opt/codex/bin/codex");
@@ -146,6 +150,7 @@ describe("SettingsDialog", () => {
     setCliPath.mockRejectedValue("/opt/codex isn't an executable file.");
 
     render(<SettingsDialog onClose={() => {}} />);
+    await user.click(screen.getByRole("tab", { name: "Agent CLIs" }));
     const row = (await screen.findByText("Custom location")).closest("li")!;
     await user.click(
       within(row).getByRole("button", { name: "Use automatic" }),
@@ -164,10 +169,32 @@ describe("SettingsDialog", () => {
     openDialog.mockResolvedValue(null);
 
     render(<SettingsDialog onClose={onClose} />);
+    await user.click(screen.getByRole("tab", { name: "Agent CLIs" }));
     await user.click(await screen.findByRole("button", { name: "Choose…" }));
     await user.keyboard("{Escape}");
 
     expect(setCliPath).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledWith(false);
+  });
+
+  it("opens on Appearance and switches sections with tabs or arrow keys", async () => {
+    const user = userEvent.setup();
+    cliStatuses.mockResolvedValue([]);
+    vi.mocked(ipc.listLabels).mockResolvedValue([]);
+
+    render(<SettingsDialog onClose={() => {}} />);
+
+    const tab = (name: string) => screen.getByRole("tab", { name });
+    expect(tab("Appearance")).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("radiogroup", { name: "Theme" }),
+    ).toBeInTheDocument();
+
+    await user.click(tab("Labels"));
+    expect(screen.queryByRole("radiogroup", { name: "Theme" })).toBeNull();
+
+    await user.keyboard("{ArrowRight}");
+    expect(tab("Agent CLIs")).toHaveAttribute("aria-selected", "true");
+    expect(tab("Agent CLIs")).toHaveFocus();
   });
 });
