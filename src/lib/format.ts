@@ -1,7 +1,8 @@
 const UNITS = ["B", "KB", "MB", "GB", "TB"];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export function formatBytes(bytes: number): string {
+/** A size such as "1.2 MB", with the decimal separator of `locale` when given. */
+export function formatBytes(bytes: number, locale?: string): string {
   let value = bytes;
   let unit = 0;
   while (value >= 1024 && unit < UNITS.length - 1) {
@@ -9,7 +10,12 @@ export function formatBytes(bytes: number): string {
     unit += 1;
   }
   const digits = unit === 0 || value >= 10 ? 0 : 1;
-  return `${value.toFixed(digits)} ${UNITS[unit]}`;
+  const number = new Intl.NumberFormat(locale ?? "en", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: false,
+  }).format(value);
+  return `${number} ${UNITS[unit]}`;
 }
 
 export function ageInDays(isoTimestamp: string, now: Date): number {
@@ -19,15 +25,36 @@ export function ageInDays(isoTimestamp: string, now: Date): number {
   );
 }
 
-export function formatAge(isoTimestamp: string, now: Date): string {
+export type AgeUnit = "now" | "minutes" | "hours" | "days" | "months" | "years";
+
+/** How long ago `isoTimestamp` was, in the largest unit that reads naturally. */
+export function ageParts(
+  isoTimestamp: string,
+  now: Date,
+): { unit: AgeUnit; count: number } {
   const days = ageInDays(isoTimestamp, now);
   const minutes = days * 24 * 60;
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${Math.floor(minutes)}m ago`;
-  if (days < 1) return `${Math.floor(days * 24)}h ago`;
-  if (days < 60) return `${Math.floor(days)}d ago`;
-  if (days < 730) return `${Math.floor(days / 30)}mo ago`;
-  return `${Math.floor(days / 365)}y ago`;
+  if (minutes < 1) return { unit: "now", count: 0 };
+  if (minutes < 60) return { unit: "minutes", count: Math.floor(minutes) };
+  if (days < 1) return { unit: "hours", count: Math.floor(days * 24) };
+  if (days < 60) return { unit: "days", count: Math.floor(days) };
+  if (days < 730) return { unit: "months", count: Math.floor(days / 30) };
+  return { unit: "years", count: Math.floor(days / 365) };
+}
+
+const ENGLISH_AGES: Record<AgeUnit, string> = {
+  now: "just now",
+  minutes: "m ago",
+  hours: "h ago",
+  days: "d ago",
+  months: "mo ago",
+  years: "y ago",
+};
+
+/** The English age; the UI uses `useI18n().age`, which follows the language setting. */
+export function formatAge(isoTimestamp: string, now: Date): string {
+  const { unit, count } = ageParts(isoTimestamp, now);
+  return unit === "now" ? ENGLISH_AGES.now : `${count}${ENGLISH_AGES[unit]}`;
 }
 
 /**

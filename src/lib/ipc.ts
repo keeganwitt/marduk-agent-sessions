@@ -47,6 +47,15 @@ export function loadTranscript(uid: string): Promise<Transcript> {
   return invoke("load_transcript", { uid });
 }
 
+/** The saved language setting (`system` or a locale id). */
+export function getLanguage(): Promise<string> {
+  return invoke("get_language");
+}
+
+export function saveLanguage(language: string): Promise<void> {
+  return invoke("set_language", { language });
+}
+
 /** Saved column prefs from the settings file, or null before any were saved there. */
 export function getColumns(): Promise<unknown> {
   return invoke("get_columns");

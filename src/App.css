@@ -1529,3 +1529,14 @@ button.filter-project svg {
   margin: 2px 0 8px 22px;
   font-size: 12px;
 }
+
+.setting-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.setting-row select {
+  font: inherit;
+}

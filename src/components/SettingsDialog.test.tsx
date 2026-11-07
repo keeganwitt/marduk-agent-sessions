@@ -10,6 +10,8 @@ vi.mock("../lib/ipc", () => ({
   cliStatuses: vi.fn(),
   setCliPath: vi.fn(),
   saveTheme: vi.fn(),
+  getLanguage: vi.fn(),
+  saveLanguage: vi.fn(),
   listLabels: vi.fn(),
   updateLabel: vi.fn(),
   deleteLabel: vi.fn(),

@@ -13,7 +13,7 @@ pub enum Theme {
     Dark,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     /// User-chosen CLI locations, keyed by agent id.
@@ -21,9 +21,27 @@ pub struct Settings {
     pub cli_paths: BTreeMap<String, PathBuf>,
     #[serde(default)]
     pub theme: Theme,
+    /// `system`, or a UI language id such as `de` or `zh-Hans`; the UI validates it.
+    #[serde(default = "system_language")]
+    pub language: String,
     /// Column widths and visibility, as the UI stores them; Rust doesn't interpret them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub columns: Option<serde_json::Value>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            cli_paths: BTreeMap::new(),
+            theme: Theme::default(),
+            language: system_language(),
+            columns: None,
+        }
+    }
+}
+
+fn system_language() -> String {
+    "system".to_string()
 }
 
 /// Settings persisted as JSON in the app's config folder.
@@ -92,6 +110,21 @@ mod tests {
             SettingsStore::load(path).get().cli_paths.get("codex"),
             Some(&PathBuf::from("/opt/codex"))
         );
+    }
+
+    #[test]
+    fn language_defaults_to_system_and_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"cliPaths":{}}"#).unwrap();
+        let store = SettingsStore::load(path.clone());
+        assert_eq!(store.get().language, "system");
+
+        store
+            .update(|settings| settings.language = "ja".into())
+            .unwrap();
+
+        assert_eq!(SettingsStore::load(path).get().language, "ja");
     }
 
     #[test]

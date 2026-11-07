@@ -2,6 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { cliStatuses, saveTheme, setCliPath } from "../lib/ipc";
 import { applyTheme, cachedTheme, THEMES, type Theme } from "../lib/theme";
+import { useI18n } from "../i18n/context";
+import {
+  isLanguagePref,
+  LOCALES,
+  matchLocale,
+  systemLanguages,
+} from "../i18n/locales";
 import { LabelManager } from "./LabelManager";
 import type { CliStatus } from "../lib/types";
 
@@ -68,6 +75,33 @@ function CliRow({
         )}
       </div>
     </li>
+  );
+}
+
+function LanguageSetting() {
+  const { language, setLanguage, t } = useI18n();
+  const system = matchLocale(systemLanguages());
+  const systemName = LOCALES.find((locale) => locale.id === system)!.name;
+  return (
+    <label className="setting-row">
+      {t("language.label")}
+      <select
+        value={language}
+        onChange={(event) => {
+          if (isLanguagePref(event.target.value))
+            setLanguage(event.target.value);
+        }}
+      >
+        <option value="system">
+          {t("language.system", { language: systemName })}
+        </option>
+        {LOCALES.map((locale) => (
+          <option key={locale.id} value={locale.id} lang={locale.id}>
+            {locale.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -149,6 +183,7 @@ export function SettingsDialog({ onClose }: Props) {
             </label>
           ))}
         </div>
+        <LanguageSetting />
         <h3>Labels</h3>
         <LabelManager onChanged={() => setChanged(true)} onError={setError} />
         <h3>Agent CLIs</h3>

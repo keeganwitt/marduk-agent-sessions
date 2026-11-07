@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import App from "./App";
+import { I18nProvider } from "./i18n/I18n";
 import { installExternalLinkHandler } from "./lib/externalLinks";
 import { applyTheme, cachedTheme } from "./lib/theme";
 
@@ -10,6 +11,8 @@ applyTheme(cachedTheme());
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <I18nProvider>
+      <App />
+    </I18nProvider>
   </React.StrictMode>,
 );

@@ -325,6 +325,19 @@ async fn set_cli_path(
 }
 
 #[tauri::command]
+fn get_language(settings: tauri::State<'_, AppSettings>) -> String {
+    settings.store.get().language
+}
+
+#[tauri::command]
+fn set_language(settings: tauri::State<'_, AppSettings>, language: String) -> Result<(), String> {
+    settings
+        .store
+        .update(|current| current.language = language)
+        .map(|_| ())
+}
+
+#[tauri::command]
 fn get_columns(settings: tauri::State<'_, AppSettings>) -> Option<serde_json::Value> {
     settings.store.get().columns
 }
@@ -447,6 +460,8 @@ pub fn run() {
             set_theme,
             get_columns,
             set_columns,
+            get_language,
+            set_language,
             list_labels,
             create_label,
             update_label,
