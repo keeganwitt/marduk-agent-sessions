@@ -62,8 +62,108 @@ body {
 }
 
 .summary {
-  flex: 1;
   color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Session actions only exist for a selection, so they sit together, led by what they act on. */
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 8px;
+  background: var(--row-selected);
+  white-space: nowrap;
+}
+
+.selection-count {
+  font-weight: 500;
+}
+
+.clear-selection {
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.clear-selection:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  color: CanvasText;
+}
+
+.selection-bar button:not(.clear-selection) {
+  padding: 4px 10px;
+}
+
+.app-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.toolbar-search {
+  margin-left: auto;
+  min-width: 140px;
+  flex-shrink: 1;
+}
+
+.toolbar-search + .app-actions {
+  margin-left: 0;
+}
+
+button.quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+button.quiet:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  color: CanvasText;
+}
+
+.row-menu-button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.55;
+}
+
+.sessions tr:hover .row-menu-button,
+.row-menu-button:focus-visible,
+.row-menu-button[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.row-menu-button:hover,
+.row-menu-button[aria-expanded="true"] {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  color: CanvasText;
+}
+
+.row-menu-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.filter-menu.row-menu-list {
+  position: fixed;
+  left: auto;
+  white-space: nowrap;
 }
 
 button {

@@ -340,6 +340,11 @@ export default function App() {
     (total, session) => total + session.sizeBytes,
     0,
   );
+  if (labelMenuOpen && selectedVisible.length === 0) setLabelMenuOpen(false);
+  const selectedBytes = selectedVisible.reduce(
+    (total, session) => total + session.sizeBytes,
+    0,
+  );
   const matchingBytes = matching.reduce(
     (total, session) => total + session.sizeBytes,
     0,
@@ -530,6 +535,14 @@ export default function App() {
     }
   };
 
+  const copyId = async (session: SessionRow) => {
+    try {
+      await navigator.clipboard.writeText(session.id);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  };
+
   const closeFiles = useCallback(() => setFilesFor(null), []);
   const closeTranscript = useCallback(() => setTranscriptFor(null), []);
 
@@ -564,54 +577,50 @@ export default function App() {
               })
             : ""}
         </span>
-        {scan && view === "sessions" && (
-          <input
-            type="search"
-            className="toolbar-search"
-            aria-label={t("table.filter.search")}
-            placeholder={t("table.filter.searchPlaceholder")}
-            value={filter.query}
-            onChange={(event) =>
-              setFilter((current) => ({
-                ...current,
-                query: event.target.value,
-              }))
-            }
-          />
-        )}
-        <button type="button" onClick={() => setHelpOpen(true)}>
-          {t("app.help")}
-        </button>
-        <button type="button" onClick={() => setSettingsOpen(true)}>
-          {t("app.settings")}
-        </button>
-        {view === "sessions" && (
-          <div className="menu-anchor">
+        {view === "sessions" && selectedVisible.length > 0 && (
+          <div
+            className="selection-bar"
+            role="group"
+            aria-label={t("app.selection", {
+              count: selectedVisible.length,
+              size: bytes(selectedBytes),
+            })}
+          >
+            <span className="selection-count">
+              {t("app.selection", {
+                count: selectedVisible.length,
+                size: bytes(selectedBytes),
+              })}
+            </span>
             <button
               type="button"
-              aria-haspopup="dialog"
-              aria-expanded={labelMenuOpen}
-              disabled={selectedVisible.length === 0 || busy}
-              onClick={() => setLabelMenuOpen((open) => !open)}
+              className="clear-selection"
+              aria-label={t("app.clearSelection")}
+              title={t("app.clearSelection")}
+              onClick={() => setSelected(new Set())}
             >
-              {t("app.labels")}
+              ×
             </button>
-            {labelMenuOpen && (
-              <LabelMenu
-                labels={labels}
-                selected={selectedVisible}
-                onApply={(add, remove) => void labelSelected(add, remove)}
-                onCreate={newLabel}
-                onClose={() => setLabelMenuOpen(false)}
-              />
-            )}
-          </div>
-        )}
-        <button type="button" onClick={() => void rescan()} disabled={busy}>
-          {t("app.rescan")}
-        </button>
-        {view === "sessions" && (
-          <>
+            <div className="menu-anchor">
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={labelMenuOpen}
+                disabled={busy}
+                onClick={() => setLabelMenuOpen((open) => !open)}
+              >
+                {t("app.labels")}
+              </button>
+              {labelMenuOpen && (
+                <LabelMenu
+                  labels={labels}
+                  selected={selectedVisible}
+                  onApply={(add, remove) => void labelSelected(add, remove)}
+                  onCreate={newLabel}
+                  onClose={() => setLabelMenuOpen(false)}
+                />
+              )}
+            </div>
             {toArchive.length > 0 && (
               <button
                 type="button"
@@ -630,21 +639,62 @@ export default function App() {
                 {t("app.unarchive", { count: toUnarchive.length })}
               </button>
             )}
-            <button
-              type="button"
-              className="danger"
-              disabled={toDelete.length === 0 || busy}
-              onClick={() => void openPreview()}
-            >
-              {toDelete.length === 0
-                ? t("app.delete")
-                : t("app.deleteCount", {
-                    count: toDelete.length,
-                    size: bytes(deleteBytes),
-                  })}
-            </button>
-          </>
+            {toDelete.length > 0 && (
+              <button
+                type="button"
+                className="danger"
+                disabled={busy}
+                onClick={() => void openPreview()}
+              >
+                {toDelete.length === selectedVisible.length
+                  ? t("app.delete")
+                  : t("app.deleteCount", {
+                      count: toDelete.length,
+                      size: bytes(deleteBytes),
+                    })}
+              </button>
+            )}
+          </div>
         )}
+        {scan && view === "sessions" && (
+          <input
+            type="search"
+            className="toolbar-search"
+            aria-label={t("table.filter.search")}
+            placeholder={t("table.filter.searchPlaceholder")}
+            value={filter.query}
+            onChange={(event) =>
+              setFilter((current) => ({
+                ...current,
+                query: event.target.value,
+              }))
+            }
+          />
+        )}
+        <div className="app-actions">
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => void rescan()}
+            disabled={busy}
+          >
+            {t("app.rescan")}
+          </button>
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => setSettingsOpen(true)}
+          >
+            {t("app.settings")}
+          </button>
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => setHelpOpen(true)}
+          >
+            {t("app.help")}
+          </button>
+        </div>
       </header>
 
       {error && (
@@ -652,17 +702,18 @@ export default function App() {
           {error}
         </div>
       )}
-      {incompleteAgents.map((agent) => (
-        <div key={agent.id} className="banner warn" role="status">
-          {t("app.unreadable", {
-            agent: agent.name,
-            errors: agent.errors.slice(0, 3).join("; "),
-          })}
-          {agent.errors.length > 3 &&
-            t("app.unreadableMore", { count: agent.errors.length - 3 })}
-        </div>
-      ))}
-      {notice && (
+      {view === "sessions" &&
+        incompleteAgents.map((agent) => (
+          <div key={agent.id} className="banner warn" role="status">
+            {t("app.unreadable", {
+              agent: agent.name,
+              errors: agent.errors.slice(0, 3).join("; "),
+            })}
+            {agent.errors.length > 3 &&
+              t("app.unreadableMore", { count: agent.errors.length - 3 })}
+          </div>
+        ))}
+      {notice && view === "sessions" && (
         <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />
       )}
 
@@ -721,6 +772,8 @@ export default function App() {
                 setFilter((current) => ({ ...current, project }))
               }
               onShowFiles={setFilesFor}
+              onReveal={(path) => void reveal(path)}
+              onCopyId={(session) => void copyId(session)}
               onOpenTranscript={setTranscriptFor}
             />
           </div>

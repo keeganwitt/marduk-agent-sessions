@@ -25,6 +25,7 @@ import { shortenPath } from "../lib/format";
 import type { SortKey, SortState } from "../lib/sort";
 import type { TreeRow } from "../lib/tree";
 import { LabelChips } from "./LabelChip";
+import { RowMenu } from "./RowMenu";
 import { isSelectable, type Label, type SessionRow } from "../lib/types";
 
 interface Props {
@@ -42,6 +43,8 @@ interface Props {
   onOpenProject: (session: SessionRow) => void;
   onFilterProject: (project: string) => void;
   onShowFiles: (session: SessionRow) => void;
+  onReveal: (path: string) => void;
+  onCopyId: (session: SessionRow) => void;
   onOpenTranscript: (session: SessionRow) => void;
   columns: ColumnPrefs;
   onColumnsChange: Dispatch<SetStateAction<ColumnPrefs>>;
@@ -151,7 +154,7 @@ function columnLabel(t: I18n["t"], column: ColumnDef): string {
 }
 
 const CHECK_WIDTH = 36;
-const ACTIONS_WIDTH = 64;
+const ACTIONS_WIDTH = 36;
 const KEYBOARD_STEP = 16;
 
 /** Drag to resize; double-click resets; arrow keys resize when focused. */
@@ -402,6 +405,8 @@ export function SessionTable(props: Props) {
     onOpenProject,
     onFilterProject,
     onShowFiles,
+    onReveal,
+    onCopyId,
     onOpenTranscript,
     columns,
     onColumnsChange,
@@ -659,14 +664,12 @@ export function SessionTable(props: Props) {
               </td>
               {shown.map((column) => cell(column, row))}
               <td className="actions-col">
-                <button
-                  type="button"
-                  className="link"
-                  aria-label={t("table.showFiles", { title: label })}
-                  onClick={() => onShowFiles(session)}
-                >
-                  {t("table.files")}
-                </button>
+                <RowMenu
+                  session={session}
+                  onShowFiles={onShowFiles}
+                  onReveal={onReveal}
+                  onCopyId={onCopyId}
+                />
               </td>
             </tr>
           );

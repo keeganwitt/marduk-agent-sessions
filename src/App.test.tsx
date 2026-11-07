@@ -147,9 +147,10 @@ describe("App", () => {
     );
 
     render(<App />);
+    expect(await screen.findByText("Alpha")).toBeInTheDocument();
     expect(
-      await screen.findByRole("button", { name: "Labels ▾" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Labels ▾" }),
+    ).not.toBeInTheDocument();
     await user.click(
       screen.getByRole("checkbox", { name: "Select all sessions shown" }),
     );
@@ -241,7 +242,7 @@ describe("App", () => {
     await user.click(
       await screen.findByRole("checkbox", { name: "Select Old work" }),
     );
-    await user.click(screen.getByRole("button", { name: /Delete 1/ }));
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(previewDelete).toHaveBeenCalledWith(["u1"]);
@@ -260,6 +261,16 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Old work")).not.toBeInTheDocument();
     expect(screen.getByText("Other work")).toBeInTheDocument();
+
+    vi.mocked(ipc.listMemory).mockResolvedValue([]);
+    await user.click(screen.getByRole("tab", { name: "Memory" }));
+    expect(
+      screen.queryByText(/Moved 1 session to the Trash/),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Sessions" }));
+    expect(
+      screen.getByText(/Moved 1 session to the Trash/),
+    ).toBeInTheDocument();
   });
 
   it("offers a project's memory with its last session, unchecked, and trashes it only if chosen", async () => {
@@ -288,7 +299,7 @@ describe("App", () => {
     await user.click(
       await screen.findByRole("checkbox", { name: "Select Last one" }),
     );
-    await user.click(screen.getByRole("button", { name: /Delete 1/ }));
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(ipc.memoryLeftBehind).toHaveBeenCalledWith(["u1"]);
@@ -328,7 +339,7 @@ describe("App", () => {
     await user.click(
       await screen.findByRole("checkbox", { name: "Select Last one" }),
     );
-    await user.click(screen.getByRole("button", { name: /Delete 1/ }));
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
     await user.click(
       within(await screen.findByRole("dialog")).getByRole("button", {
         name: "Move to Trash",
@@ -371,7 +382,7 @@ describe("App", () => {
     await user.click(
       await screen.findByRole("checkbox", { name: "Select Old work" }),
     );
-    await user.click(screen.getByRole("button", { name: /Delete 1/ }));
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
     const dialog = await screen.findByRole("dialog");
     await user.click(
       within(dialog).getAllByRole("button", { name: "Show in folder" })[1],
@@ -414,7 +425,7 @@ describe("App", () => {
     await user.click(
       await screen.findByRole("checkbox", { name: "Select Codex thread" }),
     );
-    await user.click(screen.getByRole("button", { name: /Delete 1/ }));
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/Delete 1 session\?/)).toBeInTheDocument();
@@ -481,7 +492,7 @@ describe("App", () => {
     });
     expect(screen.queryByText("Subagent")).not.toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "Select Parent" }));
-    await user.click(screen.getByRole("button", { name: /Delete 1/ }));
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(
@@ -511,8 +522,11 @@ describe("App", () => {
 
     render(<App />);
     await user.click(
-      await screen.findByRole("button", { name: "Show files for DB session" }),
+      await screen.findByRole("button", {
+        name: "More actions for DB session",
+      }),
     );
+    await user.click(screen.getByRole("menuitem", { name: "Files…" }));
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/one shared database/)).toBeInTheDocument();
@@ -612,7 +626,7 @@ describe("App", () => {
         name: "Select all sessions shown",
       }),
     );
-    await user.click(screen.getByRole("button", { name: /Delete 2/ }));
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(
@@ -688,8 +702,9 @@ describe("App", () => {
 
     render(<App />);
     await user.click(
-      await screen.findByRole("button", { name: "Show files for Old work" }),
+      await screen.findByRole("button", { name: "More actions for Old work" }),
     );
+    await user.click(screen.getByRole("menuitem", { name: "Files…" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("u1.jsonl")).toBeInTheDocument();
     expect(await within(dialog).findByText("1.5 KB")).toBeInTheDocument();
@@ -1140,7 +1155,7 @@ describe("App", () => {
       screen.getByRole("checkbox", { name: "Select all sessions shown" }),
     );
     expect(
-      screen.getByRole("button", { name: /Delete 3/ }),
+      screen.getByRole("group", { name: /^3 selected/ }),
     ).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", {
@@ -1148,7 +1163,7 @@ describe("App", () => {
       }),
     );
     expect(
-      screen.getByRole("button", { name: /Delete 2/ }),
+      screen.getByRole("group", { name: /^2 selected/ }),
     ).toBeInTheDocument();
   });
 
@@ -1248,7 +1263,7 @@ describe("App", () => {
       );
     expect(checked()).toEqual(["Two", "Four"]);
     expect(
-      screen.getByRole("button", { name: /Delete 2/ }),
+      screen.getByRole("group", { name: /^2 selected/ }),
     ).toBeInTheDocument();
 
     await user.keyboard("{Shift>}");
@@ -1378,5 +1393,82 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("boom");
+  });
+  it("groups session actions behind a selection, and clears it", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "a", title: "Alpha", sizeBytes: 1024 }),
+        makeSession({
+          uid: "b",
+          title: "Beta",
+          sizeBytes: 2048,
+          readOnlyReason: "Needs the agent's CLI",
+          canArchive: true,
+        }),
+      ),
+    );
+
+    render(<App />);
+    expect(await screen.findByText("Alpha")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /selected/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Delete/ })).toBeNull();
+
+    await user.click(screen.getByRole("checkbox", { name: "Select Alpha" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beta" }));
+
+    const group = screen.getByRole("group", { name: /^2 selected/ });
+    expect(group).toHaveTextContent("2 selected · 3.0 KB");
+    expect(
+      within(group).getByRole("button", { name: "Delete 1 (1.0 KB)…" }),
+    ).toBeInTheDocument();
+    expect(
+      within(group).getByRole("button", { name: "Archive 1" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(group).getByRole("button", { name: "Clear selection" }),
+    );
+    expect(screen.queryByRole("group", { name: /selected/ })).toBeNull();
+    expect(
+      screen.getByRole("checkbox", { name: "Select Alpha" }),
+    ).not.toBeChecked();
+  });
+
+  it("copies a session's ID and shows its file from the row menu", async () => {
+    const user = userEvent.setup();
+    revealSessionFile.mockResolvedValue();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({
+          uid: "a",
+          id: "abc-123",
+          title: "Alpha",
+          files: ["/p/abc-123.jsonl"],
+        }),
+      ),
+    );
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("button", { name: "More actions for Alpha" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Copy session ID" }));
+    expect(await navigator.clipboard.readText()).toBe("abc-123");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    await user.click(
+      screen.getByRole("button", { name: "More actions for Alpha" }),
+    );
+    fireEvent.scroll(window);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    await user.click(
+      screen.getByRole("button", { name: "More actions for Alpha" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Show in folder" }));
+    expect(revealSessionFile).toHaveBeenCalledWith("/p/abc-123.jsonl");
   });
 });
