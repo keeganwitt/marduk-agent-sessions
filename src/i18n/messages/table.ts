@@ -86,7 +86,7 @@ export const table = defineMessages(
       "table.badge.running": "En ejecución",
       "table.badge.runningTitle":
         "Se escribió en los últimos minutos, así que no se puede cambiar.",
-      "table.badge.parentDeleted": "Sesión principal eliminada",
+      "table.badge.parentDeleted": "Huérfana",
       "table.badge.parentDeletedTitle":
         "Iniciada por la sesión {id}, que ya no existe",
       "table.badge.subagent": "Subagente",
@@ -161,7 +161,7 @@ export const table = defineMessages(
       "table.badge.running": "Em execução",
       "table.badge.runningTitle":
         "Foi gravada nos últimos minutos, então não pode ser alterada.",
-      "table.badge.parentDeleted": "Sessão principal excluída",
+      "table.badge.parentDeleted": "Órfã",
       "table.badge.parentDeletedTitle":
         "Iniciada pela sessão {id}, que não existe mais",
       "table.badge.subagent": "Subagente",
@@ -236,7 +236,7 @@ export const table = defineMessages(
       "table.badge.running": "En cours",
       "table.badge.runningTitle":
         "Modifiée ces dernières minutes, elle ne peut donc pas être changée.",
-      "table.badge.parentDeleted": "Session parente supprimée",
+      "table.badge.parentDeleted": "Orpheline",
       "table.badge.parentDeletedTitle":
         "Lancée par la session {id}, qui n'existe plus",
       "table.badge.subagent": "Sous-agent",
@@ -312,7 +312,7 @@ export const table = defineMessages(
       "table.badge.running": "Läuft",
       "table.badge.runningTitle":
         "In den letzten Minuten geändert und kann daher nicht geändert werden.",
-      "table.badge.parentDeleted": "Übergeordnete Sitzung gelöscht",
+      "table.badge.parentDeleted": "Verwaist",
       "table.badge.parentDeletedTitle":
         "Von Sitzung {id} gestartet, die nicht mehr existiert",
       "table.badge.subagent": "Subagent",
@@ -387,7 +387,7 @@ export const table = defineMessages(
       "table.badge.running": "実行中",
       "table.badge.runningTitle":
         "数分以内に書き込まれたため、変更できません。",
-      "table.badge.parentDeleted": "親セッション削除済み",
+      "table.badge.parentDeleted": "親なし",
       "table.badge.parentDeletedTitle":
         "セッション {id} から開始されましたが、そのセッションはもうありません",
       "table.badge.subagent": "サブエージェント",
@@ -456,7 +456,7 @@ export const table = defineMessages(
       "table.badge.running": "실행 중",
       "table.badge.runningTitle":
         "최근 몇 분 안에 기록되어 변경할 수 없습니다.",
-      "table.badge.parentDeleted": "상위 세션 삭제됨",
+      "table.badge.parentDeleted": "상위 없음",
       "table.badge.parentDeletedTitle":
         "세션 {id}에서 시작되었지만 해당 세션은 더 이상 없습니다",
       "table.badge.subagent": "하위 에이전트",
@@ -523,7 +523,7 @@ export const table = defineMessages(
       "table.column.size": "大小",
       "table.badge.running": "运行中",
       "table.badge.runningTitle": "最近几分钟内有写入，因此无法更改。",
-      "table.badge.parentDeleted": "父会话已删除",
+      "table.badge.parentDeleted": "无父会话",
       "table.badge.parentDeletedTitle": "由会话 {id} 启动，该会话已不存在",
       "table.badge.subagent": "子智能体",
       "table.badge.subagentTitle": "由会话 {id} 启动",
@@ -584,7 +584,7 @@ export const table = defineMessages(
       "table.badge.running": "Выполняется",
       "table.badge.runningTitle":
         "Изменялась в последние минуты, поэтому её нельзя изменить.",
-      "table.badge.parentDeleted": "Родительская сессия удалена",
+      "table.badge.parentDeleted": "Без родителя",
       "table.badge.parentDeletedTitle":
         "Запущена сессией {id}, которой больше нет",
       "table.badge.subagent": "Субагент",
