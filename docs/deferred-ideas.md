@@ -42,7 +42,7 @@ Reading is possible, though: unlike Antigravity's, these aren't encrypted. Read-
 
 ### Amp
 
-Skipped (2026-11-07) because Amp keeps threads on its server. Marduk is built to read local files and never deals with accounts or authentication; supporting Amp would make every scan contact Amp's server through the user's logged-in CLI.
+Skipped because Amp keeps threads on its server. Marduk is built to read local files and never deals with accounts or authentication; supporting Amp would make every scan contact Amp's server through the user's logged-in CLI.
 
 - **Local files are a stale cache:** `~/.local/share/amp/threads/T-*.json` held 29 threads, the newest from May 2026, and only 8 of them were still on the server, which listed 114.
 - **The CLI has everything, non-interactively:**
