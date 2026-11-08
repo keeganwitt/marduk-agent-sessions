@@ -2,7 +2,7 @@
 
 <img src="assets/marduk.svg" alt="Marduk holding a spade" width="192" height="192">
 
-In the Babylonian creation epic, the _Enūma Eliš_, the world begins as Tiamat, the primordial salt sea, mingled with Apsu, the fresh water. When the younger gods kill Apsu, Tiamat raises an army of monsters against them, and none of the gods will face her until Marduk agrees to, on the condition that he rule them if he wins. He catches Tiamat in his net, drives the winds into her and splits her with an arrow. Then he puts the pieces in order: half of her becomes the sky and half the earth, and he gives the stars their stations and the year its months. His symbol is the _marru_, a spade, which is what he's holding above. (His name is pronounced MAR-dook, with the vowel of "book", not "duck".)
+In the Babylonian creation epic, the _Enūma Eliš_, Marduk defeats Tiamat, the primordial sea, and creates the world from her body: half becomes the sky and half the earth. He gives the stars their stations and the year its months, bringing order out of chaos. His symbol is the _marru_, a spade, which is what he's holding above. (His name is pronounced MAR-dook, with the vowel of "book", not "duck".)
 
 Your coding agents are less monstrous than Tiamat, but left alone they make their own kind of chaos: thousands of sessions spread across Claude Code, Codex, OpenCode and the rest, each stored in its own format and folder, most of which nobody will open again. Marduk is a cross-platform desktop app that puts them in order. It finds every agent's sessions, shows them in one list, and helps you clean up the ones you no longer need.
 
@@ -69,7 +69,7 @@ Requirements: Rust (stable), Node.js 22 and pnpm 10, plus the [Tauri prerequisit
 
 - **macOS:** Xcode Command Line Tools (`xcode-select --install`).
 - **Windows:** Microsoft C++ Build Tools ("Desktop development with C++") and the WebView2 runtime (already installed on Windows 10 and 11). Use the `x86_64-pc-windows-msvc` Rust toolchain, which is the default from rustup.
-- **Linux:** the WebKitGTK and related packages listed on that page.
+- **Linux:** WebKitGTK 4.1 and related development packages; see [Linux prerequisites](#linux-prerequisites) below for commands.
 
 The repo uses LF line endings on every OS (`.gitattributes`), so Windows checkouts stay byte-for-byte the same as macOS ones.
 
@@ -90,6 +90,49 @@ The repo layout:
 - `crates/marduk-core`: agent adapters, scanning and delete safety checks. It has no Tauri dependency, so you can test it with plain `cargo test`.
 - `src-tauri`: the Tauri app. It contains thin commands over `marduk-core::catalog`.
 - `src`: the React + TypeScript UI.
+
+### Linux prerequisites
+
+Install Rust stable, Node.js 22 and pnpm 10, then install the system packages for your distribution.
+
+On Ubuntu 22.04 or later, or Debian 12 or later:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config curl wget file \
+  libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+  libayatana-appindicator3-dev librsvg2-dev
+```
+
+On Fedora:
+
+```sh
+sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config curl wget file \
+  webkit2gtk4.1-devel openssl-devel libappindicator-gtk3-devel \
+  librsvg2-devel libxdo-devel
+```
+
+For other distributions, see the [Tauri Linux prerequisites](https://tauri.app/start/prerequisites/#linux).
+
+### Building installers
+
+Run these commands from the repository root on the OS you are building for. First install the frontend dependencies:
+
+```sh
+pnpm install --frozen-lockfile
+```
+
+| Build host | Command                              | Installer output                                                        |
+| ---------- | ------------------------------------ | ----------------------------------------------------------------------- |
+| Linux      | `pnpm tauri build --bundles deb,rpm` | `target/release/bundle/deb/*.deb` and `target/release/bundle/rpm/*.rpm` |
+| macOS      | `pnpm tauri build --bundles dmg`     | `target/release/bundle/dmg/*.dmg`                                       |
+| Windows    | `pnpm tauri build --bundles nsis`    | `target/release/bundle/nsis/*-setup.exe`                                |
+
+Tauri builds the frontend and Rust application before packaging. The packages use the build host's architecture. On macOS, add `--target aarch64-apple-darwin` for Apple Silicon or `--target x86_64-apple-darwin` for Intel, after installing that target with `rustup target add <target>`. With an explicit target, the output is under `target/<target>/release/bundle/`.
+
+Linux builds depend on the build host's system libraries. Build release packages on Ubuntu 22.04 to avoid requiring the newer glibc versions of newer build hosts; destination systems still need compatible GTK and WebKitGTK 4.1 libraries. See [Tauri's Linux compatibility guidance](https://v2.tauri.app/distribute/debian/#limitations).
+
+Pushing a `v*` tag runs the checks in [GitHub Actions](.github/workflows/ci.yml), then the [release workflow](.github/workflows/release.yml) builds Linux x86_64 `.deb` and `.rpm` packages, Apple Silicon and Intel `.dmg` files, and a Windows x86_64 `.exe` installer. The installers are uploaded to a draft GitHub release for review before publication.
 
 ## Installing unsigned builds
 
