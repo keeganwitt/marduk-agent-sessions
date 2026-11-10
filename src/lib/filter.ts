@@ -13,6 +13,7 @@ export interface SessionFilter {
   /** The agent definition the session ran as, or `ALL_AGENT_TYPES`. */
   agentType: string;
   archive: ArchiveFilter;
+  parentMissing: boolean;
   label: LabelFilter;
   /** A project folder (its subfolders match too), or `NO_PROJECT`. */
   project: string | null;
@@ -33,6 +34,7 @@ export const EMPTY_FILTER: SessionFilter = {
   model: ALL_MODELS,
   agentType: ALL_AGENT_TYPES,
   archive: "all",
+  parentMissing: false,
   label: "any",
   project: null,
   olderThanDays: null,
@@ -54,6 +56,8 @@ export function sessionMatcher(
       session.agentType === filter.agentType) &&
     (filter.archive === "all" ||
       session.archived === (filter.archive === "archived")) &&
+    (!filter.parentMissing ||
+      Boolean(session.parentId && session.parentMissing)) &&
     (filter.label === "any" ||
       (filter.label === "none"
         ? session.labelIds.length === 0
@@ -165,7 +169,12 @@ export function agentTypeOptions(
 }
 
 /** Filters shown only once added with "+ Filter", because few people need them. */
-export const OPTIONAL_FILTERS = ["archive", "model", "agentType"] as const;
+export const OPTIONAL_FILTERS = [
+  "archive",
+  "model",
+  "agentType",
+  "parentMissing",
+] as const;
 export type OptionalFilter = (typeof OPTIONAL_FILTERS)[number];
 
 export function isOptionalFilter(value: unknown): value is OptionalFilter {

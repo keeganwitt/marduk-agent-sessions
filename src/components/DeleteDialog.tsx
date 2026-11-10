@@ -63,106 +63,112 @@ export function DeleteDialog({
   return (
     <div className="overlay">
       <div
-        className="dialog"
+        className="dialog dialog-scrollable"
         role="dialog"
         aria-modal="true"
         aria-labelledby="delete-title"
       >
         <h2 id="delete-title">{title}</h2>
-        {toTrash.length > 0 && (
-          <p>{t("dialogs.delete.trashNote", { count: toTrash.length })}</p>
-        )}
-        {permanent.length > 0 && (
-          <p className="permanent-warning" role="alert">
-            {withNodes(
-              t("dialogs.delete.permanentNote", { count: permanent.length }),
-              {
-                permanently: <strong>{t("dialogs.delete.permanently")}</strong>,
-              },
-            )}
-          </p>
-        )}
-        {ready.length > 0 && (
-          <ul className="preview-list">
-            {ready.map((item) => (
-              <li key={item.uid}>
-                <div className="preview-title">
-                  <strong>{item.title ?? item.uid}</strong>
-                  {item.agentName && (
-                    <span className="muted"> · {item.agentName}</span>
-                  )}
-                  {item.permanent && (
-                    <span className="badge danger">
-                      {t("dialogs.delete.permanentBadge")}
-                    </span>
-                  )}
-                </div>
-                {item.command && (
-                  <code className="command">{item.command}</code>
-                )}
-                {item.warning && <p className="item-warning">{item.warning}</p>}
-                <FileList
-                  paths={item.files}
-                  homeDir={homeDir}
-                  onReveal={onReveal}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-        {memory.length > 0 && ready.length > 0 && (
-          <div className="memory-offers">
-            <h3>{t("dialogs.delete.memoryHeading")}</h3>
-            {memory.map((store) => (
-              <div key={store.folder} className="memory-offer">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={memoryChosen.has(store.folder)}
-                    onChange={(event) =>
-                      toggleMemory(store.folder, event.target.checked)
-                    }
-                  />
-                  {withNodes(
-                    t("dialogs.delete.memoryOffer", {
-                      agent: store.agentName,
-                      count: store.files.length,
-                    }),
-                    {
-                      path: (
-                        <code>
-                          {store.projectDir
-                            ? tildePath(store.projectDir, homeDir)
-                            : tildePath(store.folder, homeDir)}
-                        </code>
-                      ),
-                    },
-                  )}
-                </label>
-                <p className="muted">
-                  {store.projectExists === false
-                    ? t("dialogs.delete.memoryProjectGone")
-                    : t("dialogs.delete.memoryProjectExists", {
-                        agent: store.agentName,
-                      })}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-        {refused.length > 0 && (
-          <div className="refused">
-            <h3>{t("dialogs.delete.skipped", { count: refused.length })}</h3>
-            <ul>
-              {refused.map((item) => (
+        <div className="dialog-body">
+          {toTrash.length > 0 && (
+            <p>{t("dialogs.delete.trashNote", { count: toTrash.length })}</p>
+          )}
+          {permanent.length > 0 && (
+            <p className="permanent-warning" role="alert">
+              {withNodes(
+                t("dialogs.delete.permanentNote", { count: permanent.length }),
+                {
+                  permanently: (
+                    <strong>{t("dialogs.delete.permanently")}</strong>
+                  ),
+                },
+              )}
+            </p>
+          )}
+          {ready.length > 0 && (
+            <ul className="preview-list">
+              {ready.map((item) => (
                 <li key={item.uid}>
-                  <strong>{item.title ?? item.uid}</strong>:{" "}
-                  {item.refusedReason}
+                  <div className="preview-title">
+                    <strong>{item.title ?? item.uid}</strong>
+                    {item.agentName && (
+                      <span className="muted"> · {item.agentName}</span>
+                    )}
+                    {item.permanent && (
+                      <span className="badge danger">
+                        {t("dialogs.delete.permanentBadge")}
+                      </span>
+                    )}
+                  </div>
+                  {item.command && (
+                    <code className="command">{item.command}</code>
+                  )}
+                  {item.warning && (
+                    <p className="item-warning">{item.warning}</p>
+                  )}
+                  <FileList
+                    paths={item.files}
+                    homeDir={homeDir}
+                    onReveal={onReveal}
+                  />
                 </li>
               ))}
             </ul>
-          </div>
-        )}
+          )}
+          {memory.length > 0 && ready.length > 0 && (
+            <div className="memory-offers">
+              <h3>{t("dialogs.delete.memoryHeading")}</h3>
+              {memory.map((store) => (
+                <div key={store.folder} className="memory-offer">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={memoryChosen.has(store.folder)}
+                      onChange={(event) =>
+                        toggleMemory(store.folder, event.target.checked)
+                      }
+                    />
+                    {withNodes(
+                      t("dialogs.delete.memoryOffer", {
+                        agent: store.agentName,
+                        count: store.files.length,
+                      }),
+                      {
+                        path: (
+                          <code>
+                            {store.projectDir
+                              ? tildePath(store.projectDir, homeDir)
+                              : tildePath(store.folder, homeDir)}
+                          </code>
+                        ),
+                      },
+                    )}
+                  </label>
+                  <p className="muted">
+                    {store.projectExists === false
+                      ? t("dialogs.delete.memoryProjectGone")
+                      : t("dialogs.delete.memoryProjectExists", {
+                          agent: store.agentName,
+                        })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+          {refused.length > 0 && (
+            <div className="refused">
+              <h3>{t("dialogs.delete.skipped", { count: refused.length })}</h3>
+              <ul>
+                {refused.map((item) => (
+                  <li key={item.uid}>
+                    <strong>{item.title ?? item.uid}</strong>:{" "}
+                    {item.refusedReason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
         <div className="actions">
           <button type="button" onClick={onCancel} disabled={busy}>
             {t("dialogs.cancel")}

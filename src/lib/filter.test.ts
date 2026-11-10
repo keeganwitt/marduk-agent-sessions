@@ -235,3 +235,30 @@ describe("optional filters", () => {
     expect(isFiltering({ ...EMPTY_FILTER, minSizeMb: 10 })).toBe(true);
   });
 });
+
+describe("parent deleted filter", () => {
+  const sessions = [
+    makeSession({ uid: "root" }),
+    makeSession({ uid: "child", parentId: "root" }),
+    makeSession({ uid: "orphan", parentId: "gone", parentMissing: true }),
+    makeSession({ uid: "unknown", parentMissing: true }),
+  ];
+
+  it("matches only sessions with a known missing parent", () => {
+    expect(
+      filterSessions(
+        sessions,
+        { ...EMPTY_FILTER, parentMissing: true },
+        now,
+      ).map((session) => session.uid),
+    ).toEqual(["orphan"]);
+    expect(filterSessions(sessions, EMPTY_FILTER, now)).toEqual(sessions);
+  });
+
+  it("combines with other filters and counts as an optional active filter", () => {
+    const filter = { ...EMPTY_FILTER, parentMissing: true, query: "unrelated" };
+    expect(filterSessions(sessions, filter, now)).toEqual([]);
+    expect(shownOptionalFilters([], filter)).toEqual(["parentMissing"]);
+    expect(isFiltering(filter)).toBe(true);
+  });
+});
