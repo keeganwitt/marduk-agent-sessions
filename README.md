@@ -148,12 +148,20 @@ The first `0.1.0` release can use this command too: when the files already have 
 
 If the push fails, the local commit and tag remain available and the command prints the Git push command to retry after resolving the failure.
 
-## Installing unsigned builds
+## Installing builds without a verified publisher
 
-Release builds are not code-signed yet, so the OS warns the first time you open them:
+macOS builds use an [ad hoc code signature](https://v2.tauri.app/distribute/sign/macos/#ad-hoc-signing), which is needed for downloaded Apple Silicon apps. They are not signed with an Apple Developer ID or notarized, so macOS still requires approval. Windows builds are unsigned.
 
-- **macOS:** Control-click the app, choose **Open**, then confirm. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/Marduk.app`.
+- **macOS:** Download the `aarch64` DMG for Apple Silicon or the `x64` DMG for Intel, then drag Marduk into Applications. Try opening it, then go to **System Settings → Privacy & Security → Open Anyway** and confirm. See [Apple's instructions](https://support.apple.com/en-us/102445).
 - **Windows:** in the SmartScreen prompt, choose **More info**, then **Run anyway**.
+
+For an older macOS build that reports “Marduk is damaged and can't be opened,” first confirm it came from this repository's GitHub release. With Marduk copied to Applications, remove its download quarantine attribute and try opening it again:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Marduk.app
+```
+
+This bypasses the download quarantine check for Marduk; it does not verify the app's publisher or repair a broken code signature. If it still fails, collect the signature check output with `codesign --verify --deep --strict --verbose=2 /Applications/Marduk.app`.
 
 ## License
 

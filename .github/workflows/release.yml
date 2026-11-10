@@ -54,3 +54,9 @@ jobs:
           releaseName: Marduk ${{ github.ref_name }}
           releaseDraft: true
           args: ${{ matrix.args }}
+      - name: Verify macOS app signature
+        if: runner.os == 'macOS'
+        shell: pwsh
+        run: |
+          codesign --verify --deep --strict --verbose=2 "target/${{ matrix.rust-targets }}/release/bundle/macos/Marduk.app"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
