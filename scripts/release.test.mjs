@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
-  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -12,18 +11,30 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { release } from "./release.mjs";
 
 const folders = [];
-const root = fileURLToPath(new URL("../", import.meta.url));
-const files = [
-  "package.json",
-  "src-tauri/tauri.conf.json",
-  "Cargo.toml",
-  "Cargo.lock",
-];
+const fixtureFiles = {
+  "package.json": '{"name":"marduk","version":"0.1.0"}\n',
+  "src-tauri/tauri.conf.json": '{"productName":"Marduk","version":"0.1.0"}\n',
+  "Cargo.toml": '[workspace.package]\nversion = "0.1.0"\n',
+  "Cargo.lock": `version = 4
+
+[[package]]
+name = "marduk"
+version = "0.1.0"
+dependencies = ["marduk-core"]
+
+[[package]]
+name = "marduk-core"
+version = "0.1.0"
+
+[[package]]
+name = "other-dependency"
+version = "0.1.0"
+`,
+};
 const git = (cwd, ...args) =>
   execFileSync("git", args, {
     cwd,
@@ -44,8 +55,8 @@ function fixture() {
   git(repo, "config", "user.email", "release@example.invalid");
   git(repo, "config", "commit.gpgsign", "false");
   git(repo, "config", "tag.gpgsign", "false");
-  for (const file of files)
-    copyFileSync(resolve(root, file), resolve(repo, file));
+  for (const [file, content] of Object.entries(fixtureFiles))
+    writeFileSync(resolve(repo, file), content);
   git(repo, "add", ".");
   git(repo, "commit", "-m", "Initial commit");
   git(repo, "remote", "add", "origin", remote);
