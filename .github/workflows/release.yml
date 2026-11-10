@@ -58,5 +58,15 @@ jobs:
         if: runner.os == 'macOS'
         shell: pwsh
         run: |
-          codesign --verify --deep --strict --verbose=2 "target/${{ matrix.rust-targets }}/release/bundle/macos/Marduk.app"
+          $dmg = Get-Item "target/${{ matrix.rust-targets }}/release/bundle/dmg/*.dmg" -ErrorAction Stop
+          $mountPath = Join-Path $env:RUNNER_TEMP "marduk-dmg"
+          New-Item -ItemType Directory -Path $mountPath -Force | Out-Null
+          hdiutil attach -readonly -nobrowse -mountpoint $mountPath $dmg.FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          try {
+            codesign --verify --deep --strict --verbose=2 "$mountPath/Marduk.app"
+            if ($LASTEXITCODE -ne 0) { throw "App signature verification failed: $LASTEXITCODE" }
+          } finally {
+            hdiutil detach $mountPath
+            if ($LASTEXITCODE -ne 0) { throw "DMG detach failed: $LASTEXITCODE" }
+          }
