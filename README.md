@@ -134,6 +134,20 @@ Linux builds depend on the build host's system libraries. Build release packages
 
 Pushing a `v*` tag runs the checks in [GitHub Actions](.github/workflows/ci.yml), then the [release workflow](.github/workflows/release.yml) builds Linux x86_64 `.deb` and `.rpm` packages, Apple Silicon and Intel `.dmg` files, and a Windows x86_64 `.exe` installer. The installers are uploaded to a draft GitHub release for review before publication.
 
+To release from a clean `main` branch, run:
+
+```powershell
+pnpm release 0.1.0
+```
+
+The command accepts a stable version (`X.Y.Z`, optionally prefixed with `v`). It checks for existing local and remote tags and requires local `main` to contain the latest `origin/main` commit. If remote changes need integrating, it stops before changing files or tagging; fetch and integrate those changes, then rerun it.
+
+It updates `package.json`, `src-tauri/tauri.conf.json`, the workspace version in `Cargo.toml`, and both workspace packages in `Cargo.lock`, creates a release commit when versions change, and creates an annotated `v<version>` tag. The commit and tag are pushed together atomically to `origin`. Versions cannot go backwards.
+
+The first `0.1.0` release can use this command too: when the files already have the requested version, it tags the current commit without creating a redundant commit. Commit the release script itself before running it. Once GitHub Actions finishes, review the draft release's installers and notes, then publish it on GitHub.
+
+If the push fails, the local commit and tag remain available and the command prints the Git push command to retry after resolving the failure.
+
 ## Installing unsigned builds
 
 Release builds are not code-signed yet, so the OS warns the first time you open them:
