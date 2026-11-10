@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as ipc from "../lib/ipc";
@@ -124,7 +124,7 @@ describe("I18nProvider", () => {
     expect(
       await screen.findByRole("button", { name: "Langue" }, { timeout: 5000 }),
     ).toBeInTheDocument();
-    expect(document.documentElement.lang).toBe("fr");
+    await waitFor(() => expect(document.documentElement.lang).toBe("fr"));
 
     await user.click(screen.getByRole("button"));
 
