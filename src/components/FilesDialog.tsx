@@ -23,28 +23,34 @@ export function FilesDialog({ session, homeDir, onReveal, onClose }: Props) {
   return (
     <div className="overlay">
       <div
-        className="dialog"
+        className="dialog dialog-scrollable"
         role="dialog"
         aria-modal="true"
         aria-labelledby="files-title"
       >
         <h2 id="files-title">{session.title ?? session.id}</h2>
-        <p className="muted">
-          {session.agentName} · {session.id}
-        </p>
-        {session.database && (
-          <div className="database-note">
-            <p>
-              {t("dialogs.files.databaseNote", { agent: session.agentName })}
-            </p>
-            <FileList
-              paths={[session.database]}
-              homeDir={homeDir}
-              onReveal={onReveal}
-            />
-          </div>
-        )}
-        <FileList paths={session.files} homeDir={homeDir} onReveal={onReveal} />
+        <div className="dialog-body">
+          <p className="muted">
+            {session.agentName} · {session.id}
+          </p>
+          {session.database && (
+            <div className="database-note">
+              <p>
+                {t("dialogs.files.databaseNote", { agent: session.agentName })}
+              </p>
+              <FileList
+                paths={[session.database]}
+                homeDir={homeDir}
+                onReveal={onReveal}
+              />
+            </div>
+          )}
+          <FileList
+            paths={session.files}
+            homeDir={homeDir}
+            onReveal={onReveal}
+          />
+        </div>
         <div className="actions">
           <button type="button" onClick={onClose}>
             {t("dialogs.close")}

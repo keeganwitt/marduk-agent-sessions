@@ -226,6 +226,12 @@ button.danger:not(:disabled) {
   background: var(--surface);
 }
 
+.filters .filter-toggle {
+  flex-direction: row;
+  align-items: center;
+  min-height: 30px;
+}
+
 .filters input[type="number"] {
   width: 96px;
 }
@@ -437,6 +443,22 @@ body.resizing-column * {
   border-radius: 10px;
   background: var(--surface);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.dialog-scrollable {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dialog-scrollable > h2,
+.dialog-scrollable > .actions {
+  flex-shrink: 0;
+}
+
+.dialog-body {
+  min-height: 0;
+  overflow: auto;
 }
 
 .dialog h2 {

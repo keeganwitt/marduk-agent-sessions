@@ -897,6 +897,52 @@ describe("App", () => {
     expect(ipc.saveUiPref).toHaveBeenLastCalledWith("filters", []);
   });
 
+  it("finds sessions with deleted parents through an optional filter", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "p", id: "p", title: "Parent" }),
+        makeSession({ uid: "c", title: "Child", parentId: "p" }),
+        makeSession({
+          uid: "orphan",
+          title: "Orphan",
+          parentId: "gone",
+          parentMissing: true,
+        }),
+      ),
+    );
+    render(<App />);
+    await screen.findByText("Parent");
+    expect(
+      screen.queryByRole("checkbox", { name: "Parent deleted" }),
+    ).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    await user.click(screen.getByRole("menuitem", { name: "Parent deleted" }));
+    expect(
+      screen.getByRole("checkbox", { name: "Parent deleted" }),
+    ).toBeChecked();
+    expect(rowTitles()).toEqual(["OrphanParent deleted"]);
+    expect(ipc.saveUiPref).toHaveBeenCalledWith("filters", ["parentMissing"]);
+
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByText("Parent")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "Parent deleted" }),
+    ).not.toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: "Parent deleted" }));
+    expect(rowTitles()).toEqual(["OrphanParent deleted"]);
+
+    await user.click(
+      screen.getByRole("button", { name: "Remove the Parent deleted filter" }),
+    );
+    expect(screen.getByText("Parent")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: "Parent deleted" }),
+    ).toBeNull();
+    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("filters", []);
+  });
+
   it("restores optional filters added in an earlier session", async () => {
     vi.mocked(ipc.getUiPref).mockResolvedValue(["archive", "bogus"]);
     scanSessions.mockResolvedValue(scanOf(makeSession({ title: "A session" })));

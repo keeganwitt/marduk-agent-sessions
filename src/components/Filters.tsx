@@ -143,6 +143,7 @@ export function Filters({
   const { t } = useI18n();
   const available: { id: OptionalFilter; label: string }[] = [
     { id: "archive" as const, label: t("table.filter.status") },
+    { id: "parentMissing" as const, label: t("table.badge.parentDeleted") },
     ...(models.length > 0
       ? [{ id: "model" as const, label: t("table.filter.model") }]
       : []),
@@ -161,6 +162,18 @@ export function Filters({
   };
 
   const optional: Record<OptionalFilter, ReactNode> = {
+    parentMissing: (
+      <label className="filter-toggle">
+        <input
+          type="checkbox"
+          checked={filter.parentMissing}
+          onChange={(event) =>
+            onChange({ ...filter, parentMissing: event.target.checked })
+          }
+        />
+        {t("table.badge.parentDeleted")}
+      </label>
+    ),
     archive: (
       <label>
         {t("table.filter.status")}
@@ -297,7 +310,11 @@ export function Filters({
       ))}
       <AddFilterMenu
         choices={available.filter((choice) => !shown.includes(choice.id))}
-        onAdd={(id) => onAddedChange([...added, id])}
+        onAdd={(id) => {
+          onAddedChange([...added, id]);
+          if (id === "parentMissing")
+            onChange({ ...filter, parentMissing: true });
+        }}
       />
       {isFiltering(filter) && (
         <button
