@@ -9,7 +9,10 @@ import {
   modelOptions,
   NO_PROJECT,
   projectOptions,
-  shownOptionalFilters,
+  DEFAULT_FILTERS,
+  isDefaultFilterSet,
+  restoreChosenFilters,
+  shownFilters,
 } from "./filter";
 import { makeSession } from "../test/factories";
 
@@ -217,16 +220,39 @@ describe("agent type filter", () => {
   });
 });
 
-describe("optional filters", () => {
-  it("shows those added and any narrowing the list, in a fixed order", () => {
-    expect(shownOptionalFilters([], EMPTY_FILTER)).toEqual([]);
-    expect(shownOptionalFilters(["model", "archive"], EMPTY_FILTER)).toEqual([
+describe("filter bar", () => {
+  it("shows those chosen and any narrowing the list, in a fixed order", () => {
+    expect(shownFilters([], EMPTY_FILTER)).toEqual([]);
+    expect(shownFilters(["model", "agent", "archive"], EMPTY_FILTER)).toEqual([
+      "agent",
       "archive",
       "model",
     ]);
     expect(
-      shownOptionalFilters([], { ...EMPTY_FILTER, agentType: "Explore" }),
-    ).toEqual(["agentType"]);
+      shownFilters(["agent"], { ...EMPTY_FILTER, project: "/work/app" }),
+    ).toEqual(["agent", "project"]);
+  });
+
+  it("restores the saved choice, ignoring unknown filters", () => {
+    expect(restoreChosenFilters(["archive", "bogus", "agent"], null)).toEqual([
+      "agent",
+      "archive",
+    ]);
+    expect(restoreChosenFilters([], ["archive"])).toEqual([]);
+  });
+
+  it("migrates the older setting, which saved only the optional filters added", () => {
+    expect(restoreChosenFilters(null, ["parentMissing", "bogus"])).toEqual([
+      ...DEFAULT_FILTERS,
+      "parentMissing",
+    ]);
+    expect(restoreChosenFilters(null, null)).toEqual([...DEFAULT_FILTERS]);
+  });
+
+  it("knows the default set in any order", () => {
+    expect(isDefaultFilterSet([...DEFAULT_FILTERS].reverse())).toBe(true);
+    expect(isDefaultFilterSet(DEFAULT_FILTERS.slice(1))).toBe(false);
+    expect(isDefaultFilterSet([...DEFAULT_FILTERS, "model"])).toBe(false);
   });
 
   it("counts filters but not the search box as filtering", () => {
@@ -255,10 +281,10 @@ describe("parent deleted filter", () => {
     expect(filterSessions(sessions, EMPTY_FILTER, now)).toEqual(sessions);
   });
 
-  it("combines with other filters and counts as an optional active filter", () => {
+  it("combines with other filters and shows its filter while active", () => {
     const filter = { ...EMPTY_FILTER, parentMissing: true, query: "unrelated" };
     expect(filterSessions(sessions, filter, now)).toEqual([]);
-    expect(shownOptionalFilters([], filter)).toEqual(["parentMissing"]);
+    expect(shownFilters([], filter)).toEqual(["parentMissing"]);
     expect(isFiltering(filter)).toBe(true);
   });
 });

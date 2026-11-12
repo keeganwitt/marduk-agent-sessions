@@ -168,34 +168,63 @@ export function agentTypeOptions(
     );
 }
 
-/** Filters shown only once added with "+ Filter", because few people need them. */
-export const OPTIONAL_FILTERS = [
+/** Every filter the bar can show, in the order it shows them. */
+export const FILTERS = [
+  "agent",
+  "olderThanDays",
+  "minSizeMb",
+  "label",
+  "project",
   "archive",
   "model",
   "agentType",
   "parentMissing",
 ] as const;
-export type OptionalFilter = (typeof OPTIONAL_FILTERS)[number];
+export type FilterId = (typeof FILTERS)[number];
 
-export function isOptionalFilter(value: unknown): value is OptionalFilter {
-  return OPTIONAL_FILTERS.includes(value as OptionalFilter);
-}
+/** Shown until someone removes them; the rest are added with "+ Filter". */
+export const DEFAULT_FILTERS: readonly FilterId[] = [
+  "agent",
+  "olderThanDays",
+  "minSizeMb",
+  "label",
+  "project",
+];
 
-/** Whether an optional filter is narrowing the list. */
-export function isOptionalActive(
-  filter: SessionFilter,
-  id: OptionalFilter,
-): boolean {
+/** Whether a filter is narrowing the list. */
+export function isFilterActive(filter: SessionFilter, id: FilterId): boolean {
   return filter[id] !== EMPTY_FILTER[id];
 }
 
-/** Optional filters to show: those added, plus any narrowing the list, so none hide. */
-export function shownOptionalFilters(
-  added: readonly OptionalFilter[],
+/** Filters to show: those chosen, plus any narrowing the list, so none hide. */
+export function shownFilters(
+  chosen: readonly FilterId[],
   filter: SessionFilter,
-): OptionalFilter[] {
-  return OPTIONAL_FILTERS.filter(
-    (id) => added.includes(id) || isOptionalActive(filter, id),
+): FilterId[] {
+  return FILTERS.filter(
+    (id) => chosen.includes(id) || isFilterActive(filter, id),
+  );
+}
+
+export function isDefaultFilterSet(chosen: readonly FilterId[]): boolean {
+  return (
+    chosen.length === DEFAULT_FILTERS.length &&
+    DEFAULT_FILTERS.every((id) => chosen.includes(id))
+  );
+}
+
+/**
+ * The saved choice of filters. Before every filter was removable, only the optional
+ * filters someone added were saved (`legacyAdded`); the defaults were always shown.
+ */
+export function restoreChosenFilters(
+  saved: unknown,
+  legacyAdded: unknown,
+): FilterId[] {
+  if (Array.isArray(saved)) return FILTERS.filter((id) => saved.includes(id));
+  const added = Array.isArray(legacyAdded) ? legacyAdded : [];
+  return FILTERS.filter(
+    (id) => DEFAULT_FILTERS.includes(id) || added.includes(id),
   );
 }
 

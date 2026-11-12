@@ -987,7 +987,14 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "+ Filter" }));
     await user.click(screen.getByRole("menuitem", { name: "Status" }));
-    expect(ipc.saveUiPref).toHaveBeenCalledWith("filters", ["archive"]);
+    expect(ipc.saveUiPref).toHaveBeenCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "minSizeMb",
+      "label",
+      "project",
+      "archive",
+    ]);
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Status" }),
       "archived",
@@ -1004,7 +1011,13 @@ describe("App", () => {
       screen.getByRole("button", { name: "Remove the Status filter" }),
     );
     expect(screen.queryByRole("combobox", { name: "Status" })).toBeNull();
-    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("filters", []);
+    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "minSizeMb",
+      "label",
+      "project",
+    ]);
   });
 
   it("finds sessions with deleted parents through an optional filter", async () => {
@@ -1033,7 +1046,14 @@ describe("App", () => {
       screen.getByRole("checkbox", { name: "Parent deleted" }),
     ).toBeChecked();
     expect(rowTitles()).toEqual(["OrphanParent deleted"]);
-    expect(ipc.saveUiPref).toHaveBeenCalledWith("filters", ["parentMissing"]);
+    expect(ipc.saveUiPref).toHaveBeenCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "minSizeMb",
+      "label",
+      "project",
+      "parentMissing",
+    ]);
 
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(screen.getByText("Parent")).toBeInTheDocument();
@@ -1050,11 +1070,19 @@ describe("App", () => {
     expect(
       screen.queryByRole("checkbox", { name: "Parent deleted" }),
     ).toBeNull();
-    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("filters", []);
+    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "minSizeMb",
+      "label",
+      "project",
+    ]);
   });
 
-  it("restores optional filters added in an earlier session", async () => {
-    vi.mocked(ipc.getUiPref).mockResolvedValue(["archive", "bogus"]);
+  it("restores the filters chosen in an earlier session", async () => {
+    vi.mocked(ipc.getUiPref).mockImplementation(async (key) =>
+      key === "shownFilters" ? ["archive", "bogus"] : null,
+    );
     scanSessions.mockResolvedValue(scanOf(makeSession({ title: "A session" })));
 
     render(<App />);
@@ -1062,6 +1090,104 @@ describe("App", () => {
     expect(
       await screen.findByRole("combobox", { name: "Status" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Agent" })).toBeNull();
+  });
+
+  it("keeps the default filters for optional filters saved by an older version", async () => {
+    vi.mocked(ipc.getUiPref).mockImplementation(async (key) =>
+      key === "filters" ? ["archive"] : null,
+    );
+    scanSessions.mockResolvedValue(scanOf(makeSession({ title: "A session" })));
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("combobox", { name: "Status" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Agent" })).toBeInTheDocument();
+  });
+
+  it("removes a default filter into + Filter and restores the defaults", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "a", title: "Small one", sizeBytes: 1024 }),
+        makeSession({ uid: "b", title: "Big one", sizeBytes: 5 * 1024 * 1024 }),
+      ),
+    );
+
+    render(<App />);
+    await screen.findByText("Small one");
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    expect(
+      screen.queryByRole("menuitem", { name: "Restore default filters" }),
+    ).toBeNull();
+    await user.keyboard("{Escape}");
+
+    await user.type(
+      screen.getByRole("spinbutton", { name: "Min size (MB)" }),
+      "1",
+    );
+    expect(rowTitles()).toHaveLength(1);
+    await user.click(
+      screen.getByRole("button", { name: "Remove the Min size (MB) filter" }),
+    );
+    expect(
+      screen.queryByRole("spinbutton", { name: "Min size (MB)" }),
+    ).toBeNull();
+    expect(rowTitles()).toHaveLength(2);
+    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "label",
+      "project",
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    expect(
+      screen.getByRole("menuitem", { name: "Min size (MB)" }),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("menuitem", { name: "Restore default filters" }),
+    );
+    expect(
+      screen.getByRole("spinbutton", { name: "Min size (MB)" }),
+    ).toHaveValue(null);
+    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "minSizeMb",
+      "label",
+      "project",
+    ]);
+  });
+
+  it("shows a removed Project filter again when a row narrows to its project", async () => {
+    const user = userEvent.setup();
+    vi.mocked(ipc.getUiPref).mockImplementation(async (key) =>
+      key === "shownFilters" ? ["agent"] : null,
+    );
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "a", title: "In app", projectDir: "/work/app" }),
+        makeSession({ uid: "b", title: "In other", projectDir: "/work/other" }),
+      ),
+    );
+
+    render(<App />);
+    await screen.findByText("In app");
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("combobox", { name: "Project" })).toBeNull(),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Show only sessions in /work/app" }),
+    );
+
+    expect(
+      screen.getByRole("combobox", { name: "Project" }),
+    ).toBeInTheDocument();
+    expect(rowTitles()).toEqual(["In app"]);
   });
 
   it("opens the help dialog", async () => {

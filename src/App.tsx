@@ -9,13 +9,14 @@ import { TranscriptPanel } from "./components/TranscriptPanel";
 import { Filters } from "./components/Filters";
 import { ColumnsMenu, SessionTable } from "./components/SessionTable";
 import {
+  DEFAULT_FILTERS,
   EMPTY_FILTER,
   agentTypeOptions,
-  isOptionalFilter,
   modelOptions,
   projectOptions,
+  restoreChosenFilters,
   sessionMatcher,
-  type OptionalFilter,
+  type FilterId,
 } from "./lib/filter";
 import { rangeBetween, withLeftoverSubagents } from "./lib/selection";
 import { applyTheme, isTheme } from "./lib/theme";
@@ -208,17 +209,19 @@ export default function App() {
   );
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState(EMPTY_FILTER);
-  const [addedFilters, setAddedFilters] = useState<OptionalFilter[]>([]);
+  const [chosenFilters, setChosenFilters] = useState<FilterId[]>([
+    ...DEFAULT_FILTERS,
+  ]);
   useEffect(() => {
-    getUiPref("filters").then(
-      (saved) =>
-        Array.isArray(saved) && setAddedFilters(saved.filter(isOptionalFilter)),
+    Promise.all([getUiPref("shownFilters"), getUiPref("filters")]).then(
+      ([saved, legacyAdded]) =>
+        setChosenFilters(restoreChosenFilters(saved, legacyAdded)),
       () => {},
     );
   }, []);
-  const changeAddedFilters = useCallback((added: OptionalFilter[]) => {
-    setAddedFilters(added);
-    void saveUiPref("filters", added).catch(() => {});
+  const changeChosenFilters = useCallback((chosen: FilterId[]) => {
+    setChosenFilters(chosen);
+    void saveUiPref("shownFilters", chosen).catch(() => {});
   }, []);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
@@ -305,7 +308,7 @@ export default function App() {
     setError(null);
     setProgress(null);
     await finishScan(scanSessions(setProgress));
-  }, [finishScan, t]);
+  }, [finishScan]);
 
   useEffect(() => {
     void finishScan(scanSessions(setProgress));
@@ -775,8 +778,8 @@ export default function App() {
             homeDir={scan.homeDir}
             filter={filter}
             onChange={setFilter}
-            added={addedFilters}
-            onAddedChange={changeAddedFilters}
+            chosen={chosenFilters}
+            onChosenChange={changeChosenFilters}
           />
           <ColumnsMenu columns={columns} onColumnsChange={setColumns} />
         </div>

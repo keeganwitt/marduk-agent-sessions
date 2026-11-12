@@ -1795,12 +1795,20 @@ button.ghost:hover {
 
 .filter-menu [role="menuitem"] {
   padding: 5px 10px;
+  white-space: nowrap;
   border: none;
   border-radius: 5px;
   background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.filter-menu hr {
+  width: 100%;
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--border);
 }
 
 .filter-menu [role="menuitem"]:hover,
