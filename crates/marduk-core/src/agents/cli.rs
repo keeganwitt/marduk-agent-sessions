@@ -32,6 +32,8 @@ pub struct CliInfo {
     pub path: Option<PathBuf>,
     /// True when `path` came from the user's setting rather than auto-detection.
     pub overridden: bool,
+    /// True when sessions can still be deleted without it.
+    pub optional: bool,
 }
 
 enum Source {
@@ -49,6 +51,7 @@ pub struct Cli {
     install_url: &'static str,
     source: Source,
     resolved: Mutex<Option<(PathBuf, bool)>>,
+    optional: bool,
 }
 
 impl Cli {
@@ -58,6 +61,7 @@ impl Cli {
             install_url,
             source: Source::Fixed(path),
             resolved: Mutex::new(None),
+            optional: false,
         };
         cli.refresh();
         cli
@@ -74,9 +78,18 @@ impl Cli {
             install_url,
             source: Source::Detect { agent, overrides },
             resolved: Mutex::new(None),
+            optional: false,
         };
         cli.refresh();
         cli
+    }
+
+    /// Marks the CLI as needed only for extras, not for deleting sessions.
+    pub fn optional(self) -> Self {
+        Self {
+            optional: true,
+            ..self
+        }
     }
 
     pub fn refresh(&self) {
@@ -104,6 +117,7 @@ impl Cli {
             program: self.program,
             install_url: self.install_url,
             overridden: resolved.as_ref().is_some_and(|(_, overridden)| *overridden),
+            optional: self.optional,
             path: resolved.map(|(path, _)| path),
         }
     }
@@ -213,6 +227,7 @@ mod tests {
                 install_url: "https://example.com",
                 path: Some(PathBuf::from("/opt/fake/bin/tool")),
                 overridden: true,
+                optional: false,
             }
         );
 

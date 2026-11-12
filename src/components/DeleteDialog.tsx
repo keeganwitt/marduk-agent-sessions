@@ -2,15 +2,21 @@ import { Fragment, useState, type ReactNode } from "react";
 
 import { useI18n } from "../i18n/context";
 import { tildePath } from "../lib/format";
-import type { MemoryStore, PreviewItem } from "../lib/types";
+import type { MemoryStore, PreviewItem, ProjectPurge } from "../lib/types";
 import { FileList } from "./FileList";
 
 interface Props {
   items: PreviewItem[];
   /** Memory no session would use after this delete, offered for the Trash too. */
   memory?: MemoryStore[];
+  /** Projects this delete empties, which the agent's own command could purge afterwards. */
+  purges?: ProjectPurge[];
   busy: boolean;
-  onConfirm: (uids: string[], memoryFolders: string[]) => void;
+  onConfirm: (
+    uids: string[],
+    memoryFolders: string[],
+    purges: ProjectPurge[],
+  ) => void;
   onCancel: () => void;
   onReveal: (path: string) => void;
   homeDir: string;
@@ -34,6 +40,7 @@ function withNodes(
 export function DeleteDialog({
   items,
   memory = [],
+  purges = [],
   busy,
   onConfirm,
   onCancel,
@@ -46,6 +53,16 @@ export function DeleteDialog({
   );
   const toggleMemory = (folder: string, chosen: boolean) =>
     setMemoryChosen((current) => {
+      const next = new Set(current);
+      if (chosen) next.add(folder);
+      else next.delete(folder);
+      return next;
+    });
+  const [purgesChosen, setPurgesChosen] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const togglePurge = (folder: string, chosen: boolean) =>
+    setPurgesChosen((current) => {
       const next = new Set(current);
       if (chosen) next.add(folder);
       else next.delete(folder);
@@ -155,6 +172,41 @@ export function DeleteDialog({
               ))}
             </div>
           )}
+          {purges.length > 0 && ready.length > 0 && (
+            <div className="memory-offers">
+              <h3>{t("dialogs.delete.purgeHeading")}</h3>
+              {purges.map((purge) => (
+                <div key={purge.folder} className="memory-offer">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={purgesChosen.has(purge.folder)}
+                      onChange={(event) =>
+                        togglePurge(purge.folder, event.target.checked)
+                      }
+                    />
+                    {withNodes(
+                      t("dialogs.delete.purgeOffer", {
+                        agent: purge.agentName,
+                      }),
+                      {
+                        path: (
+                          <code>{tildePath(purge.projectDir, homeDir)}</code>
+                        ),
+                      },
+                    )}
+                    <span className="badge danger">
+                      {t("dialogs.delete.permanentBadge")}
+                    </span>
+                  </label>
+                  <code className="command">{purge.command}</code>
+                  <p className="muted">
+                    {t("dialogs.delete.purgeNote", { agent: purge.agentName })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
           {refused.length > 0 && (
             <div className="refused">
               <h3>{t("dialogs.delete.skipped", { count: refused.length })}</h3>
@@ -182,6 +234,7 @@ export function DeleteDialog({
                 memory
                   .map((store) => store.folder)
                   .filter((folder) => memoryChosen.has(folder)),
+                purges.filter((purge) => purgesChosen.has(purge.folder)),
               )
             }
             disabled={busy || ready.length === 0}

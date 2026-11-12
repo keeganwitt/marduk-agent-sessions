@@ -18,6 +18,8 @@ export const settings = defineMessages(
     "settings.cli.automatic": "Found automatically",
     "settings.cli.missing":
       "Not found. {agent} sessions are read-only until it's installed or located.",
+    "settings.cli.missingOptional":
+      "Not found. {agent} sessions still go to the Trash, but Marduk can't purge {agent}'s project data until it's installed or located.",
     "settings.cli.install": "How to install {program}",
     "settings.cli.choose": "Choose…",
     "settings.cli.useAutomatic": "Use automatic",
@@ -68,6 +70,8 @@ export const settings = defineMessages(
       "settings.cli.automatic": "Encontrada automáticamente",
       "settings.cli.missing":
         "No encontrada. Las sesiones de {agent} son de solo lectura hasta que se instale o se indique su ubicación.",
+      "settings.cli.missingOptional":
+        "No se encontró. Las sesiones de {agent} siguen yendo a la Papelera, pero Marduk no puede purgar los datos de proyecto de {agent} hasta que esté instalado o localizado.",
       "settings.cli.install": "Cómo instalar {program}",
       "settings.cli.choose": "Elegir…",
       "settings.cli.useAutomatic": "Usar automática",
@@ -118,6 +122,8 @@ export const settings = defineMessages(
       "settings.cli.automatic": "Encontrada automaticamente",
       "settings.cli.missing":
         "Não encontrada. As sessões do {agent} ficam somente leitura até que ela seja instalada ou localizada.",
+      "settings.cli.missingOptional":
+        "Não encontrado. As sessões do {agent} ainda vão para a Lixeira, mas o Marduk não pode limpar os dados de projeto do {agent} até que ele seja instalado ou localizado.",
       "settings.cli.install": "Como instalar o {program}",
       "settings.cli.choose": "Escolher…",
       "settings.cli.useAutomatic": "Usar automático",
@@ -168,6 +174,8 @@ export const settings = defineMessages(
       "settings.cli.automatic": "Trouvé automatiquement",
       "settings.cli.missing":
         "Introuvable. Les sessions de {agent} restent en lecture seule tant qu'il n'est pas installé ou localisé.",
+      "settings.cli.missingOptional":
+        "Introuvable. Les sessions de {agent} vont toujours dans la Corbeille, mais Marduk ne peut pas purger les données de projet de {agent} tant qu'il n'est pas installé ou localisé.",
       "settings.cli.install": "Comment installer {program}",
       "settings.cli.choose": "Choisir…",
       "settings.cli.useAutomatic": "Détection automatique",
@@ -218,6 +226,8 @@ export const settings = defineMessages(
       "settings.cli.automatic": "Automatisch gefunden",
       "settings.cli.missing":
         "Nicht gefunden. Sitzungen von {agent} sind schreibgeschützt, bis das Werkzeug installiert oder gefunden ist.",
+      "settings.cli.missingOptional":
+        "Nicht gefunden. {agent}-Sitzungen kommen weiterhin in den Papierkorb, aber Marduk kann die Projektdaten von {agent} erst bereinigen, wenn es installiert oder gefunden ist.",
       "settings.cli.install": "So installieren Sie {program}",
       "settings.cli.choose": "Auswählen…",
       "settings.cli.useAutomatic": "Automatisch verwenden",
@@ -268,6 +278,8 @@ export const settings = defineMessages(
       "settings.cli.automatic": "自動検出",
       "settings.cli.missing":
         "見つかりません。インストールするか場所を指定するまで、{agent} のセッションは読み取り専用です。",
+      "settings.cli.missingOptional":
+        "見つかりません。{agent} のセッションは引き続きゴミ箱に移動できますが、インストールするか場所を指定するまで、Marduk は {agent} のプロジェクトのデータを消去できません。",
       "settings.cli.install": "{program} のインストール方法",
       "settings.cli.choose": "選択…",
       "settings.cli.useAutomatic": "自動検出を使用",
@@ -317,6 +329,8 @@ export const settings = defineMessages(
       "settings.cli.automatic": "자동으로 찾음",
       "settings.cli.missing":
         "찾을 수 없습니다. 설치하거나 위치를 지정할 때까지 {agent} 세션은 읽기 전용입니다.",
+      "settings.cli.missingOptional":
+        "찾을 수 없습니다. {agent} 세션은 계속 휴지통으로 옮길 수 있지만, 설치하거나 위치를 지정하기 전까지 Marduk은 {agent}의 프로젝트 데이터를 정리할 수 없습니다.",
       "settings.cli.install": "{program} 설치 방법",
       "settings.cli.choose": "선택…",
       "settings.cli.useAutomatic": "자동 사용",
@@ -366,6 +380,8 @@ export const settings = defineMessages(
       "settings.cli.automatic": "已自动找到",
       "settings.cli.missing":
         "未找到。在安装或指定位置之前，{agent} 的会话为只读。",
+      "settings.cli.missingOptional":
+        "未找到。{agent} 的会话仍会移到废纸篓，但在安装或指定位置之前，Marduk 无法清除 {agent} 的项目数据。",
       "settings.cli.install": "如何安装 {program}",
       "settings.cli.choose": "选择…",
       "settings.cli.useAutomatic": "使用自动查找",
@@ -413,6 +429,8 @@ export const settings = defineMessages(
       "settings.cli.automatic": "Найден автоматически",
       "settings.cli.missing":
         "Не найден. Сессии {agent} доступны только для чтения, пока инструмент не установлен или не указан.",
+      "settings.cli.missingOptional":
+        "Не найден. Сессии {agent} по-прежнему перемещаются в Корзину, но Marduk не сможет очистить данные проектов {agent}, пока он не установлен или не указан.",
       "settings.cli.install": "Как установить {program}",
       "settings.cli.choose": "Выбрать…",
       "settings.cli.useAutomatic": "Искать автоматически",

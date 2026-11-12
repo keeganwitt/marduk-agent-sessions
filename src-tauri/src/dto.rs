@@ -452,6 +452,26 @@ pub struct MemoryFileDto {
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectPurgeDto {
+    pub agent: &'static str,
+    pub agent_name: &'static str,
+    pub folder: String,
+    pub project_dir: String,
+    pub command: String,
+}
+
+pub fn project_purge(catalog: &Catalog, purge: marduk_core::ProjectPurge) -> ProjectPurgeDto {
+    ProjectPurgeDto {
+        agent: purge.agent,
+        agent_name: catalog.display_name(purge.agent),
+        folder: purge.folder.to_string_lossy().into_owned(),
+        project_dir: purge.project_dir,
+        command: purge.command.command_line(),
+    }
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct MemoryStoreDto {
     pub agent: &'static str,
     pub agent_name: &'static str,
@@ -524,6 +544,33 @@ mod tests {
         assert_eq!(dto.files[0].path, "/c/projects/-w/memory/git.md");
         assert_eq!(dto.files[0].session_id.as_deref(), Some("s1"));
         assert!(dto.can_trash);
+    }
+
+    #[test]
+    fn project_purge_names_its_agent_and_command() {
+        let catalog = Catalog::new(
+            vec![Box::new(marduk_core::agents::claude::ClaudeAdapter::new(
+                PathBuf::from("/c"),
+            ))],
+            marduk_core::RUNNING_WINDOW,
+        );
+
+        let dto = project_purge(
+            &catalog,
+            marduk_core::ProjectPurge {
+                agent: "claude",
+                folder: PathBuf::from("/c/projects/-w"),
+                project_dir: "/w".into(),
+                command: marduk_core::AgentCommand {
+                    program: PathBuf::from("/bin/claude"),
+                    args: vec!["purge".into(), "-y".into(), "/w".into()],
+                },
+            },
+        );
+
+        assert_eq!(dto.agent_name, "Claude Code");
+        assert_eq!(dto.folder, "/c/projects/-w");
+        assert_eq!(dto.command, "/bin/claude purge -y /w");
     }
 
     #[test]

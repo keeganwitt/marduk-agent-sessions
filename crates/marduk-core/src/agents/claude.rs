@@ -7,9 +7,12 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
+use std::sync::Arc;
+
+use super::cli::{Cli, CliOverrides};
 use super::{env_dir, home_dir, jsonl_two_levels, total_size};
 use crate::adapter::ScanProgress;
-use crate::adapter::{AgentAdapter, DeletePlan, Mechanics, ScanResult};
+use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, Mechanics, ProjectPurge, ScanResult};
 use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl;
@@ -19,11 +22,23 @@ use crate::session::Session;
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
 pub struct ClaudeAdapter {
+    config_dir: PathBuf,
     projects_dir: PathBuf,
     /// Claude Code's global config, which lists every project path it has opened.
     global_config: PathBuf,
+    /// Claude Code's `claude-<uid>` temp folder, with a `<project>/<session id>` folder of
+    /// task output per session.
+    temp_dir: Option<PathBuf>,
+    cli: Cli,
     cache: ParseCache<Fingerprint, Parsed>,
 }
+
+const PROGRAM: &str = "claude";
+const INSTALL_URL: &str = "https://code.claude.com/docs/en/setup";
+/// Folders in the config folder holding one entry per session, named by its id.
+const SESSION_STATE_DIRS: [&str; 3] = ["file-history", "session-env", "tasks"];
+const DEBUG_DIR: &str = "debug";
+const PURGE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 const MEMORY_INDEX: &str = "MEMORY.md";
 /// Claude Code loads only the start of `MEMORY.md` into a session.
@@ -35,20 +50,132 @@ impl ClaudeAdapter {
         Self {
             projects_dir: config_dir.join("projects"),
             global_config: config_dir.join(".claude.json"),
+            config_dir,
+            temp_dir: None,
+            cli: Cli::fixed(PROGRAM, INSTALL_URL, None).optional(),
             cache: ParseCache::default(),
+        }
+    }
+
+    pub fn with_temp_dir(self, temp_dir: PathBuf) -> Self {
+        Self {
+            temp_dir: Some(temp_dir),
+            ..self
+        }
+    }
+
+    pub fn with_cli(self, cli: Option<PathBuf>) -> Self {
+        Self {
+            cli: Cli::fixed(PROGRAM, INSTALL_URL, cli).optional(),
+            ..self
         }
     }
 
     /// With `CLAUDE_CONFIG_DIR` set, `.claude.json` is inside it; otherwise it's `~/.claude.json`,
     /// next to (not inside) `~/.claude`.
-    pub fn from_env() -> Self {
-        match env_dir("CLAUDE_CONFIG_DIR") {
+    pub fn from_env(overrides: Arc<CliOverrides>) -> Self {
+        let adapter = match env_dir("CLAUDE_CONFIG_DIR") {
             Some(config_dir) => Self::new(config_dir),
             None => Self {
                 global_config: home_dir().join(".claude.json"),
                 ..Self::new(home_dir().join(".claude"))
             },
+        };
+        Self {
+            temp_dir: default_temp_dir(),
+            cli: Cli::detect("claude", PROGRAM, INSTALL_URL, overrides).optional(),
+            ..adapter
         }
+    }
+
+    /// What Claude Code keeps for a session outside its project folder: file history, shell
+    /// environment, tasks, the debug log and the temp folder with background task output.
+    fn session_state(&self, transcript: &Path, id: &str) -> Vec<PathBuf> {
+        if !fs_util::looks_like_uuid(id) {
+            return Vec::new();
+        }
+        let mut paths: Vec<PathBuf> = SESSION_STATE_DIRS
+            .iter()
+            .map(|dir| self.config_dir.join(dir).join(id))
+            .collect();
+        paths.push(self.config_dir.join(DEBUG_DIR).join(format!("{id}.txt")));
+        if let (Some(temp_dir), Some(project)) = (
+            &self.temp_dir,
+            transcript.parent().and_then(Path::file_name),
+        ) {
+            paths.push(temp_dir.join(project).join(id));
+        }
+        paths.retain(|path| path.symlink_metadata().is_ok());
+        paths
+    }
+
+    /// Folders `session_state` takes paths from.
+    fn session_state_roots(&self) -> Vec<PathBuf> {
+        SESSION_STATE_DIRS
+            .iter()
+            .chain(std::iter::once(&DEBUG_DIR))
+            .map(|dir| self.config_dir.join(dir))
+            .chain(self.temp_dir.clone())
+            .collect()
+    }
+
+    /// The project path `claude purge` takes for `<projects>/<folder>`, from `.claude.json`.
+    /// None when no listed path, or more than one, maps to that folder name.
+    fn project_path(&self, folder: &Path) -> Option<String> {
+        let name = folder.file_name()?.to_str()?;
+        let config = fs::read_to_string(&self.global_config).ok()?;
+        let config: serde_json::Value = serde_json::from_str(&config).ok()?;
+        let mut matching = config["projects"]
+            .as_object()?
+            .keys()
+            .filter(|path| project_folder_name(path) == name);
+        let path = matching.next()?.clone();
+        matching.next().is_none().then_some(path)
+    }
+
+    /// Whether `folder` is a project folder directly inside `projects/`.
+    fn owns_project_folder(&self, folder: &Path) -> bool {
+        let (Ok(folder), Ok(root)) = (folder.canonicalize(), self.projects_dir.canonicalize())
+        else {
+            return false;
+        };
+        folder.is_dir() && folder.parent() == Some(root.as_path())
+    }
+
+    /// `claude purge -y <path>` for `folder`, after `claude purge --dry-run` confirmed it
+    /// would remove exactly that folder.
+    fn checked_purge_command(&self, folder: &Path) -> Result<AgentCommand, String> {
+        if !self.owns_project_folder(folder) {
+            return Err(format!(
+                "{} isn't a Claude Code project folder.",
+                folder.display()
+            ));
+        }
+        let project = self.project_path(folder).ok_or_else(|| {
+            format!(
+                "Couldn't tell which project {} belongs to from Claude Code's settings.",
+                folder.display()
+            )
+        })?;
+        let program = self
+            .cli
+            .path()
+            .ok_or_else(|| self.cli.missing_reason("Claude Code", "purge projects"))?;
+        let plan = super::cli::run_capture(
+            &program,
+            &["purge", "--dry-run", project.as_str()],
+            PURGE_TIMEOUT,
+        )?;
+        if !purge_plan_targets(&plan, folder) {
+            return Err(format!(
+                "`claude purge --dry-run {project}` didn't name {} as the folder it would delete.",
+                folder.display()
+            ));
+        }
+        Ok(AgentCommand {
+            program,
+            args: vec!["purge".into(), "-y".into(), project],
+        })
     }
 
     /// Project paths Claude Code has opened, by their folder name under `projects/`.
@@ -271,10 +398,21 @@ impl AgentAdapter for ClaudeAdapter {
     }
 
     fn roots(&self) -> Vec<PathBuf> {
-        vec![self.projects_dir.clone()]
+        std::iter::once(self.projects_dir.clone())
+            .chain(
+                self.session_state_roots()
+                    .into_iter()
+                    .filter(|dir| dir.is_dir()),
+            )
+            .collect()
+    }
+
+    fn cli(&self) -> Option<&Cli> {
+        Some(&self.cli)
     }
 
     fn scan_with(&self, progress: &dyn ScanProgress) -> ScanResult {
+        self.cli.refresh();
         let mut result = ScanResult::empty_complete();
         let files = jsonl_two_levels(&self.projects_dir, &mut result);
         let mut seen: Vec<PathBuf> = Vec::new();
@@ -361,36 +499,14 @@ impl AgentAdapter for ClaudeAdapter {
 
     /// Memory is per project: it's used while the project has any transcript left.
     fn memory_in_use(&self, folder: &Path) -> bool {
-        folder
-            .parent()
-            .and_then(|project| fs::read_dir(project).ok())
-            .into_iter()
-            .flatten()
-            .flatten()
-            .any(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl"))
+        folder.parent().is_some_and(has_transcripts)
     }
 
     fn memory_left_behind(&self, deleting: &[&Session], all: &[Session]) -> Vec<MemoryStore> {
         let known = self.known_projects();
-        let deleting_files: HashSet<&Path> = deleting
-            .iter()
-            .map(|session| session.primary_file.as_path())
-            .collect();
-        let folders: BTreeSet<&Path> = deleting
-            .iter()
-            .filter(|session| !session.part_of_parent)
-            .filter_map(|session| session.primary_file.parent())
-            .collect();
-        folders
+        emptied_folders(deleting, all)
             .into_iter()
             .filter(|folder| folder.join("memory").is_dir())
-            .filter(|folder| {
-                !all.iter().any(|session| {
-                    !session.part_of_parent
-                        && session.primary_file.parent() == Some(*folder)
-                        && !deleting_files.contains(session.primary_file.as_path())
-                })
-            })
             .map(|folder| {
                 let in_folder: Vec<&Session> = deleting
                     .iter()
@@ -406,11 +522,53 @@ impl AgentAdapter for ClaudeAdapter {
             .collect()
     }
 
+    fn purges_left_behind(&self, deleting: &[&Session], all: &[Session]) -> Vec<ProjectPurge> {
+        emptied_folders(deleting, all)
+            .into_iter()
+            .filter_map(|folder| {
+                let command = self.checked_purge_command(folder).ok()?;
+                Some(ProjectPurge {
+                    agent: "claude",
+                    folder: folder.to_path_buf(),
+                    project_dir: command.args.last()?.clone(),
+                    command,
+                })
+            })
+            .collect()
+    }
+
+    fn purge_project(
+        &self,
+        folder: &Path,
+        backend: &dyn crate::delete::DeleteBackend,
+    ) -> Result<String, String> {
+        if has_transcripts(folder) {
+            return Err(format!(
+                "{} still has sessions, so it wasn't purged.",
+                folder.display()
+            ));
+        }
+        let command = self.checked_purge_command(folder)?;
+        backend.run(&command)?;
+        let project = command.args.last().cloned().unwrap_or_default();
+        if folder.exists() || self.project_path(folder).is_some() {
+            return Err(format!(
+                "`claude purge` reported success but left {project}'s data behind."
+            ));
+        }
+        Ok(command.command_line())
+    }
+
     fn mechanics(&self) -> Mechanics {
         Mechanics {
-            delete: "Moves the transcript, its sidecar files and its session folder (subagents, \
-                     tool results) to the Trash. Claude Code has no delete command of its own. \
-                     Subagents are only deleted along with their session."
+            delete: "Moves the transcript, its sidecar files, its session folder (subagents, \
+                     tool results), and what Claude Code keeps for it elsewhere (file history, \
+                     shell environment, tasks, debug log, temp folder) to the Trash. Claude Code \
+                     has no per-session delete command. Subagents are only deleted along with \
+                     their session. When a delete removes a project's last session, you can \
+                     also run `claude purge -y <project>`, which permanently deletes the \
+                     project's memory, its prompts in the prompt history and its entry in \
+                     `.claude.json` (trust, allowed tools, MCP servers)."
                 .to_string(),
             archive: "Claude Code has no archive.".to_string(),
         }
@@ -419,6 +577,63 @@ impl AgentAdapter for ClaudeAdapter {
     fn transcript(&self, session: &Session) -> std::io::Result<Transcript> {
         read_transcript(&session.primary_file, session.part_of_parent)
     }
+}
+
+/// Project folders none of whose top-level sessions in `all` would be left after `deleting`.
+fn emptied_folders<'a>(deleting: &[&'a Session], all: &[Session]) -> BTreeSet<&'a Path> {
+    let deleting_files: HashSet<&Path> = deleting
+        .iter()
+        .map(|session| session.primary_file.as_path())
+        .collect();
+    deleting
+        .iter()
+        .filter(|session| !session.part_of_parent)
+        .filter_map(|session| session.primary_file.parent())
+        .filter(|folder| {
+            !all.iter().any(|session| {
+                !session.part_of_parent
+                    && session.primary_file.parent() == Some(*folder)
+                    && !deleting_files.contains(session.primary_file.as_path())
+            })
+        })
+        .collect()
+}
+
+fn has_transcripts(folder: &Path) -> bool {
+    fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl"))
+}
+
+/// Whether `claude purge --dry-run` output names `folder` on its `dir:` line.
+fn purge_plan_targets(plan: &str, folder: &Path) -> bool {
+    let Ok(folder) = folder.canonicalize() else {
+        return false;
+    };
+    plan.lines()
+        .filter_map(|line| line.trim_start().strip_prefix("dir:"))
+        .any(|dir| Path::new(dir.trim()).canonicalize().ok().as_deref() == Some(folder.as_path()))
+}
+
+/// `/tmp/claude-<uid>`, or under `CLAUDE_CODE_TMPDIR`. Claude Code uses `/tmp` rather than
+/// the per-user `TMPDIR` macOS sets.
+fn default_temp_dir() -> Option<PathBuf> {
+    let root =
+        env_dir("CLAUDE_CODE_TMPDIR").or_else(|| cfg!(unix).then(|| PathBuf::from("/tmp")))?;
+    Some(root.join(format!("claude-{}", current_uid()?)))
+}
+
+#[cfg(unix)]
+fn current_uid() -> Option<u32> {
+    // SAFETY: getuid has no preconditions and can't fail.
+    Some(unsafe { libc::getuid() })
+}
+
+#[cfg(not(unix))]
+fn current_uid() -> Option<u32> {
+    None
 }
 
 /// `<project>/<session-id>/subagents/agent-*.jsonl`, the transcripts of subagents the
@@ -652,7 +867,14 @@ impl ClaudeAdapter {
             .cache
             .get_or_parse(path, fingerprint, || parse_file(path))?;
         progress.advance(fingerprint.len);
-        Ok(session_from(path, parsed, fingerprint))
+        let mut session = session_from(path, parsed, fingerprint);
+        let state = self.session_state(path, &session.id);
+        session.size_bytes += state
+            .iter()
+            .map(|file| fs_util::path_size(file))
+            .sum::<u64>();
+        session.files.extend(state);
+        Ok(session)
     }
 
     fn read_subagent(
@@ -1157,5 +1379,320 @@ mod tests {
                 warning: None,
             }
         );
+    }
+
+    #[test]
+    fn session_state_outside_the_project_folder_is_trashed_with_the_session() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        let temp = root.path().join("claude-501");
+        let folder = write_project(&config, "-work-app", &[(&format!("{ID}.jsonl"), "{}")]);
+        let file_history = config.join("file-history").join(ID);
+        let session_env = config.join("session-env").join(ID);
+        let debug_log = config.join("debug").join(format!("{ID}.txt"));
+        let task_output = temp.join("-work-app").join(ID);
+        for dir in [
+            &file_history,
+            &session_env,
+            &task_output,
+            &config.join("debug"),
+        ] {
+            fs::create_dir_all(dir).unwrap();
+        }
+        fs::write(file_history.join("abc@v1"), "old contents").unwrap();
+        fs::write(&debug_log, "log").unwrap();
+        fs::create_dir_all(config.join("session-env").join(OTHER_ID)).unwrap();
+        fs::create_dir_all(temp.join("-work-other").join(ID)).unwrap();
+        let adapter = ClaudeAdapter::new(config.clone()).with_temp_dir(temp.clone());
+
+        let session = adapter.scan().sessions.remove(0);
+
+        assert_eq!(
+            session.files,
+            vec![
+                folder.join(format!("{ID}.jsonl")),
+                file_history,
+                session_env,
+                debug_log,
+                task_output,
+            ]
+        );
+        assert_eq!(session.size_bytes, 2 + 12 + 3);
+        let plan = crate::delete::preflight(
+            &adapter,
+            &session,
+            std::time::SystemTime::now(),
+            std::time::Duration::ZERO,
+        )
+        .unwrap();
+        assert_eq!(plan.files, session.files);
+    }
+
+    #[test]
+    fn roots_include_only_session_state_folders_that_exist() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        fs::create_dir_all(config.join("file-history")).unwrap();
+        let adapter = ClaudeAdapter::new(config.clone()).with_temp_dir(root.path().join("none"));
+
+        assert_eq!(
+            adapter.roots(),
+            vec![config.join("projects"), config.join("file-history")]
+        );
+    }
+
+    #[test]
+    fn session_state_needs_a_uuid_id() {
+        let config = tempfile::tempdir().unwrap();
+        write_project(config.path(), "p", &[("notes.jsonl", "{}")]);
+        fs::create_dir_all(config.path().join("session-env").join("notes")).unwrap();
+        let adapter = ClaudeAdapter::new(config.path().to_path_buf());
+
+        let session = adapter.scan().sessions.remove(0);
+
+        assert_eq!(session.files.len(), 1);
+    }
+
+    /// A config folder whose `.claude.json` lists `app`, with one project folder holding a
+    /// session, and a fake `claude` that prints `dry_run_dir` as the folder it would purge.
+    #[cfg(unix)]
+    struct PurgeFixture {
+        _root: tempfile::TempDir,
+        config: PathBuf,
+        folder: PathBuf,
+        app: String,
+        cli: PathBuf,
+    }
+
+    #[cfg(unix)]
+    impl PurgeFixture {
+        fn new(dry_run_dir: Option<&str>, extra_projects: &[&str]) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+
+            let root = tempfile::tempdir().unwrap();
+            let config = root.path().join("config");
+            let app = "/work/app".to_string();
+            let folder = write_project(
+                &config,
+                &project_folder_name(&app),
+                &[(&format!("{ID}.jsonl"), "{}")],
+            );
+            let mut projects = serde_json::Map::new();
+            for path in std::iter::once(app.as_str()).chain(extra_projects.iter().copied()) {
+                projects.insert(path.to_string(), serde_json::json!({}));
+            }
+            fs::write(
+                config.join(".claude.json"),
+                serde_json::json!({ "projects": projects }).to_string(),
+            )
+            .unwrap();
+            let dir = dry_run_dir
+                .map(str::to_string)
+                .unwrap_or_else(|| folder.to_string_lossy().into_owned());
+            let cli = root.path().join("claude");
+            fs::write(
+                &cli,
+                format!("#!/bin/sh\necho \"Purge plan for $3:\"\necho\necho \"  dir:    {dir}\"\n"),
+            )
+            .unwrap();
+            fs::set_permissions(&cli, fs::Permissions::from_mode(0o755)).unwrap();
+            Self {
+                _root: root,
+                config,
+                folder,
+                app,
+                cli,
+            }
+        }
+
+        fn adapter(&self) -> ClaudeAdapter {
+            ClaudeAdapter::new(self.config.clone()).with_cli(Some(self.cli.clone()))
+        }
+    }
+
+    /// Does what `claude purge` does to the fixture: removes the folder and the project entry.
+    #[cfg(unix)]
+    struct PurgingBackend<'a> {
+        fixture: &'a PurgeFixture,
+        ran: std::cell::RefCell<Vec<crate::adapter::AgentCommand>>,
+        leave_folder: bool,
+    }
+
+    #[cfg(unix)]
+    impl crate::delete::DeleteBackend for PurgingBackend<'_> {
+        fn trash(&self, _paths: &[PathBuf]) -> Result<(), String> {
+            unreachable!()
+        }
+
+        fn run(&self, command: &crate::adapter::AgentCommand) -> Result<(), String> {
+            self.ran.borrow_mut().push(command.clone());
+            if !self.leave_folder {
+                fs::remove_dir_all(&self.fixture.folder).unwrap();
+            }
+            fs::write(
+                self.fixture.config.join(".claude.json"),
+                "{\"projects\":{}}",
+            )
+            .unwrap();
+            Ok(())
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn offers_to_purge_a_project_whose_last_session_is_deleted() {
+        let fixture = PurgeFixture::new(None, &["/work/other"]);
+        let adapter = fixture.adapter();
+        let sessions = adapter.scan().sessions;
+
+        let purges = adapter.purges_left_behind(&[&sessions[0]], &sessions);
+
+        assert_eq!(
+            purges,
+            vec![ProjectPurge {
+                agent: "claude",
+                folder: fixture.folder.clone(),
+                project_dir: fixture.app.clone(),
+                command: AgentCommand {
+                    program: fixture.cli.clone(),
+                    args: vec!["purge".into(), "-y".into(), fixture.app.clone()],
+                },
+            }]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn no_purge_offer_while_the_project_keeps_a_session() {
+        let fixture = PurgeFixture::new(None, &[]);
+        fs::write(fixture.folder.join(format!("{OTHER_ID}.jsonl")), "{}").unwrap();
+        let adapter = fixture.adapter();
+        let sessions = adapter.scan().sessions;
+        let first: Vec<&Session> = sessions.iter().filter(|s| s.id == ID).collect();
+
+        assert!(adapter.purges_left_behind(&first, &sessions).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn no_purge_offer_when_the_dry_run_names_another_folder() {
+        let fixture = PurgeFixture::new(Some("/elsewhere/projects/-work-app"), &[]);
+        let adapter = fixture.adapter();
+        let sessions = adapter.scan().sessions;
+
+        assert!(
+            adapter
+                .purges_left_behind(&[&sessions[0]], &sessions)
+                .is_empty()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn no_purge_offer_when_two_projects_share_the_folder_name() {
+        let fixture = PurgeFixture::new(None, &["/work.app"]);
+        let adapter = fixture.adapter();
+        let sessions = adapter.scan().sessions;
+
+        assert!(
+            adapter
+                .purges_left_behind(&[&sessions[0]], &sessions)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn no_purge_offer_without_the_cli() {
+        let config = tempfile::tempdir().unwrap();
+        write_project(
+            config.path(),
+            "-work-app",
+            &[(&format!("{ID}.jsonl"), "{}")],
+        );
+        fs::write(
+            config.path().join(".claude.json"),
+            r#"{"projects":{"/work/app":{}}}"#,
+        )
+        .unwrap();
+        let adapter = ClaudeAdapter::new(config.path().to_path_buf());
+        let sessions = adapter.scan().sessions;
+
+        assert!(
+            adapter
+                .purges_left_behind(&[&sessions[0]], &sessions)
+                .is_empty()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn purge_runs_only_once_the_project_has_no_sessions() {
+        let fixture = PurgeFixture::new(None, &[]);
+        let adapter = fixture.adapter();
+        let backend = PurgingBackend {
+            fixture: &fixture,
+            ran: Default::default(),
+            leave_folder: false,
+        };
+
+        let refused = adapter.purge_project(&fixture.folder, &backend);
+        assert!(refused.unwrap_err().contains("still has sessions"));
+        assert!(backend.ran.borrow().is_empty());
+
+        fs::remove_file(fixture.folder.join(format!("{ID}.jsonl"))).unwrap();
+        let ran = adapter.purge_project(&fixture.folder, &backend).unwrap();
+
+        assert_eq!(ran, format!("{} purge -y /work/app", fixture.cli.display()));
+        assert!(!fixture.folder.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn purge_that_leaves_the_folder_behind_is_a_failure() {
+        let fixture = PurgeFixture::new(None, &[]);
+        fs::remove_file(fixture.folder.join(format!("{ID}.jsonl"))).unwrap();
+        let backend = PurgingBackend {
+            fixture: &fixture,
+            ran: Default::default(),
+            leave_folder: true,
+        };
+
+        let error = fixture
+            .adapter()
+            .purge_project(&fixture.folder, &backend)
+            .unwrap_err();
+
+        assert!(error.contains("left /work/app's data behind"), "{error}");
+    }
+
+    #[test]
+    fn purge_refuses_folders_outside_projects() {
+        let config = tempfile::tempdir().unwrap();
+        let elsewhere = config.path().join("file-history");
+        fs::create_dir_all(&elsewhere).unwrap();
+        let adapter = ClaudeAdapter::new(config.path().to_path_buf());
+
+        let error = adapter
+            .purge_project(&elsewhere, &crate::delete::SystemBackend)
+            .unwrap_err();
+
+        assert!(
+            error.contains("isn't a Claude Code project folder"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn dry_run_plan_must_name_the_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let plan = format!(
+            "Purge plan for /x:\n\n  dir:    {}\n           project transcripts\n",
+            dir.path().display()
+        );
+        assert!(purge_plan_targets(&plan, dir.path()));
+        assert!(!purge_plan_targets(
+            "  config: projects[\"/x\"]\n",
+            dir.path()
+        ));
     }
 }

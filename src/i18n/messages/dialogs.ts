@@ -36,6 +36,10 @@ export const dialogs = defineMessages(
       "Its project folder no longer exists, and this deletes the project's last session.",
     "dialogs.delete.memoryProjectExists":
       "This deletes the project's last session, but {agent} would still use this memory the next time you work there.",
+    "dialogs.delete.purgeHeading": "Project data",
+    "dialogs.delete.purgeOffer": "Also purge {agent}'s data for {path}",
+    "dialogs.delete.purgeNote":
+      "Runs after the sessions are deleted, and only if none are left in the project. It permanently deletes the project's memory, its prompts in {agent}'s prompt history and its settings entry (trust, allowed tools, MCP servers).",
     "dialogs.delete.skipped": "Skipped ({count})",
     "dialogs.delete.confirmDelete": "Delete",
     "dialogs.delete.confirmTrash": "Move to Trash",
@@ -79,6 +83,11 @@ export const dialogs = defineMessages(
         "La carpeta del proyecto ya no existe, y esto elimina la última sesión del proyecto.",
       "dialogs.delete.memoryProjectExists":
         "Esto elimina la última sesión del proyecto, pero {agent} seguiría usando esta memoria la próxima vez que trabajes allí.",
+      "dialogs.delete.purgeHeading": "Datos del proyecto",
+      "dialogs.delete.purgeOffer":
+        "Purgar también los datos de {agent} para {path}",
+      "dialogs.delete.purgeNote":
+        "Se ejecuta después de eliminar las sesiones y solo si no queda ninguna en el proyecto. Elimina de forma permanente la memoria del proyecto, sus prompts en el historial de {agent} y su entrada de configuración (confianza, herramientas permitidas, servidores MCP).",
       "dialogs.delete.skipped": "Omitidas ({count})",
       "dialogs.delete.confirmDelete": "Eliminar",
       "dialogs.delete.confirmTrash": "Mover a la Papelera",
@@ -121,6 +130,11 @@ export const dialogs = defineMessages(
         "A pasta do projeto não existe mais, e isto exclui a última sessão do projeto.",
       "dialogs.delete.memoryProjectExists":
         "Isto exclui a última sessão do projeto, mas o {agent} ainda usaria esta memória na próxima vez que você trabalhar nele.",
+      "dialogs.delete.purgeHeading": "Dados do projeto",
+      "dialogs.delete.purgeOffer":
+        "Também limpar os dados do {agent} para {path}",
+      "dialogs.delete.purgeNote":
+        "É executado depois que as sessões são excluídas e só se nenhuma restar no projeto. Exclui permanentemente a memória do projeto, seus prompts no histórico do {agent} e sua entrada nas configurações (confiança, ferramentas permitidas, servidores MCP).",
       "dialogs.delete.skipped": "Ignoradas ({count})",
       "dialogs.delete.confirmDelete": "Excluir",
       "dialogs.delete.confirmTrash": "Mover para a Lixeira",
@@ -163,6 +177,11 @@ export const dialogs = defineMessages(
         "Le dossier du projet n'existe plus, et ceci supprime la dernière session du projet.",
       "dialogs.delete.memoryProjectExists":
         "Ceci supprime la dernière session du projet, mais {agent} utiliserait encore cette mémoire la prochaine fois que vous y travaillerez.",
+      "dialogs.delete.purgeHeading": "Données du projet",
+      "dialogs.delete.purgeOffer":
+        "Purger aussi les données de {agent} pour {path}",
+      "dialogs.delete.purgeNote":
+        "S'exécute après la suppression des sessions, et seulement s'il n'en reste aucune dans le projet. Supprime définitivement la mémoire du projet, ses prompts dans l'historique de {agent} et son entrée de configuration (confiance, outils autorisés, serveurs MCP).",
       "dialogs.delete.skipped": "Ignorées ({count})",
       "dialogs.delete.confirmDelete": "Supprimer",
       "dialogs.delete.confirmTrash": "Placer dans la Corbeille",
@@ -205,6 +224,11 @@ export const dialogs = defineMessages(
         "Der Projektordner existiert nicht mehr, und damit wird die letzte Sitzung des Projekts gelöscht.",
       "dialogs.delete.memoryProjectExists":
         "Damit wird die letzte Sitzung des Projekts gelöscht, aber {agent} würde dieses Gedächtnis beim nächsten Mal, wenn Sie dort arbeiten, weiterhin verwenden.",
+      "dialogs.delete.purgeHeading": "Projektdaten",
+      "dialogs.delete.purgeOffer":
+        "Auch die Daten von {agent} für {path} bereinigen",
+      "dialogs.delete.purgeNote":
+        "Läuft, nachdem die Sitzungen gelöscht wurden, und nur, wenn im Projekt keine mehr übrig ist. Löscht dauerhaft das Gedächtnis des Projekts, seine Prompts im Verlauf von {agent} und seinen Eintrag in den Einstellungen (Vertrauen, erlaubte Tools, MCP-Server).",
       "dialogs.delete.skipped": "Übersprungen ({count})",
       "dialogs.delete.confirmDelete": "Löschen",
       "dialogs.delete.confirmTrash": "In den Papierkorb legen",
@@ -242,6 +266,10 @@ export const dialogs = defineMessages(
         "プロジェクトフォルダはもう存在せず、この操作でプロジェクトの最後のセッションが削除されます。",
       "dialogs.delete.memoryProjectExists":
         "この操作でプロジェクトの最後のセッションが削除されますが、次にそこで作業するときも {agent} はこのメモリを使います。",
+      "dialogs.delete.purgeHeading": "プロジェクトのデータ",
+      "dialogs.delete.purgeOffer": "{path} の {agent} のデータも消去する",
+      "dialogs.delete.purgeNote":
+        "セッションの削除後に、プロジェクトにセッションが残っていない場合だけ実行されます。プロジェクトのメモリ、{agent} のプロンプト履歴にあるそのプロジェクトのプロンプト、設定のエントリ（信頼、許可したツール、MCP サーバー）を完全に削除します。",
       "dialogs.delete.skipped": "スキップ（{count}）",
       "dialogs.delete.confirmDelete": "削除",
       "dialogs.delete.confirmTrash": "ゴミ箱に移動",
@@ -279,6 +307,10 @@ export const dialogs = defineMessages(
         "프로젝트 폴더가 더 이상 없으며, 이 작업으로 프로젝트의 마지막 세션이 삭제됩니다.",
       "dialogs.delete.memoryProjectExists":
         "이 작업으로 프로젝트의 마지막 세션이 삭제되지만, 다음에 그 프로젝트에서 작업할 때 {agent}는 이 메모리를 계속 사용합니다.",
+      "dialogs.delete.purgeHeading": "프로젝트 데이터",
+      "dialogs.delete.purgeOffer": "{path}에 대한 {agent} 데이터도 정리",
+      "dialogs.delete.purgeNote":
+        "세션을 삭제한 뒤, 프로젝트에 남은 세션이 없을 때만 실행됩니다. 프로젝트의 메모리, {agent} 프롬프트 기록에 있는 프로젝트의 프롬프트, 설정 항목(신뢰, 허용된 도구, MCP 서버)을 영구적으로 삭제합니다.",
       "dialogs.delete.skipped": "건너뜀 ({count})",
       "dialogs.delete.confirmDelete": "삭제",
       "dialogs.delete.confirmTrash": "휴지통으로 이동",
@@ -313,6 +345,10 @@ export const dialogs = defineMessages(
         "项目文件夹已不存在，此操作将删除该项目的最后一个会话。",
       "dialogs.delete.memoryProjectExists":
         "此操作将删除该项目的最后一个会话，但下次你在那里工作时，{agent} 仍会使用这些记忆。",
+      "dialogs.delete.purgeHeading": "项目数据",
+      "dialogs.delete.purgeOffer": "同时清除 {agent} 中 {path} 的数据",
+      "dialogs.delete.purgeNote":
+        "在会话删除后运行，且仅在项目中没有剩余会话时运行。它会永久删除项目的记忆、{agent} 提示历史中该项目的提示，以及它的设置条目（信任、允许的工具、MCP 服务器）。",
       "dialogs.delete.skipped": "已跳过（{count}）",
       "dialogs.delete.confirmDelete": "删除",
       "dialogs.delete.confirmTrash": "移到废纸篓",
@@ -365,6 +401,10 @@ export const dialogs = defineMessages(
         "Папки проекта больше нет, и это удаляет последнюю сессию проекта.",
       "dialogs.delete.memoryProjectExists":
         "Это удаляет последнюю сессию проекта, но {agent} продолжит использовать эту память, когда вы снова будете там работать.",
+      "dialogs.delete.purgeHeading": "Данные проекта",
+      "dialogs.delete.purgeOffer": "Также очистить данные {agent} для {path}",
+      "dialogs.delete.purgeNote":
+        "Выполняется после удаления сессий и только если в проекте не осталось ни одной. Безвозвратно удаляет память проекта, его запросы в истории {agent} и его запись в настройках (доверие, разрешённые инструменты, MCP-серверы).",
       "dialogs.delete.skipped": "Пропущено ({count})",
       "dialogs.delete.confirmDelete": "Удалить",
       "dialogs.delete.confirmTrash": "Переместить в Корзину",

@@ -61,6 +61,24 @@ pub trait AgentAdapter: Send + Sync {
     ) -> Vec<crate::memory::MemoryStore> {
         Vec::new()
     }
+    /// Projects whose remaining sessions are all in `deleting`, which the agent's own command
+    /// could purge once they're deleted. `all` are this agent's sessions from the last scan.
+    fn purges_left_behind(&self, _deleting: &[&Session], _all: &[Session]) -> Vec<ProjectPurge> {
+        Vec::new()
+    }
+    /// Purges `folder`'s project with the agent's own command, refusing while any session is
+    /// left in it, and returns the command line that ran.
+    fn purge_project(
+        &self,
+        folder: &Path,
+        _backend: &dyn crate::delete::DeleteBackend,
+    ) -> Result<String, String> {
+        Err(format!(
+            "{} can't purge {}.",
+            self.display_name(),
+            folder.display()
+        ))
+    }
     /// The agent's own command to archive this session, or to unarchive it when it is
     /// already archived. `None` when the agent has no native archive.
     fn archive_command(&self, _session: &Session) -> Option<AgentCommand> {
@@ -72,6 +90,17 @@ pub trait AgentAdapter: Send + Sync {
 pub struct Mechanics {
     pub delete: String,
     pub archive: String,
+}
+
+/// What an agent keeps about a project besides its sessions (settings, prompt history,
+/// memory), which its own command can remove once the project's last session is gone.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProjectPurge {
+    pub agent: &'static str,
+    /// The agent's folder for the project, which the purge removes.
+    pub folder: PathBuf,
+    pub project_dir: String,
+    pub command: AgentCommand,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

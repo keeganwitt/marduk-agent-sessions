@@ -199,6 +199,26 @@ impl Catalog {
 
     /// Memory no session would use once `uids` are deleted, offered for deletion with them.
     pub fn memory_left_behind(&self, uids: &[String]) -> Vec<crate::memory::MemoryStore> {
+        self.left_behind(uids, |adapter, deleting, all| {
+            adapter.memory_left_behind(deleting, all)
+        })
+    }
+
+    /// Projects whose last sessions are among `uids`, which the agent's own command could
+    /// purge after the delete.
+    pub fn purges_left_behind(&self, uids: &[String]) -> Vec<crate::adapter::ProjectPurge> {
+        self.left_behind(uids, |adapter, deleting, all| {
+            adapter.purges_left_behind(deleting, all)
+        })
+    }
+
+    /// Runs `find` for each agent with sessions among `uids`, with those sessions and all of
+    /// the agent's sessions from the last scan.
+    fn left_behind<T>(
+        &self,
+        uids: &[String],
+        find: impl Fn(&dyn AgentAdapter, &[&Session], &[Session]) -> Vec<T>,
+    ) -> Vec<T> {
         let snapshot = self.snapshot.lock().unwrap().clone();
         let sessions = self.sessions_by_adapter();
         self.adapters
@@ -214,10 +234,26 @@ impl Catalog {
                 if deleting.is_empty() {
                     Vec::new()
                 } else {
-                    adapter.memory_left_behind(&deleting, &sessions[index])
+                    find(adapter.as_ref(), &deleting, &sessions[index])
                 }
             })
             .collect()
+    }
+
+    /// Purges a project with its agent's own command, once none of its sessions are left.
+    /// Returns the command line that ran.
+    pub fn purge_project(
+        &self,
+        agent: &str,
+        folder: &std::path::Path,
+        backend: &dyn DeleteBackend,
+    ) -> Result<String, String> {
+        let adapter = self
+            .adapters
+            .iter()
+            .find(|adapter| adapter.id() == agent)
+            .ok_or_else(|| format!("Unknown agent {agent}."))?;
+        adapter.purge_project(folder, backend)
     }
 
     /// The text of a memory file, if some agent owns it.
@@ -937,5 +973,24 @@ mod tests {
         let session = &scans[0].sessions[0];
         let preview = catalog.preview(&[uid(session)], SystemTime::now());
         assert_eq!(&preview[0].result.as_ref().unwrap().files, &session.files);
+    }
+
+    #[test]
+    fn purge_project_goes_to_the_named_agent() {
+        let (_root, catalog) = catalog_with_old_pi_session();
+        let folder = std::path::Path::new("/nowhere");
+
+        assert!(
+            catalog
+                .purge_project("pi", folder, &NoopTrash)
+                .unwrap_err()
+                .contains("Pi can't purge")
+        );
+        assert!(
+            catalog
+                .purge_project("nope", folder, &NoopTrash)
+                .unwrap_err()
+                .contains("Unknown agent")
+        );
     }
 }

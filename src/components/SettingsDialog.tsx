@@ -62,7 +62,9 @@ function CliRow({
         </div>
       ) : (
         <div className="cli-detail missing">
-          {t("settings.cli.missing", { agent: status.agentName })}{" "}
+          {status.optional
+            ? t("settings.cli.missingOptional", { agent: status.agentName })
+            : t("settings.cli.missing", { agent: status.agentName })}{" "}
           <a href={status.installUrl}>
             {t("settings.cli.install", { program: status.program })}
           </a>

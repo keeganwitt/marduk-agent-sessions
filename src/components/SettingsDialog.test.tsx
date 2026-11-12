@@ -31,6 +31,7 @@ function status(overrides: Partial<CliStatus>): CliStatus {
     installUrl: "https://github.com/openai/codex",
     path: null,
     overridden: false,
+    optional: false,
     version: null,
     problem: null,
     ...overrides,
@@ -117,6 +118,31 @@ describe("SettingsDialog", () => {
     expect(
       screen.getByRole("link", { name: "How to install opencode" }),
     ).toHaveAttribute("href", "https://opencode.ai/docs/");
+  });
+
+  it("says sessions stay deletable when only an optional CLI is missing", async () => {
+    const user = userEvent.setup();
+    cliStatuses.mockResolvedValue([
+      status({
+        agent: "claude",
+        agentName: "Claude Code",
+        program: "claude",
+        optional: true,
+      }),
+      status({}),
+    ]);
+
+    render(<SettingsDialog onClose={() => {}} />);
+    await user.click(screen.getByRole("tab", { name: "Agent CLIs" }));
+
+    expect(
+      await screen.findByText(
+        /Claude Code sessions still go to the Trash, but Marduk can't purge/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Codex sessions are read-only until/),
+    ).toBeInTheDocument();
   });
 
   it("saves a chosen path and reports the change on close", async () => {

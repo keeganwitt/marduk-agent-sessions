@@ -17,6 +17,7 @@ pub struct CliStatus {
     pub install_url: &'static str,
     pub path: Option<String>,
     pub overridden: bool,
+    pub optional: bool,
     pub version: Option<String>,
     pub problem: Option<String>,
 }
@@ -36,6 +37,7 @@ fn status(agent: &'static str, agent_name: &'static str, info: CliInfo) -> CliSt
         install_url: info.install_url,
         path: info.path.map(|path| path.to_string_lossy().into_owned()),
         overridden: info.overridden,
+        optional: info.optional,
         version,
         problem,
     }
@@ -106,7 +108,7 @@ mod tests {
     fn lists_only_agents_that_need_a_cli() {
         let (_dir, _overrides, catalog, _store) = setup();
         let agents: Vec<&str> = catalog.cli_status().iter().map(|(id, _, _)| *id).collect();
-        assert_eq!(agents, vec!["codex", "opencode", "kilo"]);
+        assert_eq!(agents, vec!["claude", "codex", "opencode", "kilo"]);
     }
 
     #[test]
@@ -115,16 +117,7 @@ mod tests {
         let plain = dir.path().join("plain");
         std::fs::write(&plain, "").unwrap();
 
-        assert!(
-            set_path(
-                &catalog,
-                &overrides,
-                &store,
-                "claude",
-                Some("/bin/sh".into())
-            )
-            .is_err()
-        );
+        assert!(set_path(&catalog, &overrides, &store, "pi", Some("/bin/sh".into())).is_err());
         assert!(set_path(&catalog, &overrides, &store, "codex", Some("codex".into())).is_err());
         let error = set_path(
             &catalog,
