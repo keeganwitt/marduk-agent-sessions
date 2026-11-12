@@ -143,6 +143,21 @@ pub fn scan_progress(status: ScanStatus) -> ScanProgressDto {
     }
 }
 
+#[derive(Clone, Serialize, Debug, PartialEq)]
+pub struct TaskProgressDto {
+    pub done: usize,
+    pub total: usize,
+}
+
+impl From<marduk_core::catalog::TaskProgress> for TaskProgressDto {
+    fn from(progress: marduk_core::catalog::TaskProgress) -> Self {
+        Self {
+            done: progress.done,
+            total: progress.total,
+        }
+    }
+}
+
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanResponse {
@@ -516,6 +531,15 @@ impl From<marduk_core::memory::MemoryStore> for MemoryStoreDto {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn task_progress_serializes_done_and_total() {
+        let dto = TaskProgressDto::from(marduk_core::catalog::TaskProgress { done: 1, total: 3 });
+        assert_eq!(
+            serde_json::to_value(dto).unwrap(),
+            serde_json::json!({"done": 1, "total": 3})
+        );
+    }
 
     #[test]
     fn memory_store_carries_files_and_flags() {

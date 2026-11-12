@@ -6,6 +6,7 @@ export const dialogs = defineMessages(
     "dialogs.cancel": "Cancel",
     "dialogs.close": "Close",
     "dialogs.working": "Working…",
+    "dialogs.delete.progress": "Delete progress",
     "dialogs.delete.titleTrash": {
       one: "Move {count} session to the Trash?",
       other: "Move {count} sessions to the Trash?",
@@ -53,6 +54,7 @@ export const dialogs = defineMessages(
       "dialogs.cancel": "Cancelar",
       "dialogs.close": "Cerrar",
       "dialogs.working": "Procesando…",
+      "dialogs.delete.progress": "Progreso de la eliminación",
       "dialogs.delete.titleTrash": {
         one: "¿Mover {count} sesión a la Papelera?",
         other: "¿Mover {count} sesiones a la Papelera?",
@@ -100,6 +102,7 @@ export const dialogs = defineMessages(
       "dialogs.cancel": "Cancelar",
       "dialogs.close": "Fechar",
       "dialogs.working": "Processando…",
+      "dialogs.delete.progress": "Progresso da exclusão",
       "dialogs.delete.titleTrash": {
         one: "Mover {count} sessão para a Lixeira?",
         other: "Mover {count} sessões para a Lixeira?",
@@ -147,6 +150,7 @@ export const dialogs = defineMessages(
       "dialogs.cancel": "Annuler",
       "dialogs.close": "Fermer",
       "dialogs.working": "En cours…",
+      "dialogs.delete.progress": "Progression de la suppression",
       "dialogs.delete.titleTrash": {
         one: "Placer {count} session dans la Corbeille ?",
         other: "Placer {count} sessions dans la Corbeille ?",
@@ -194,6 +198,7 @@ export const dialogs = defineMessages(
       "dialogs.cancel": "Abbrechen",
       "dialogs.close": "Schließen",
       "dialogs.working": "Wird ausgeführt …",
+      "dialogs.delete.progress": "Löschfortschritt",
       "dialogs.delete.titleTrash": {
         one: "{count} Sitzung in den Papierkorb legen?",
         other: "{count} Sitzungen in den Papierkorb legen?",
@@ -241,6 +246,7 @@ export const dialogs = defineMessages(
       "dialogs.cancel": "キャンセル",
       "dialogs.close": "閉じる",
       "dialogs.working": "処理中…",
+      "dialogs.delete.progress": "削除の進行状況",
       "dialogs.delete.titleTrash": {
         other: "{count} 件のセッションをゴミ箱に移動しますか？",
       },
@@ -282,6 +288,7 @@ export const dialogs = defineMessages(
       "dialogs.cancel": "취소",
       "dialogs.close": "닫기",
       "dialogs.working": "처리 중…",
+      "dialogs.delete.progress": "삭제 진행률",
       "dialogs.delete.titleTrash": {
         other: "세션 {count}개를 휴지통으로 이동할까요?",
       },
@@ -323,6 +330,7 @@ export const dialogs = defineMessages(
       "dialogs.cancel": "取消",
       "dialogs.close": "关闭",
       "dialogs.working": "正在处理…",
+      "dialogs.delete.progress": "删除进度",
       "dialogs.delete.titleTrash": {
         other: "将 {count} 个会话移到废纸篓？",
       },
@@ -361,6 +369,7 @@ export const dialogs = defineMessages(
       "dialogs.cancel": "Отмена",
       "dialogs.close": "Закрыть",
       "dialogs.working": "Выполняется…",
+      "dialogs.delete.progress": "Ход удаления",
       "dialogs.delete.titleTrash": {
         one: "Переместить {count} сессию в Корзину?",
         few: "Переместить {count} сессии в Корзину?",

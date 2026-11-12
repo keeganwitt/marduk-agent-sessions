@@ -15,6 +15,39 @@ pub struct ScanStatus {
     pub agent: &'static str,
 }
 
+/// How far a delete or archive of `total` sessions has got.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TaskProgress {
+    pub done: usize,
+    pub total: usize,
+}
+
+struct TaskCounter<'a> {
+    total: usize,
+    done: std::cell::Cell<usize>,
+    report: &'a dyn Fn(TaskProgress),
+}
+
+impl<'a> TaskCounter<'a> {
+    fn start(total: usize, report: &'a dyn Fn(TaskProgress)) -> Self {
+        report(TaskProgress { done: 0, total });
+        Self {
+            total,
+            done: std::cell::Cell::new(0),
+            report,
+        }
+    }
+
+    fn advance(&self) {
+        let done = self.done.get() + 1;
+        self.done.set(done);
+        (self.report)(TaskProgress {
+            done,
+            total: self.total,
+        });
+    }
+}
+
 const REPORT_INTERVAL: Duration = Duration::from_millis(50);
 
 /// One agent's share of the overall progress, capped at its estimate.
@@ -380,7 +413,20 @@ impl Catalog {
         backend: &dyn DeleteBackend,
         now: SystemTime,
     ) -> Vec<(String, DeleteOutcome)> {
+        self.delete_with_progress(uids, backend, now, &|_| {})
+    }
+
+    /// Deletes like [`Catalog::delete`], reporting how many sessions are finished before the
+    /// first and after each one.
+    pub fn delete_with_progress(
+        &self,
+        uids: &[String],
+        backend: &dyn DeleteBackend,
+        now: SystemTime,
+        report: &dyn Fn(TaskProgress),
+    ) -> Vec<(String, DeleteOutcome)> {
         let mut snapshot = self.snapshot.lock().unwrap();
+        let progress = TaskCounter::start(uids.len(), report);
         uids.iter()
             .map(|uid| {
                 let outcome = match snapshot.get(uid) {
@@ -401,6 +447,7 @@ impl Catalog {
                 ) {
                     snapshot.remove(uid);
                 }
+                progress.advance();
                 (uid.clone(), outcome)
             })
             .collect()
@@ -463,7 +510,20 @@ impl Catalog {
         backend: &dyn DeleteBackend,
         now: SystemTime,
     ) -> Vec<(String, ArchiveOutcome)> {
+        self.toggle_archive_with_progress(uids, backend, now, &|_| {})
+    }
+
+    /// Archives like [`Catalog::toggle_archive`], reporting how many sessions are finished
+    /// before the first and after each one.
+    pub fn toggle_archive_with_progress(
+        &self,
+        uids: &[String],
+        backend: &dyn DeleteBackend,
+        now: SystemTime,
+        report: &dyn Fn(TaskProgress),
+    ) -> Vec<(String, ArchiveOutcome)> {
         let mut snapshot = self.snapshot.lock().unwrap();
+        let progress = TaskCounter::start(uids.len(), report);
         uids.iter()
             .map(|uid| {
                 let outcome = match snapshot.get(uid) {
@@ -481,6 +541,7 @@ impl Catalog {
                 if matches!(outcome, ArchiveOutcome::Done { .. }) {
                     snapshot.remove(uid);
                 }
+                progress.advance();
                 (uid.clone(), outcome)
             })
             .collect()
@@ -602,6 +663,30 @@ mod tests {
         assert!(
             matches!(&second[0].1, DeleteOutcome::Refused { reason } if reason.contains("not in the current scan"))
         );
+    }
+
+    #[test]
+    fn delete_and_archive_report_each_finished_session() {
+        let (_root, catalog) = catalog_with_old_pi_session();
+        let scans = catalog.scan();
+        let uids = vec![uid(&scans[0].sessions[0]), "missing".to_string()];
+        let expected = vec![
+            TaskProgress { done: 0, total: 2 },
+            TaskProgress { done: 1, total: 2 },
+            TaskProgress { done: 2, total: 2 },
+        ];
+
+        let reports = Mutex::new(Vec::new());
+        catalog.toggle_archive_with_progress(&uids, &NoopTrash, SystemTime::now(), &|p| {
+            reports.lock().unwrap().push(p)
+        });
+        assert_eq!(*reports.lock().unwrap(), expected);
+
+        reports.lock().unwrap().clear();
+        catalog.delete_with_progress(&uids, &NoopTrash, SystemTime::now(), &|p| {
+            reports.lock().unwrap().push(p)
+        });
+        assert_eq!(*reports.lock().unwrap(), expected);
     }
 
     /// Records what it was asked to trash, and actually removes it so later checks see that.

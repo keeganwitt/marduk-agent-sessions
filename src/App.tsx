@@ -66,6 +66,7 @@ import {
   type ProjectPurge,
   type ScanProgress,
   type ScanResponse,
+  type TaskProgress,
   type SessionRow,
 } from "./lib/types";
 import "./App.css";
@@ -159,7 +160,7 @@ function BusyIndicator({
   overlay = false,
 }: {
   label: string;
-  progress: ScanProgress | null;
+  progress: ScanProgress | TaskProgress | null;
   overlay?: boolean;
 }) {
   const { t } = useI18n();
@@ -180,11 +181,15 @@ function BusyIndicator({
           className="scan-progress"
           max={100}
           value={percent}
-          aria-label={t("app.scanProgress")}
+          aria-label={
+            progress && "agent" in progress
+              ? t("app.scanProgress")
+              : t("app.archiveProgress")
+          }
         />
       )}
       <span>
-        {progress?.agent
+        {progress && "agent" in progress && progress.agent
           ? t("app.scanningAgent", { agent: progress.agent })
           : label}
         {percent !== null && ` ${percent}%`}
@@ -201,7 +206,9 @@ export default function App() {
     t("app.scanning"),
   );
   const busy = activity !== null;
-  const [progress, setProgress] = useState<ScanProgress | null>(null);
+  const [progress, setProgress] = useState<ScanProgress | TaskProgress | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState(EMPTY_FILTER);
   const [addedFilters, setAddedFilters] = useState<OptionalFilter[]>([]);
@@ -222,6 +229,9 @@ export default function App() {
   const [purgeOffers, setPurgeOffers] = useState<ProjectPurge[]>([]);
   const [view, setView] = useState<"sessions" | "memory">("sessions");
   const [deleting, setDeleting] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState<TaskProgress | null>(
+    null,
+  );
   const [notice, setNotice] = useState<Notice | null>(null);
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -431,8 +441,17 @@ export default function App() {
     purges: ProjectPurge[],
   ) => {
     setDeleting(true);
+    const total = uids.length + memoryFolders.length + purges.length;
+    let followUpsDone = 0;
+    const advanceFollowUp = () => {
+      followUpsDone += 1;
+      setDeleteProgress({ done: uids.length + followUpsDone, total });
+    };
+    setDeleteProgress({ done: 0, total });
     try {
-      const outcome = await deleteSessions(uids);
+      const outcome = await deleteSessions(uids, (progress) =>
+        setDeleteProgress({ done: progress.done, total }),
+      );
       const removed = new Set(
         outcome
           .filter(
@@ -460,6 +479,7 @@ export default function App() {
         } catch (caught) {
           memoryProblems.push(errorMessage(caught));
         }
+        advanceFollowUp();
       }
       let purged = 0;
       for (const purge of purges) {
@@ -469,6 +489,7 @@ export default function App() {
         } catch (caught) {
           memoryProblems.push(errorMessage(caught));
         }
+        advanceFollowUp();
       }
       const result = deleteNotice(outcome, t);
       setNotice({
@@ -490,14 +511,16 @@ export default function App() {
       setError(errorMessage(caught));
     } finally {
       setDeleting(false);
+      setDeleteProgress(null);
     }
   };
 
   const runArchive = async (uids: string[]) => {
     setActivity(t("app.updatingArchive"));
     setError(null);
+    setProgress(null);
     try {
-      const outcome = await toggleArchive(uids);
+      const outcome = await toggleArchive(uids, setProgress);
       setNotice(archiveNotice(outcome, t));
     } catch (caught) {
       setError(errorMessage(caught));
@@ -848,6 +871,7 @@ export default function App() {
           memory={memoryOffers}
           purges={purgeOffers}
           busy={deleting}
+          progress={deleteProgress}
           onConfirm={(uids, folders, purges) =>
             void confirmDelete(uids, folders, purges)
           }

@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import * as ipc from "./lib/ipc";
 import type {
+  ArchiveResult,
+  DeleteResult,
   MemoryStore,
   PreviewItem,
   ScanResponse,
@@ -260,7 +262,7 @@ describe("App", () => {
       within(dialog).getByRole("button", { name: "Move to Trash" }),
     );
 
-    expect(deleteSessions).toHaveBeenCalledWith(["u1"]);
+    expect(deleteSessions).toHaveBeenCalledWith(["u1"], expect.any(Function));
     expect(
       await screen.findByText(/Moved 1 session to the Trash/),
     ).toBeInTheDocument();
@@ -704,7 +706,7 @@ describe("App", () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Archive 1" }));
 
-    expect(toggleArchive).toHaveBeenCalledWith(["a"]);
+    expect(toggleArchive).toHaveBeenCalledWith(["a"], expect.any(Function));
     expect(await screen.findByText("Archived 1 session.")).toBeInTheDocument();
     expect(scanSessions).toHaveBeenCalledTimes(2);
   });
@@ -749,7 +751,7 @@ describe("App", () => {
       within(dialog).getByRole("button", { name: "Move to Trash" }),
     );
 
-    expect(deleteSessions).toHaveBeenCalledWith(["a"]);
+    expect(deleteSessions).toHaveBeenCalledWith(["a"], expect.any(Function));
   });
 
   it("sorts by a column, reverses on the second click, and clears on the third", async () => {
@@ -1538,6 +1540,100 @@ describe("App", () => {
     expect(screen.getByText(/Scanning Codex… 25%/)).toBeInTheDocument();
     finish(scanOf(makeSession({ uid: "u1", title: "Loaded" })));
     expect(await screen.findByText("Loaded")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("shows archive progress while the agent's command runs", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({
+          uid: "a",
+          title: "Live",
+          agent: "codex",
+          canArchive: true,
+        }),
+        makeSession({
+          uid: "b",
+          title: "Also",
+          agent: "codex",
+          canArchive: true,
+        }),
+      ),
+    );
+    let report: (progress: { done: number; total: number }) => void = () => {};
+    let finish: (value: ArchiveResult[]) => void = () => {};
+    toggleArchive.mockImplementationOnce((_uids, onProgress) => {
+      report = onProgress!;
+      return new Promise((resolve) => (finish = resolve));
+    });
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: "Select all sessions shown",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Archive 2" }));
+    act(() => report({ done: 1, total: 2 }));
+
+    expect(
+      screen.getByRole("progressbar", { name: "Archive progress" }),
+    ).toHaveAttribute("value", "50");
+    expect(screen.getByText(/Updating archive… 50%/)).toBeInTheDocument();
+    finish([]);
+    expect(await screen.findByText("Live")).toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("shows delete progress in the dialog, counting the follow-up memory trash", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "u1", title: "Old work" })),
+    );
+    previewDelete.mockResolvedValue([
+      previewOf({ uid: "u1", title: "Old work" }),
+    ]);
+    vi.mocked(ipc.memoryLeftBehind).mockResolvedValue([memoryStore({})]);
+    let report: (progress: { done: number; total: number }) => void = () => {};
+    let finish: (value: DeleteResult[]) => void = () => {};
+    deleteSessions.mockImplementationOnce((_uids, onProgress) => {
+      report = onProgress!;
+      return new Promise((resolve) => (finish = resolve));
+    });
+    let finishMemory: () => void = () => {};
+    vi.mocked(ipc.trashMemory).mockImplementationOnce(
+      () => new Promise((resolve) => (finishMemory = () => resolve())),
+    );
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Old work" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: /memory for ~\/old/ }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Move to Trash" }),
+    );
+
+    const bar = within(dialog).getByRole("progressbar", {
+      name: "Delete progress",
+    });
+    expect(bar).toHaveAttribute("max", "2");
+    expect(bar).toHaveAttribute("value", "0");
+    act(() => report({ done: 1, total: 1 }));
+    expect(bar).toHaveAttribute("value", "1");
+    finish([{ status: "trashed", uid: "u1", files: [] }]);
+    await vi.waitFor(() => expect(ipc.trashMemory).toHaveBeenCalled());
+    finishMemory();
+    expect(
+      await screen.findByText(/Moved 1 session to the Trash/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 

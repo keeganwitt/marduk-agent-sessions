@@ -984,6 +984,16 @@ button.child-count:hover {
 
 progress.scan-progress {
   width: min(360px, 60%);
+}
+
+progress.task-progress {
+  flex: 1;
+  align-self: center;
+  margin-right: 8px;
+}
+
+progress.scan-progress,
+progress.task-progress {
   height: 8px;
   appearance: none;
   border: none;
@@ -992,18 +1002,21 @@ progress.scan-progress {
   overflow: hidden;
 }
 
-progress.scan-progress::-webkit-progress-bar {
+progress.scan-progress::-webkit-progress-bar,
+progress.task-progress::-webkit-progress-bar {
   background: var(--border);
   border-radius: 4px;
 }
 
-progress.scan-progress::-webkit-progress-value {
+progress.scan-progress::-webkit-progress-value,
+progress.task-progress::-webkit-progress-value {
   background: var(--accent);
   border-radius: 4px;
   transition: width 0.15s linear;
 }
 
-progress.scan-progress::-moz-progress-bar {
+progress.scan-progress::-moz-progress-bar,
+progress.task-progress::-moz-progress-bar {
   background: var(--accent);
 }
 
