@@ -22,6 +22,7 @@ import { applyTheme, isTheme } from "./lib/theme";
 import { nextColor } from "./lib/labels";
 import { buildTree } from "./lib/tree";
 import { useI18n, type I18n } from "./i18n/context";
+import type { MessageKey } from "./i18n/messages";
 import {
   applyLabels,
   createLabel,
@@ -202,9 +203,7 @@ export default function App() {
   const { t, bytes } = useI18n();
   const [scan, setScan] = useState<ScanResponse | null>(null);
   const [scannedAt, setScannedAt] = useState(() => new Date());
-  const [activity, setActivity] = useState<string | null>(() =>
-    t("app.scanning"),
-  );
+  const [activity, setActivity] = useState<MessageKey | null>("app.scanning");
   const busy = activity !== null;
   const [progress, setProgress] = useState<ScanProgress | TaskProgress | null>(
     null,
@@ -304,7 +303,7 @@ export default function App() {
   );
 
   const rescan = useCallback(async () => {
-    setActivity(t("app.scanning"));
+    setActivity("app.scanning");
     setError(null);
     setProgress(null);
     await finishScan(scanSessions(setProgress));
@@ -516,7 +515,7 @@ export default function App() {
   };
 
   const runArchive = async (uids: string[]) => {
-    setActivity(t("app.updatingArchive"));
+    setActivity("app.updatingArchive");
     setError(null);
     setProgress(null);
     try {
@@ -785,7 +784,7 @@ export default function App() {
         </div>
       )}
       {!scan && activity && (
-        <BusyIndicator label={activity} progress={progress} />
+        <BusyIndicator label={t(activity)} progress={progress} />
       )}
       {scan && view === "memory" && (
         <MemoryView
@@ -799,7 +798,7 @@ export default function App() {
       {scan && view === "sessions" && (
         <div className="table-area" aria-busy={busy}>
           {activity && (
-            <BusyIndicator label={activity} progress={progress} overlay />
+            <BusyIndicator label={t(activity)} progress={progress} overlay />
           )}
           <div className="table-wrap">
             <SessionTable

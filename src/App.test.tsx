@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { I18nContext, makeI18n } from "./i18n/context";
 import * as ipc from "./lib/ipc";
 import type {
   ArchiveResult,
@@ -1515,6 +1516,21 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Rescan" })).toBeDisabled();
     finish(scanOf(makeSession({ uid: "u1", title: "Loaded" })));
     expect(await screen.findByRole("button", { name: "Rescan" })).toBeEnabled();
+  });
+
+  it("translates the scanning message when the language loads mid-scan", () => {
+    scanSessions.mockReturnValueOnce(new Promise(() => {}));
+    const inLocale = (locale: "de" | "en") => (
+      <I18nContext.Provider value={makeI18n(locale, locale, () => {})}>
+        <App />
+      </I18nContext.Provider>
+    );
+
+    const { rerender } = render(inLocale("de"));
+    expect(screen.queryByText("Scanning sessions…")).not.toBeInTheDocument();
+    rerender(inLocale("en"));
+
+    expect(screen.getByText("Scanning sessions…")).toBeInTheDocument();
   });
 
   it("shows a progress bar with the agent being scanned once progress arrives", async () => {

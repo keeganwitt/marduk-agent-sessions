@@ -132,4 +132,20 @@ describe("I18nProvider", () => {
     expect(ipc.saveLanguage).toHaveBeenCalledWith("de");
     expect(localStorage.getItem("marduk.language")).toBe("de");
   });
+
+  it("replaces a stale cached language with the saved one", async () => {
+    localStorage.setItem("marduk.language", "de");
+    vi.mocked(ipc.getLanguage).mockResolvedValue("fr");
+    render(
+      <I18nProvider>
+        <Probe />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "Sprache" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Langue" }, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(localStorage.getItem("marduk.language")).toBe("fr");
+  });
 });
