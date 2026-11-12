@@ -995,7 +995,13 @@ progress.scan-progress {
 progress.task-progress {
   flex: 1;
   align-self: center;
+}
+
+.task-percent {
+  align-self: center;
   margin-right: 8px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 progress.scan-progress,

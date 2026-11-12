@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  progressPercent,
   ageInDays,
   formatAge,
   formatBytes,
@@ -69,5 +70,17 @@ describe("tildePath", () => {
     expect(tildePath("/Users/me", "/Users/me")).toBe("~");
     expect(tildePath("/Users/meg/x", "/Users/me")).toBe("/Users/meg/x");
     expect(tildePath("/x", "")).toBe("/x");
+  });
+});
+
+describe("progressPercent", () => {
+  it("rounds down and stays within 100", () => {
+    expect(progressPercent({ done: 1, total: 3 })).toBe(33);
+    expect(progressPercent({ done: 5, total: 4 })).toBe(100);
+  });
+
+  it("is null without a total", () => {
+    expect(progressPercent(null)).toBeNull();
+    expect(progressPercent({ done: 0, total: 0 })).toBeNull();
   });
 });

@@ -1642,8 +1642,10 @@ describe("App", () => {
     });
     expect(bar).toHaveAttribute("max", "2");
     expect(bar).toHaveAttribute("value", "0");
+    expect(within(dialog).getByText("0%")).toBeInTheDocument();
     act(() => report({ done: 1, total: 1 }));
     expect(bar).toHaveAttribute("value", "1");
+    expect(within(dialog).getByText("50%")).toBeInTheDocument();
     finish([{ status: "trashed", uid: "u1", files: [] }]);
     await vi.waitFor(() => expect(ipc.trashMemory).toHaveBeenCalled());
     finishMemory();

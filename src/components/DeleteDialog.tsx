@@ -1,7 +1,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 
 import { useI18n } from "../i18n/context";
-import { tildePath } from "../lib/format";
+import { progressPercent, tildePath } from "../lib/format";
 import type {
   MemoryStore,
   PreviewItem,
@@ -56,6 +56,7 @@ export function DeleteDialog({
   homeDir,
 }: Props) {
   const { t } = useI18n();
+  const percent = progressPercent(progress);
   const [memoryChosen, setMemoryChosen] = useState<ReadonlySet<string>>(
     new Set(),
   );
@@ -230,13 +231,16 @@ export function DeleteDialog({
           )}
         </div>
         <div className="actions">
-          {busy && progress && progress.total > 0 && (
-            <progress
-              className="task-progress"
-              max={progress.total}
-              value={progress.done}
-              aria-label={t("dialogs.delete.progress")}
-            />
+          {busy && progress && percent !== null && (
+            <>
+              <progress
+                className="task-progress"
+                max={progress.total}
+                value={progress.done}
+                aria-label={t("dialogs.delete.progress")}
+              />
+              <span className="task-percent">{percent}%</span>
+            </>
           )}
           <button type="button" onClick={onCancel} disabled={busy}>
             {t("dialogs.cancel")}

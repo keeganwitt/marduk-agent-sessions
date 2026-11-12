@@ -19,6 +19,7 @@ import {
 } from "./lib/filter";
 import { rangeBetween, withLeftoverSubagents } from "./lib/selection";
 import { applyTheme, isTheme } from "./lib/theme";
+import { progressPercent } from "./lib/format";
 import { nextColor } from "./lib/labels";
 import { buildTree } from "./lib/tree";
 import { useI18n, type I18n } from "./i18n/context";
@@ -165,10 +166,7 @@ function BusyIndicator({
   overlay?: boolean;
 }) {
   const { t } = useI18n();
-  const percent =
-    progress && progress.total > 0
-      ? Math.min(100, Math.floor((progress.done / progress.total) * 100))
-      : null;
+  const percent = progressPercent(progress);
   return (
     <div
       className={overlay ? "busy overlay-busy" : "busy"}
