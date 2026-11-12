@@ -226,10 +226,16 @@ button.danger:not(:disabled) {
   background: var(--surface);
 }
 
+/* As tall as the selects beside it, so the × next to it lines up with theirs. */
 .filters .filter-toggle {
   flex-direction: row;
   align-items: center;
-  min-height: 30px;
+  height: 28px;
+}
+
+.filters .filter-toggle input {
+  margin: 0;
+  padding: 0;
 }
 
 .filters input[type="number"] {
