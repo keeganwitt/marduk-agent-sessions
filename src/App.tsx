@@ -31,6 +31,8 @@ import {
   getUiPref,
   listLabels,
   memoryLeftBehind,
+  purgeProject,
+  purgesLeftBehind,
   openProjectDir,
   previewDelete,
   revealSessionFile,
@@ -61,6 +63,7 @@ import {
   type PreviewItem,
   type Label,
   type MemoryStore,
+  type ProjectPurge,
   type ScanProgress,
   type ScanResponse,
   type SessionRow,
@@ -216,6 +219,7 @@ export default function App() {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
   const [memoryOffers, setMemoryOffers] = useState<MemoryStore[]>([]);
+  const [purgeOffers, setPurgeOffers] = useState<ProjectPurge[]>([]);
   const [view, setView] = useState<"sessions" | "memory">("sessions");
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -406,16 +410,26 @@ export default function App() {
       const ready = items
         .filter((item) => item.refusedReason === null)
         .map((item) => item.uid);
-      setMemoryOffers(
-        ready.length > 0 ? await memoryLeftBehind(ready).catch(() => []) : [],
-      );
+      const [memory, purges] =
+        ready.length > 0
+          ? await Promise.all([
+              memoryLeftBehind(ready).catch(() => []),
+              purgesLeftBehind(ready).catch(() => []),
+            ])
+          : [[], []];
+      setMemoryOffers(memory);
+      setPurgeOffers(purges);
       setPreview(items);
     } catch (caught) {
       setError(errorMessage(caught));
     }
   };
 
-  const confirmDelete = async (uids: string[], memoryFolders: string[]) => {
+  const confirmDelete = async (
+    uids: string[],
+    memoryFolders: string[],
+    purges: ProjectPurge[],
+  ) => {
     setDeleting(true);
     try {
       const outcome = await deleteSessions(uids);
@@ -447,6 +461,15 @@ export default function App() {
           memoryProblems.push(errorMessage(caught));
         }
       }
+      let purged = 0;
+      for (const purge of purges) {
+        try {
+          await purgeProject(purge.agent, purge.folder);
+          purged += 1;
+        } catch (caught) {
+          memoryProblems.push(errorMessage(caught));
+        }
+      }
       const result = deleteNotice(outcome, t);
       setNotice({
         text: [
@@ -454,6 +477,7 @@ export default function App() {
           memoryTrashed === 1 && t("app.notice.memoryOne"),
           memoryTrashed > 1 &&
             t("app.notice.memoryMany", { count: memoryTrashed }),
+          purged > 0 && t("app.notice.purged", { count: purged }),
         ]
           .filter(Boolean)
           .join(" "),
@@ -822,8 +846,11 @@ export default function App() {
         <DeleteDialog
           items={preview}
           memory={memoryOffers}
+          purges={purgeOffers}
           busy={deleting}
-          onConfirm={(uids, folders) => void confirmDelete(uids, folders)}
+          onConfirm={(uids, folders, purges) =>
+            void confirmDelete(uids, folders, purges)
+          }
           onCancel={() => setPreview(null)}
           onReveal={(path) => void reveal(path)}
           homeDir={scan?.homeDir ?? ""}

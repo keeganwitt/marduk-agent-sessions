@@ -140,6 +140,15 @@ export interface MemoryStore {
   canTrash: boolean;
 }
 
+/** A project's leftover agent data, which the agent's own command can permanently purge. */
+export interface ProjectPurge {
+  agent: string;
+  agentName: string;
+  folder: string;
+  projectDir: string;
+  command: string;
+}
+
 export interface AgentHelp {
   id: string;
   name: string;
@@ -156,6 +165,8 @@ export interface CliStatus {
   installUrl: string;
   path: string | null;
   overridden: boolean;
+  /** Sessions can still be deleted without it. */
+  optional: boolean;
   version: string | null;
   problem: string | null;
 }

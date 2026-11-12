@@ -55,6 +55,10 @@ export const app = defineMessages(
     "app.notice.nothingChanged": "Nothing was changed.",
     "app.notice.memoryOne": "Moved its project's memory to the Trash.",
     "app.notice.memoryMany": "Moved {count} projects' memory to the Trash.",
+    "app.notice.purged": {
+      one: "Purged {count} project's data.",
+      other: "Purged {count} projects' data.",
+    },
   },
   {
     es: {
@@ -113,6 +117,10 @@ export const app = defineMessages(
         "Se movió la memoria de su proyecto a la Papelera.",
       "app.notice.memoryMany":
         "Se movió la memoria de {count} proyectos a la Papelera.",
+      "app.notice.purged": {
+        one: "Se purgaron los datos de {count} proyecto.",
+        other: "Se purgaron los datos de {count} proyectos.",
+      },
     },
     "pt-BR": {
       "app.view": "Visualização",
@@ -169,6 +177,10 @@ export const app = defineMessages(
       "app.notice.memoryOne": "A memória do projeto foi movida para a Lixeira.",
       "app.notice.memoryMany":
         "A memória de {count} projetos foi movida para a Lixeira.",
+      "app.notice.purged": {
+        one: "Os dados de {count} projeto foram limpos.",
+        other: "Os dados de {count} projetos foram limpos.",
+      },
     },
     fr: {
       "app.view": "Vue",
@@ -226,6 +238,10 @@ export const app = defineMessages(
         "La mémoire de son projet a été déplacée dans la Corbeille.",
       "app.notice.memoryMany":
         "La mémoire de {count} projets a été déplacée dans la Corbeille.",
+      "app.notice.purged": {
+        one: "Les données de {count} projet ont été purgées.",
+        other: "Les données de {count} projets ont été purgées.",
+      },
     },
     de: {
       "app.view": "Ansicht",
@@ -283,6 +299,10 @@ export const app = defineMessages(
         "Das Gedächtnis des Projekts wurde in den Papierkorb verschoben.",
       "app.notice.memoryMany":
         "Das Gedächtnis von {count} Projekten wurde in den Papierkorb verschoben.",
+      "app.notice.purged": {
+        one: "Die Daten von {count} Projekt wurden bereinigt.",
+        other: "Die Daten von {count} Projekten wurden bereinigt.",
+      },
     },
     ja: {
       "app.view": "表示",
@@ -332,6 +352,7 @@ export const app = defineMessages(
       "app.notice.memoryOne": "プロジェクトのメモリをゴミ箱に移動しました。",
       "app.notice.memoryMany":
         "{count} 件のプロジェクトのメモリをゴミ箱に移動しました。",
+      "app.notice.purged": "{count} 件のプロジェクトのデータを消去しました。",
     },
     ko: {
       "app.view": "보기",
@@ -380,6 +401,7 @@ export const app = defineMessages(
       "app.notice.memoryOne": "프로젝트의 메모리를 휴지통으로 옮겼습니다.",
       "app.notice.memoryMany":
         "프로젝트 {count}개의 메모리를 휴지통으로 옮겼습니다.",
+      "app.notice.purged": "프로젝트 {count}개의 데이터를 정리했습니다.",
     },
     "zh-Hans": {
       "app.view": "视图",
@@ -415,6 +437,7 @@ export const app = defineMessages(
       "app.notice.nothingChanged": "未更改任何内容。",
       "app.notice.memoryOne": "已将其项目的记忆移到废纸篓。",
       "app.notice.memoryMany": "已将 {count} 个项目的记忆移到废纸篓。",
+      "app.notice.purged": "已清除 {count} 个项目的数据。",
     },
     ru: {
       "app.view": "Вид",
@@ -493,6 +516,12 @@ export const app = defineMessages(
         few: "Память {count} проектов перемещена в Корзину.",
         many: "Память {count} проектов перемещена в Корзину.",
         other: "Память {count} проекта перемещена в Корзину.",
+      },
+      "app.notice.purged": {
+        one: "Очищены данные {count} проекта.",
+        few: "Очищены данные {count} проектов.",
+        many: "Очищены данные {count} проектов.",
+        other: "Очищены данные {count} проекта.",
       },
     },
   },

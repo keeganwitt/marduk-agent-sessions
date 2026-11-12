@@ -26,6 +26,8 @@ vi.mock("./lib/ipc", () => ({
   saveUiPref: vi.fn(),
   listMemory: vi.fn(),
   memoryLeftBehind: vi.fn(),
+  purgesLeftBehind: vi.fn(),
+  purgeProject: vi.fn(),
   readMemoryFile: vi.fn(),
   trashMemory: vi.fn(),
   revealMemory: vi.fn(),
@@ -128,6 +130,7 @@ describe("App", () => {
     vi.mocked(ipc.listLabels).mockResolvedValue([]);
     vi.mocked(ipc.fileDetails).mockResolvedValue([]);
     vi.mocked(ipc.memoryLeftBehind).mockResolvedValue([]);
+    vi.mocked(ipc.purgesLeftBehind).mockResolvedValue([]);
     vi.mocked(ipc.getColumns).mockResolvedValue(null);
     vi.mocked(ipc.saveColumns).mockResolvedValue();
     vi.mocked(ipc.getUiPref).mockResolvedValue(null);
@@ -352,6 +355,110 @@ describe("App", () => {
       await screen.findByText(/Moved 1 session to the Trash/),
     ).toBeInTheDocument();
     expect(ipc.trashMemory).not.toHaveBeenCalled();
+  });
+
+  it("purges the emptied project only when its offer is checked", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "u1", title: "Last one" })),
+    );
+    previewDelete.mockResolvedValue([
+      previewOf({ uid: "u1", title: "Last one" }),
+    ]);
+    deleteSessions.mockResolvedValue([
+      { status: "trashed", uid: "u1", files: ["/p/u1.jsonl"] },
+    ]);
+    const order: string[] = [];
+    vi.mocked(ipc.memoryLeftBehind).mockResolvedValue([memoryStore({})]);
+    vi.mocked(ipc.trashMemory).mockImplementation(async () => {
+      order.push("memory");
+    });
+    vi.mocked(ipc.purgesLeftBehind).mockResolvedValue([
+      {
+        agent: "claude",
+        agentName: "Claude Code",
+        folder: "/c/projects/-Users-me-old",
+        projectDir: "/Users/me/old",
+        command: "/bin/claude purge -y /Users/me/old",
+      },
+    ]);
+    vi.mocked(ipc.purgeProject).mockImplementation(async () => {
+      order.push("purge");
+      return "/bin/claude purge -y /Users/me/old";
+    });
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Last one" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(ipc.purgesLeftBehind).toHaveBeenCalledWith(["u1"]);
+    const offer = within(dialog).getByRole("checkbox", {
+      name: /Also purge Claude Code's data for ~\/old/,
+    });
+    expect(offer).not.toBeChecked();
+    expect(dialog).toHaveTextContent("/bin/claude purge -y /Users/me/old");
+    expect(dialog).toHaveTextContent(
+      "permanently deletes the project's memory",
+    );
+    await user.click(offer);
+    await user.click(
+      within(dialog).getByRole("checkbox", {
+        name: /Also move Claude Code's memory/,
+      }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Move to Trash" }),
+    );
+
+    expect(
+      await screen.findByText(/Purged 1 project's data/),
+    ).toBeInTheDocument();
+    expect(ipc.purgeProject).toHaveBeenCalledWith(
+      "claude",
+      "/c/projects/-Users-me-old",
+    );
+    expect(order).toEqual(["memory", "purge"]);
+  });
+
+  it("doesn't purge when the purge offer isn't checked", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "u1", title: "Last one" })),
+    );
+    previewDelete.mockResolvedValue([
+      previewOf({ uid: "u1", title: "Last one" }),
+    ]);
+    deleteSessions.mockResolvedValue([
+      { status: "trashed", uid: "u1", files: ["/p/u1.jsonl"] },
+    ]);
+    vi.mocked(ipc.purgesLeftBehind).mockResolvedValue([
+      {
+        agent: "claude",
+        agentName: "Claude Code",
+        folder: "/c/projects/-Users-me-old",
+        projectDir: "/Users/me/old",
+        command: "/bin/claude purge -y /Users/me/old",
+      },
+    ]);
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Last one" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Move to Trash",
+      }),
+    );
+
+    expect(
+      await screen.findByText(/Moved 1 session to the Trash/),
+    ).toBeInTheDocument();
+    expect(ipc.purgeProject).not.toHaveBeenCalled();
   });
 
   it("switches to the Memory tab", async () => {

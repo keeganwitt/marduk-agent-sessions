@@ -2039,6 +2039,7 @@ dependencies = [
  "chrono",
  "dirs",
  "filetime",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",

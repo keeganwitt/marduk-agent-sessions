@@ -32,6 +32,8 @@ pub struct CliInfo {
     pub path: Option<PathBuf>,
     /// True when `path` came from the user's setting rather than auto-detection.
     pub overridden: bool,
+    /// True when sessions can still be deleted without it.
+    pub optional: bool,
 }
 
 enum Source {
@@ -49,6 +51,7 @@ pub struct Cli {
     install_url: &'static str,
     source: Source,
     resolved: Mutex<Option<(PathBuf, bool)>>,
+    optional: bool,
 }
 
 impl Cli {
@@ -58,6 +61,7 @@ impl Cli {
             install_url,
             source: Source::Fixed(path),
             resolved: Mutex::new(None),
+            optional: false,
         };
         cli.refresh();
         cli
@@ -74,9 +78,18 @@ impl Cli {
             install_url,
             source: Source::Detect { agent, overrides },
             resolved: Mutex::new(None),
+            optional: false,
         };
         cli.refresh();
         cli
+    }
+
+    /// Marks the CLI as needed only for extras, not for deleting sessions.
+    pub fn optional(self) -> Self {
+        Self {
+            optional: true,
+            ..self
+        }
     }
 
     pub fn refresh(&self) {
@@ -104,6 +117,7 @@ impl Cli {
             program: self.program,
             install_url: self.install_url,
             overridden: resolved.as_ref().is_some_and(|(_, overridden)| *overridden),
+            optional: self.optional,
             path: resolved.map(|(path, _)| path),
         }
     }
@@ -213,6 +227,7 @@ mod tests {
                 install_url: "https://example.com",
                 path: Some(PathBuf::from("/opt/fake/bin/tool")),
                 overridden: true,
+                optional: false,
             }
         );
 
@@ -226,13 +241,12 @@ mod tests {
     fn version_reads_the_first_line_and_reports_failures() {
         let dir = tempfile::tempdir().unwrap();
         let script = dir.path().join("fake-cli");
-        std::fs::write(&script, "#!/bin/sh\necho\necho fake-cli 1.2.3\necho more\n").unwrap();
+        crate::agents::write_test_executable(
+            &script,
+            "#!/bin/sh\necho\necho fake-cli 1.2.3\necho more\n",
+        );
         let failing = dir.path().join("broken-cli");
-        std::fs::write(&failing, "#!/bin/sh\nexit 2\n").unwrap();
-        for path in [&script, &failing] {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        crate::agents::write_test_executable(&failing, "#!/bin/sh\nexit 2\n");
 
         assert_eq!(version(&script).unwrap(), "fake-cli 1.2.3");
         assert!(version(&failing).unwrap_err().contains("failed"));

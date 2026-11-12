@@ -11,6 +11,7 @@ import type {
   Label,
   MemoryStore,
   PreviewItem,
+  ProjectPurge,
   ScanProgress,
   ScanResponse,
   Transcript,
@@ -81,6 +82,15 @@ export function listMemory(): Promise<MemoryStore[]> {
 
 export function memoryLeftBehind(uids: string[]): Promise<MemoryStore[]> {
   return invoke("memory_left_behind", { uids });
+}
+
+export function purgesLeftBehind(uids: string[]): Promise<ProjectPurge[]> {
+  return invoke("purges_left_behind", { uids });
+}
+
+/** Permanent. Refused while the project still has sessions. Returns the command that ran. */
+export function purgeProject(agent: string, folder: string): Promise<string> {
+  return invoke("purge_project", { agent, folder });
 }
 
 export function readMemoryFile(path: string): Promise<string> {

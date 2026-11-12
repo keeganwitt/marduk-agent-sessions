@@ -11,8 +11,8 @@ use tauri::Manager;
 
 use cli_settings::CliStatus;
 use dto::{
-    AgentHelpDto, ArchiveResult, DeleteResult, MemoryStoreDto, PreviewItem, ScanResponse,
-    TranscriptDto,
+    AgentHelpDto, ArchiveResult, DeleteResult, MemoryStoreDto, PreviewItem, ProjectPurgeDto,
+    ScanResponse, TranscriptDto,
 };
 use settings::SettingsStore;
 
@@ -214,6 +214,34 @@ async fn memory_left_behind(
             .collect()
     })
     .await
+}
+
+#[tauri::command]
+async fn purges_left_behind(
+    catalog: tauri::State<'_, SharedCatalog>,
+    uids: Vec<String>,
+) -> Result<Vec<ProjectPurgeDto>, String> {
+    let catalog = catalog.inner().clone();
+    blocking(move || {
+        catalog
+            .purges_left_behind(&uids)
+            .into_iter()
+            .map(|purge| dto::project_purge(&catalog, purge))
+            .collect()
+    })
+    .await
+}
+
+/// Permanently purges a project with its agent's own command; refused while it has sessions.
+#[tauri::command]
+async fn purge_project(
+    catalog: tauri::State<'_, SharedCatalog>,
+    agent: String,
+    folder: String,
+) -> Result<String, String> {
+    let catalog = catalog.inner().clone();
+    blocking(move || catalog.purge_project(&agent, std::path::Path::new(&folder), &SystemBackend))
+        .await?
 }
 
 #[tauri::command]
@@ -485,6 +513,8 @@ pub fn run() {
             agent_help,
             list_memory,
             memory_left_behind,
+            purges_left_behind,
+            purge_project,
             read_memory_file,
             trash_memory,
             reveal_memory,

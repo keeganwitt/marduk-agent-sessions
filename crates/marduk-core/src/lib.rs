@@ -12,7 +12,8 @@ pub mod session;
 pub mod transcript;
 
 pub use adapter::{
-    AgentAdapter, AgentCommand, DeletePlan, Mechanics, NoProgress, ScanProgress, ScanResult,
+    AgentAdapter, AgentCommand, DeletePlan, Mechanics, NoProgress, ProjectPurge, ScanProgress,
+    ScanResult,
 };
 pub use agents::cli::{CliInfo, CliOverrides};
 pub use delete::{ArchiveOutcome, DeleteBackend, DeleteOutcome, PlannedDelete, SystemBackend};
@@ -31,7 +32,7 @@ pub fn default_adapters(
     overrides: std::sync::Arc<agents::cli::CliOverrides>,
 ) -> Vec<Box<dyn AgentAdapter>> {
     vec![
-        Box::new(agents::claude::ClaudeAdapter::from_env()),
+        Box::new(agents::claude::ClaudeAdapter::from_env(overrides.clone())),
         Box::new(agents::codex::CodexAdapter::from_env(overrides.clone())),
         Box::new(agents::copilot::CopilotAdapter::from_env()),
         Box::new(agents::opencode::OpenCodeAdapter::from_env(

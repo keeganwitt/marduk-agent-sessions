@@ -1221,19 +1221,16 @@ mod tests {
 
     #[cfg(unix)]
     fn fake_cli(dir: &Path, export: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let export_file = dir.join("export.json");
         std::fs::write(&export_file, export).unwrap();
         let script = dir.join("opencode");
-        std::fs::write(
+        crate::agents::write_test_executable(
             &script,
-            format!(
+            &format!(
                 "#!/bin/sh\n[ \"$1 $2 $3\" = \"session export ses_new\" ] || exit 9\ncat '{}'\n",
                 export_file.display()
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         script
     }
 
@@ -1441,7 +1438,6 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn kilo_export_fallback_reads_the_older_message_shape() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         kilo_db(dir.path(), "kilo.db")
             .execute_batch(
@@ -1460,15 +1456,13 @@ mod tests {
         )
         .unwrap();
         let script = dir.path().join("kilo");
-        std::fs::write(
+        crate::agents::write_test_executable(
             &script,
-            format!(
+            &format!(
                 "#!/bin/sh\n[ \"$1 $2\" = \"export ses_x\" ] || exit 9\ncat '{}'\n",
                 export.display()
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         let adapter = kilo(dir.path(), Some(script));
         let session = adapter.scan().sessions.remove(0);
 
