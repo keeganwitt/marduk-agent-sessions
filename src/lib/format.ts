@@ -83,3 +83,12 @@ export function tildePath(path: string, homeDir: string): string {
       path.startsWith(`${home}\\`));
   return inHome ? `~${path.slice(home.length)}` : path;
 }
+
+/** Whole percent finished, or null while the total is unknown. */
+export function progressPercent(
+  progress: { done: number; total: number } | null,
+): number | null {
+  return progress && progress.total > 0
+    ? Math.min(100, Math.floor((progress.done / progress.total) * 100))
+    : null;
+}

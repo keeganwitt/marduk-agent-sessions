@@ -24,6 +24,7 @@ export const app = defineMessages(
     "app.scanningAgent": "Scanning {agent}…",
     "app.updatingArchive": "Updating archive…",
     "app.scanProgress": "Scan progress",
+    "app.archiveProgress": "Archive progress",
     "app.unreadable": "Some {agent} sessions couldn't be read: {errors}",
     "app.unreadableMore": " (and {count} more)",
     "app.dismiss": "Dismiss",
@@ -83,6 +84,7 @@ export const app = defineMessages(
       "app.scanningAgent": "Escaneando {agent}…",
       "app.updatingArchive": "Actualizando el archivo…",
       "app.scanProgress": "Progreso del escaneo",
+      "app.archiveProgress": "Progreso del archivado",
       "app.unreadable":
         "No se pudieron leer algunas sesiones de {agent}: {errors}",
       "app.unreadableMore": " (y {count} más)",
@@ -144,6 +146,7 @@ export const app = defineMessages(
       "app.scanningAgent": "Verificando {agent}…",
       "app.updatingArchive": "Atualizando o arquivo…",
       "app.scanProgress": "Progresso da verificação",
+      "app.archiveProgress": "Progresso do arquivamento",
       "app.unreadable":
         "Não foi possível ler algumas sessões do {agent}: {errors}",
       "app.unreadableMore": " (e mais {count})",
@@ -204,6 +207,7 @@ export const app = defineMessages(
       "app.scanningAgent": "Analyse de {agent}…",
       "app.updatingArchive": "Mise à jour de l'archive…",
       "app.scanProgress": "Progression de l'analyse",
+      "app.archiveProgress": "Progression de l'archivage",
       "app.unreadable":
         "Certaines sessions {agent} n'ont pas pu être lues : {errors}",
       "app.unreadableMore": " (et {count} de plus)",
@@ -265,6 +269,7 @@ export const app = defineMessages(
       "app.scanningAgent": "{agent} wird gescannt…",
       "app.updatingArchive": "Archiv wird aktualisiert…",
       "app.scanProgress": "Scanfortschritt",
+      "app.archiveProgress": "Archivierungsfortschritt",
       "app.unreadable":
         "Einige {agent}-Sitzungen konnten nicht gelesen werden: {errors}",
       "app.unreadableMore": " (und {count} weitere)",
@@ -325,6 +330,7 @@ export const app = defineMessages(
       "app.scanningAgent": "{agent} をスキャン中…",
       "app.updatingArchive": "アーカイブを更新中…",
       "app.scanProgress": "スキャンの進行状況",
+      "app.archiveProgress": "アーカイブの進行状況",
       "app.unreadable":
         "{agent} の一部のセッションを読み取れませんでした: {errors}",
       "app.unreadableMore": "（ほか {count} 件）",
@@ -375,6 +381,7 @@ export const app = defineMessages(
       "app.scanningAgent": "{agent} 스캔 중…",
       "app.updatingArchive": "보관 상태를 업데이트하는 중…",
       "app.scanProgress": "스캔 진행률",
+      "app.archiveProgress": "보관 진행률",
       "app.unreadable": "일부 {agent} 세션을 읽을 수 없습니다: {errors}",
       "app.unreadableMore": " (외 {count}개)",
       "app.dismiss": "닫기",
@@ -424,6 +431,7 @@ export const app = defineMessages(
       "app.scanningAgent": "正在扫描 {agent}…",
       "app.updatingArchive": "正在更新归档…",
       "app.scanProgress": "扫描进度",
+      "app.archiveProgress": "归档进度",
       "app.unreadable": "无法读取部分 {agent} 会话：{errors}",
       "app.unreadableMore": "（还有 {count} 个）",
       "app.dismiss": "关闭",
@@ -468,6 +476,7 @@ export const app = defineMessages(
       "app.scanningAgent": "Сканирование {agent}…",
       "app.updatingArchive": "Обновление архива…",
       "app.scanProgress": "Ход сканирования",
+      "app.archiveProgress": "Ход архивации",
       "app.unreadable":
         "Не удалось прочитать некоторые сессии {agent}: {errors}",
       "app.unreadableMore": " (и ещё {count})",

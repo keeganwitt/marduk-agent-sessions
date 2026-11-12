@@ -17,7 +17,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     getLanguage().then(
-      (saved) => isLanguagePref(saved) && setLanguageState(saved),
+      (saved) => {
+        if (!isLanguagePref(saved)) return;
+        setLanguageState(saved);
+        cacheLanguage(saved);
+      },
       () => {},
     );
   }, []);

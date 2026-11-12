@@ -124,6 +124,7 @@ async fn delete_sessions(
     catalog: tauri::State<'_, SharedCatalog>,
     labels: tauri::State<'_, SharedLabels>,
     uids: Vec<String>,
+    on_progress: tauri::ipc::Channel<dto::TaskProgressDto>,
 ) -> Result<Vec<DeleteResult>, String> {
     let catalog = catalog.inner().clone();
     let labels = labels.inner().clone();
@@ -132,7 +133,10 @@ async fn delete_sessions(
             .iter()
             .filter_map(|uid| Some((uid.clone(), catalog.key_of(uid)?)))
             .collect();
-        let outcomes = catalog.delete(&uids, &SystemBackend, SystemTime::now());
+        let outcomes =
+            catalog.delete_with_progress(&uids, &SystemBackend, SystemTime::now(), &|progress| {
+                let _ = on_progress.send(progress.into());
+            });
         let deleted: Vec<String> = outcomes
             .iter()
             .filter(|(_, outcome)| {
@@ -157,11 +161,14 @@ async fn delete_sessions(
 async fn toggle_archive(
     catalog: tauri::State<'_, SharedCatalog>,
     uids: Vec<String>,
+    on_progress: tauri::ipc::Channel<dto::TaskProgressDto>,
 ) -> Result<Vec<ArchiveResult>, String> {
     let catalog = catalog.inner().clone();
     blocking(move || {
         catalog
-            .toggle_archive(&uids, &SystemBackend, SystemTime::now())
+            .toggle_archive_with_progress(&uids, &SystemBackend, SystemTime::now(), &|progress| {
+                let _ = on_progress.send(progress.into());
+            })
             .into_iter()
             .map(|(uid, outcome)| dto::archive_result(uid, outcome))
             .collect()

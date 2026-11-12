@@ -1,8 +1,13 @@
 import { Fragment, useState, type ReactNode } from "react";
 
 import { useI18n } from "../i18n/context";
-import { tildePath } from "../lib/format";
-import type { MemoryStore, PreviewItem, ProjectPurge } from "../lib/types";
+import { progressPercent, tildePath } from "../lib/format";
+import type {
+  MemoryStore,
+  PreviewItem,
+  ProjectPurge,
+  TaskProgress,
+} from "../lib/types";
 import { FileList } from "./FileList";
 
 interface Props {
@@ -12,6 +17,8 @@ interface Props {
   /** Projects this delete empties, which the agent's own command could purge afterwards. */
   purges?: ProjectPurge[];
   busy: boolean;
+  /** How far the confirmed delete has got, while it runs. */
+  progress?: TaskProgress | null;
   onConfirm: (
     uids: string[],
     memoryFolders: string[],
@@ -42,12 +49,14 @@ export function DeleteDialog({
   memory = [],
   purges = [],
   busy,
+  progress = null,
   onConfirm,
   onCancel,
   onReveal,
   homeDir,
 }: Props) {
   const { t } = useI18n();
+  const percent = progressPercent(progress);
   const [memoryChosen, setMemoryChosen] = useState<ReadonlySet<string>>(
     new Set(),
   );
@@ -222,6 +231,17 @@ export function DeleteDialog({
           )}
         </div>
         <div className="actions">
+          {busy && progress && percent !== null && (
+            <>
+              <progress
+                className="task-progress"
+                max={progress.total}
+                value={progress.done}
+                aria-label={t("dialogs.delete.progress")}
+              />
+              <span className="task-percent">{percent}%</span>
+            </>
+          )}
           <button type="button" onClick={onCancel} disabled={busy}>
             {t("dialogs.cancel")}
           </button>

@@ -14,6 +14,7 @@ import type {
   ProjectPurge,
   ScanProgress,
   ScanResponse,
+  TaskProgress,
   Transcript,
 } from "./types";
 
@@ -29,12 +30,32 @@ export function previewDelete(uids: string[]): Promise<PreviewItem[]> {
   return invoke("preview_delete", { uids });
 }
 
-export function deleteSessions(uids: string[]): Promise<DeleteResult[]> {
-  return invoke("delete_sessions", { uids });
+function progressChannel(
+  onProgress: (progress: TaskProgress) => void,
+): Channel<TaskProgress> {
+  const channel = new Channel<TaskProgress>();
+  channel.onmessage = onProgress;
+  return channel;
 }
 
-export function toggleArchive(uids: string[]): Promise<ArchiveResult[]> {
-  return invoke("toggle_archive", { uids });
+export function deleteSessions(
+  uids: string[],
+  onProgress: (progress: TaskProgress) => void = () => {},
+): Promise<DeleteResult[]> {
+  return invoke("delete_sessions", {
+    uids,
+    onProgress: progressChannel(onProgress),
+  });
+}
+
+export function toggleArchive(
+  uids: string[],
+  onProgress: (progress: TaskProgress) => void = () => {},
+): Promise<ArchiveResult[]> {
+  return invoke("toggle_archive", {
+    uids,
+    onProgress: progressChannel(onProgress),
+  });
 }
 
 export function revealSessionFile(path: string): Promise<void> {

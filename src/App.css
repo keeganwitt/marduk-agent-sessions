@@ -226,10 +226,16 @@ button.danger:not(:disabled) {
   background: var(--surface);
 }
 
+/* As tall as the selects beside it, so the × next to it lines up with theirs. */
 .filters .filter-toggle {
   flex-direction: row;
   align-items: center;
-  min-height: 30px;
+  height: 28px;
+}
+
+.filters .filter-toggle input {
+  margin: 0;
+  padding: 0;
 }
 
 .filters input[type="number"] {
@@ -984,6 +990,22 @@ button.child-count:hover {
 
 progress.scan-progress {
   width: min(360px, 60%);
+}
+
+progress.task-progress {
+  flex: 1;
+  align-self: center;
+}
+
+.task-percent {
+  align-self: center;
+  margin-right: 8px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+progress.scan-progress,
+progress.task-progress {
   height: 8px;
   appearance: none;
   border: none;
@@ -992,18 +1014,21 @@ progress.scan-progress {
   overflow: hidden;
 }
 
-progress.scan-progress::-webkit-progress-bar {
+progress.scan-progress::-webkit-progress-bar,
+progress.task-progress::-webkit-progress-bar {
   background: var(--border);
   border-radius: 4px;
 }
 
-progress.scan-progress::-webkit-progress-value {
+progress.scan-progress::-webkit-progress-value,
+progress.task-progress::-webkit-progress-value {
   background: var(--accent);
   border-radius: 4px;
   transition: width 0.15s linear;
 }
 
-progress.scan-progress::-moz-progress-bar {
+progress.scan-progress::-moz-progress-bar,
+progress.task-progress::-moz-progress-bar {
   background: var(--accent);
 }
 
@@ -1770,12 +1795,20 @@ button.ghost:hover {
 
 .filter-menu [role="menuitem"] {
   padding: 5px 10px;
+  white-space: nowrap;
   border: none;
   border-radius: 5px;
   background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.filter-menu hr {
+  width: 100%;
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--border);
 }
 
 .filter-menu [role="menuitem"]:hover,

@@ -2,8 +2,11 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { I18nContext, makeI18n } from "./i18n/context";
 import * as ipc from "./lib/ipc";
 import type {
+  ArchiveResult,
+  DeleteResult,
   MemoryStore,
   PreviewItem,
   ScanResponse,
@@ -260,7 +263,7 @@ describe("App", () => {
       within(dialog).getByRole("button", { name: "Move to Trash" }),
     );
 
-    expect(deleteSessions).toHaveBeenCalledWith(["u1"]);
+    expect(deleteSessions).toHaveBeenCalledWith(["u1"], expect.any(Function));
     expect(
       await screen.findByText(/Moved 1 session to the Trash/),
     ).toBeInTheDocument();
@@ -704,7 +707,7 @@ describe("App", () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Archive 1" }));
 
-    expect(toggleArchive).toHaveBeenCalledWith(["a"]);
+    expect(toggleArchive).toHaveBeenCalledWith(["a"], expect.any(Function));
     expect(await screen.findByText("Archived 1 session.")).toBeInTheDocument();
     expect(scanSessions).toHaveBeenCalledTimes(2);
   });
@@ -749,7 +752,7 @@ describe("App", () => {
       within(dialog).getByRole("button", { name: "Move to Trash" }),
     );
 
-    expect(deleteSessions).toHaveBeenCalledWith(["a"]);
+    expect(deleteSessions).toHaveBeenCalledWith(["a"], expect.any(Function));
   });
 
   it("sorts by a column, reverses on the second click, and clears on the third", async () => {
@@ -984,7 +987,14 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "+ Filter" }));
     await user.click(screen.getByRole("menuitem", { name: "Status" }));
-    expect(ipc.saveUiPref).toHaveBeenCalledWith("filters", ["archive"]);
+    expect(ipc.saveUiPref).toHaveBeenCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "minSizeMb",
+      "label",
+      "project",
+      "archive",
+    ]);
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Status" }),
       "archived",
@@ -1001,7 +1011,13 @@ describe("App", () => {
       screen.getByRole("button", { name: "Remove the Status filter" }),
     );
     expect(screen.queryByRole("combobox", { name: "Status" })).toBeNull();
-    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("filters", []);
+    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "minSizeMb",
+      "label",
+      "project",
+    ]);
   });
 
   it("finds sessions with deleted parents through an optional filter", async () => {
@@ -1030,7 +1046,14 @@ describe("App", () => {
       screen.getByRole("checkbox", { name: "Parent deleted" }),
     ).toBeChecked();
     expect(rowTitles()).toEqual(["OrphanParent deleted"]);
-    expect(ipc.saveUiPref).toHaveBeenCalledWith("filters", ["parentMissing"]);
+    expect(ipc.saveUiPref).toHaveBeenCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "minSizeMb",
+      "label",
+      "project",
+      "parentMissing",
+    ]);
 
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(screen.getByText("Parent")).toBeInTheDocument();
@@ -1047,11 +1070,19 @@ describe("App", () => {
     expect(
       screen.queryByRole("checkbox", { name: "Parent deleted" }),
     ).toBeNull();
-    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("filters", []);
+    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "minSizeMb",
+      "label",
+      "project",
+    ]);
   });
 
-  it("restores optional filters added in an earlier session", async () => {
-    vi.mocked(ipc.getUiPref).mockResolvedValue(["archive", "bogus"]);
+  it("restores the filters chosen in an earlier session", async () => {
+    vi.mocked(ipc.getUiPref).mockImplementation(async (key) =>
+      key === "shownFilters" ? ["archive", "bogus"] : null,
+    );
     scanSessions.mockResolvedValue(scanOf(makeSession({ title: "A session" })));
 
     render(<App />);
@@ -1059,6 +1090,104 @@ describe("App", () => {
     expect(
       await screen.findByRole("combobox", { name: "Status" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Agent" })).toBeNull();
+  });
+
+  it("keeps the default filters for optional filters saved by an older version", async () => {
+    vi.mocked(ipc.getUiPref).mockImplementation(async (key) =>
+      key === "filters" ? ["archive"] : null,
+    );
+    scanSessions.mockResolvedValue(scanOf(makeSession({ title: "A session" })));
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("combobox", { name: "Status" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Agent" })).toBeInTheDocument();
+  });
+
+  it("removes a default filter into + Filter and restores the defaults", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "a", title: "Small one", sizeBytes: 1024 }),
+        makeSession({ uid: "b", title: "Big one", sizeBytes: 5 * 1024 * 1024 }),
+      ),
+    );
+
+    render(<App />);
+    await screen.findByText("Small one");
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    expect(
+      screen.queryByRole("menuitem", { name: "Restore default filters" }),
+    ).toBeNull();
+    await user.keyboard("{Escape}");
+
+    await user.type(
+      screen.getByRole("spinbutton", { name: "Min size (MB)" }),
+      "1",
+    );
+    expect(rowTitles()).toHaveLength(1);
+    await user.click(
+      screen.getByRole("button", { name: "Remove the Min size (MB) filter" }),
+    );
+    expect(
+      screen.queryByRole("spinbutton", { name: "Min size (MB)" }),
+    ).toBeNull();
+    expect(rowTitles()).toHaveLength(2);
+    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "label",
+      "project",
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    expect(
+      screen.getByRole("menuitem", { name: "Min size (MB)" }),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("menuitem", { name: "Restore default filters" }),
+    );
+    expect(
+      screen.getByRole("spinbutton", { name: "Min size (MB)" }),
+    ).toHaveValue(null);
+    expect(ipc.saveUiPref).toHaveBeenLastCalledWith("shownFilters", [
+      "agent",
+      "olderThanDays",
+      "minSizeMb",
+      "label",
+      "project",
+    ]);
+  });
+
+  it("shows a removed Project filter again when a row narrows to its project", async () => {
+    const user = userEvent.setup();
+    vi.mocked(ipc.getUiPref).mockImplementation(async (key) =>
+      key === "shownFilters" ? ["agent"] : null,
+    );
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "a", title: "In app", projectDir: "/work/app" }),
+        makeSession({ uid: "b", title: "In other", projectDir: "/work/other" }),
+      ),
+    );
+
+    render(<App />);
+    await screen.findByText("In app");
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("combobox", { name: "Project" })).toBeNull(),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Show only sessions in /work/app" }),
+    );
+
+    expect(
+      screen.getByRole("combobox", { name: "Project" }),
+    ).toBeInTheDocument();
+    expect(rowTitles()).toEqual(["In app"]);
   });
 
   it("opens the help dialog", async () => {
@@ -1515,6 +1644,21 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "Rescan" })).toBeEnabled();
   });
 
+  it("translates the scanning message when the language loads mid-scan", () => {
+    scanSessions.mockReturnValueOnce(new Promise(() => {}));
+    const inLocale = (locale: "de" | "en") => (
+      <I18nContext.Provider value={makeI18n(locale, locale, () => {})}>
+        <App />
+      </I18nContext.Provider>
+    );
+
+    const { rerender } = render(inLocale("de"));
+    expect(screen.queryByText("Scanning sessions…")).not.toBeInTheDocument();
+    rerender(inLocale("en"));
+
+    expect(screen.getByText("Scanning sessions…")).toBeInTheDocument();
+  });
+
   it("shows a progress bar with the agent being scanned once progress arrives", async () => {
     let report: (progress: {
       done: number;
@@ -1538,6 +1682,102 @@ describe("App", () => {
     expect(screen.getByText(/Scanning Codex… 25%/)).toBeInTheDocument();
     finish(scanOf(makeSession({ uid: "u1", title: "Loaded" })));
     expect(await screen.findByText("Loaded")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("shows archive progress while the agent's command runs", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({
+          uid: "a",
+          title: "Live",
+          agent: "codex",
+          canArchive: true,
+        }),
+        makeSession({
+          uid: "b",
+          title: "Also",
+          agent: "codex",
+          canArchive: true,
+        }),
+      ),
+    );
+    let report: (progress: { done: number; total: number }) => void = () => {};
+    let finish: (value: ArchiveResult[]) => void = () => {};
+    toggleArchive.mockImplementationOnce((_uids, onProgress) => {
+      report = onProgress!;
+      return new Promise((resolve) => (finish = resolve));
+    });
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: "Select all sessions shown",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Archive 2" }));
+    act(() => report({ done: 1, total: 2 }));
+
+    expect(
+      screen.getByRole("progressbar", { name: "Archive progress" }),
+    ).toHaveAttribute("value", "50");
+    expect(screen.getByText(/Updating archive… 50%/)).toBeInTheDocument();
+    finish([]);
+    expect(await screen.findByText("Live")).toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("shows delete progress in the dialog, counting the follow-up memory trash", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "u1", title: "Old work" })),
+    );
+    previewDelete.mockResolvedValue([
+      previewOf({ uid: "u1", title: "Old work" }),
+    ]);
+    vi.mocked(ipc.memoryLeftBehind).mockResolvedValue([memoryStore({})]);
+    let report: (progress: { done: number; total: number }) => void = () => {};
+    let finish: (value: DeleteResult[]) => void = () => {};
+    deleteSessions.mockImplementationOnce((_uids, onProgress) => {
+      report = onProgress!;
+      return new Promise((resolve) => (finish = resolve));
+    });
+    let finishMemory: () => void = () => {};
+    vi.mocked(ipc.trashMemory).mockImplementationOnce(
+      () => new Promise((resolve) => (finishMemory = () => resolve())),
+    );
+
+    render(<App />);
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select Old work" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: /memory for ~\/old/ }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Move to Trash" }),
+    );
+
+    const bar = within(dialog).getByRole("progressbar", {
+      name: "Delete progress",
+    });
+    expect(bar).toHaveAttribute("max", "2");
+    expect(bar).toHaveAttribute("value", "0");
+    expect(within(dialog).getByText("0%")).toBeInTheDocument();
+    act(() => report({ done: 1, total: 1 }));
+    expect(bar).toHaveAttribute("value", "1");
+    expect(within(dialog).getByText("50%")).toBeInTheDocument();
+    finish([{ status: "trashed", uid: "u1", files: [] }]);
+    await vi.waitFor(() => expect(ipc.trashMemory).toHaveBeenCalled());
+    finishMemory();
+    expect(
+      await screen.findByText(/Moved 1 session to the Trash/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 

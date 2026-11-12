@@ -9,19 +9,22 @@ import { TranscriptPanel } from "./components/TranscriptPanel";
 import { Filters } from "./components/Filters";
 import { ColumnsMenu, SessionTable } from "./components/SessionTable";
 import {
+  DEFAULT_FILTERS,
   EMPTY_FILTER,
   agentTypeOptions,
-  isOptionalFilter,
   modelOptions,
   projectOptions,
+  restoreChosenFilters,
   sessionMatcher,
-  type OptionalFilter,
+  type FilterId,
 } from "./lib/filter";
 import { rangeBetween, withLeftoverSubagents } from "./lib/selection";
 import { applyTheme, isTheme } from "./lib/theme";
+import { progressPercent } from "./lib/format";
 import { nextColor } from "./lib/labels";
 import { buildTree } from "./lib/tree";
 import { useI18n, type I18n } from "./i18n/context";
+import type { MessageKey } from "./i18n/messages";
 import {
   applyLabels,
   createLabel,
@@ -66,6 +69,7 @@ import {
   type ProjectPurge,
   type ScanProgress,
   type ScanResponse,
+  type TaskProgress,
   type SessionRow,
 } from "./lib/types";
 import "./App.css";
@@ -159,14 +163,11 @@ function BusyIndicator({
   overlay = false,
 }: {
   label: string;
-  progress: ScanProgress | null;
+  progress: ScanProgress | TaskProgress | null;
   overlay?: boolean;
 }) {
   const { t } = useI18n();
-  const percent =
-    progress && progress.total > 0
-      ? Math.min(100, Math.floor((progress.done / progress.total) * 100))
-      : null;
+  const percent = progressPercent(progress);
   return (
     <div
       className={overlay ? "busy overlay-busy" : "busy"}
@@ -180,11 +181,15 @@ function BusyIndicator({
           className="scan-progress"
           max={100}
           value={percent}
-          aria-label={t("app.scanProgress")}
+          aria-label={
+            progress && "agent" in progress
+              ? t("app.scanProgress")
+              : t("app.archiveProgress")
+          }
         />
       )}
       <span>
-        {progress?.agent
+        {progress && "agent" in progress && progress.agent
           ? t("app.scanningAgent", { agent: progress.agent })
           : label}
         {percent !== null && ` ${percent}%`}
@@ -197,24 +202,26 @@ export default function App() {
   const { t, bytes } = useI18n();
   const [scan, setScan] = useState<ScanResponse | null>(null);
   const [scannedAt, setScannedAt] = useState(() => new Date());
-  const [activity, setActivity] = useState<string | null>(() =>
-    t("app.scanning"),
-  );
+  const [activity, setActivity] = useState<MessageKey | null>("app.scanning");
   const busy = activity !== null;
-  const [progress, setProgress] = useState<ScanProgress | null>(null);
+  const [progress, setProgress] = useState<ScanProgress | TaskProgress | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState(EMPTY_FILTER);
-  const [addedFilters, setAddedFilters] = useState<OptionalFilter[]>([]);
+  const [chosenFilters, setChosenFilters] = useState<FilterId[]>([
+    ...DEFAULT_FILTERS,
+  ]);
   useEffect(() => {
-    getUiPref("filters").then(
-      (saved) =>
-        Array.isArray(saved) && setAddedFilters(saved.filter(isOptionalFilter)),
+    Promise.all([getUiPref("shownFilters"), getUiPref("filters")]).then(
+      ([saved, legacyAdded]) =>
+        setChosenFilters(restoreChosenFilters(saved, legacyAdded)),
       () => {},
     );
   }, []);
-  const changeAddedFilters = useCallback((added: OptionalFilter[]) => {
-    setAddedFilters(added);
-    void saveUiPref("filters", added).catch(() => {});
+  const changeChosenFilters = useCallback((chosen: FilterId[]) => {
+    setChosenFilters(chosen);
+    void saveUiPref("shownFilters", chosen).catch(() => {});
   }, []);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
@@ -222,6 +229,9 @@ export default function App() {
   const [purgeOffers, setPurgeOffers] = useState<ProjectPurge[]>([]);
   const [view, setView] = useState<"sessions" | "memory">("sessions");
   const [deleting, setDeleting] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState<TaskProgress | null>(
+    null,
+  );
   const [notice, setNotice] = useState<Notice | null>(null);
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -294,11 +304,11 @@ export default function App() {
   );
 
   const rescan = useCallback(async () => {
-    setActivity(t("app.scanning"));
+    setActivity("app.scanning");
     setError(null);
     setProgress(null);
     await finishScan(scanSessions(setProgress));
-  }, [finishScan, t]);
+  }, [finishScan]);
 
   useEffect(() => {
     void finishScan(scanSessions(setProgress));
@@ -431,8 +441,17 @@ export default function App() {
     purges: ProjectPurge[],
   ) => {
     setDeleting(true);
+    const total = uids.length + memoryFolders.length + purges.length;
+    let followUpsDone = 0;
+    const advanceFollowUp = () => {
+      followUpsDone += 1;
+      setDeleteProgress({ done: uids.length + followUpsDone, total });
+    };
+    setDeleteProgress({ done: 0, total });
     try {
-      const outcome = await deleteSessions(uids);
+      const outcome = await deleteSessions(uids, (progress) =>
+        setDeleteProgress({ done: progress.done, total }),
+      );
       const removed = new Set(
         outcome
           .filter(
@@ -460,6 +479,7 @@ export default function App() {
         } catch (caught) {
           memoryProblems.push(errorMessage(caught));
         }
+        advanceFollowUp();
       }
       let purged = 0;
       for (const purge of purges) {
@@ -469,6 +489,7 @@ export default function App() {
         } catch (caught) {
           memoryProblems.push(errorMessage(caught));
         }
+        advanceFollowUp();
       }
       const result = deleteNotice(outcome, t);
       setNotice({
@@ -490,14 +511,16 @@ export default function App() {
       setError(errorMessage(caught));
     } finally {
       setDeleting(false);
+      setDeleteProgress(null);
     }
   };
 
   const runArchive = async (uids: string[]) => {
-    setActivity(t("app.updatingArchive"));
+    setActivity("app.updatingArchive");
     setError(null);
+    setProgress(null);
     try {
-      const outcome = await toggleArchive(uids);
+      const outcome = await toggleArchive(uids, setProgress);
       setNotice(archiveNotice(outcome, t));
     } catch (caught) {
       setError(errorMessage(caught));
@@ -755,14 +778,14 @@ export default function App() {
             homeDir={scan.homeDir}
             filter={filter}
             onChange={setFilter}
-            added={addedFilters}
-            onAddedChange={changeAddedFilters}
+            chosen={chosenFilters}
+            onChosenChange={changeChosenFilters}
           />
           <ColumnsMenu columns={columns} onColumnsChange={setColumns} />
         </div>
       )}
       {!scan && activity && (
-        <BusyIndicator label={activity} progress={progress} />
+        <BusyIndicator label={t(activity)} progress={progress} />
       )}
       {scan && view === "memory" && (
         <MemoryView
@@ -776,7 +799,7 @@ export default function App() {
       {scan && view === "sessions" && (
         <div className="table-area" aria-busy={busy}>
           {activity && (
-            <BusyIndicator label={activity} progress={progress} overlay />
+            <BusyIndicator label={t(activity)} progress={progress} overlay />
           )}
           <div className="table-wrap">
             <SessionTable
@@ -848,6 +871,7 @@ export default function App() {
           memory={memoryOffers}
           purges={purgeOffers}
           busy={deleting}
+          progress={deleteProgress}
           onConfirm={(uids, folders, purges) =>
             void confirmDelete(uids, folders, purges)
           }

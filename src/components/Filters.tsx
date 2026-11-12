@@ -4,12 +4,15 @@ import {
   ALL_AGENT_TYPES,
   ALL_AGENTS,
   ALL_MODELS,
+  DEFAULT_FILTERS,
+  FILTERS,
   EMPTY_FILTER,
+  isDefaultFilterSet,
   isFiltering,
-  shownOptionalFilters,
+  shownFilters,
   type ArchiveFilter,
+  type FilterId,
   type LabelFilter,
-  type OptionalFilter,
   type ProjectOption,
   type SessionFilter,
 } from "../lib/filter";
@@ -26,9 +29,9 @@ interface Props {
   homeDir: string;
   filter: SessionFilter;
   onChange: (filter: SessionFilter) => void;
-  /** Optional filters added with "+ Filter". */
-  added: OptionalFilter[];
-  onAddedChange: (added: OptionalFilter[]) => void;
+  /** Filters chosen for the bar; removed ones come back through "+ Filter". */
+  chosen: FilterId[];
+  onChosenChange: (chosen: FilterId[]) => void;
 }
 
 function parseOptionalNumber(value: string): number | null {
@@ -44,9 +47,12 @@ function parseLabelFilter(value: string): LabelFilter {
 function AddFilterMenu({
   choices,
   onAdd,
+  onReset,
 }: {
-  choices: { id: OptionalFilter; label: string }[];
-  onAdd: (id: OptionalFilter) => void;
+  choices: { id: FilterId; label: string }[];
+  onAdd: (id: FilterId) => void;
+  /** Absent when the bar already shows the default filters. */
+  onReset?: () => void;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -68,7 +74,7 @@ function AddFilterMenu({
     };
   }, [open]);
 
-  if (choices.length === 0) return null;
+  if (choices.length === 0 && !onReset) return null;
   return (
     <div className="menu-anchor add-filter" ref={anchor}>
       <button
@@ -95,13 +101,28 @@ function AddFilterMenu({
               {choice.label}
             </button>
           ))}
+          {onReset && (
+            <>
+              {choices.length > 0 && <hr />}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onReset();
+                  setOpen(false);
+                }}
+              >
+                {t("table.filter.restoreDefaults")}
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-/** An added filter, with a button that removes it and stops it narrowing the list. */
+/** A filter with a button that removes it from the bar and stops it narrowing the list. */
 function Removable({
   label,
   onRemove,
@@ -137,31 +158,110 @@ export function Filters({
   homeDir,
   filter,
   onChange,
-  added,
-  onAddedChange,
+  chosen,
+  onChosenChange,
 }: Props) {
   const { t } = useI18n();
-  const available: { id: OptionalFilter; label: string }[] = [
-    { id: "archive" as const, label: t("table.filter.status") },
-    { id: "parentMissing" as const, label: t("table.badge.parentDeleted") },
-    ...(models.length > 0
-      ? [{ id: "model" as const, label: t("table.filter.model") }]
-      : []),
-    ...(agentTypes.length > 0
-      ? [{ id: "agentType" as const, label: t("table.filter.agentType") }]
-      : []),
-  ];
-  const shown = shownOptionalFilters(added, filter).filter((id) =>
-    available.some((choice) => choice.id === id),
-  );
-  const labelOf = (id: OptionalFilter) =>
-    available.find((choice) => choice.id === id)!.label;
-  const remove = (id: OptionalFilter) => {
-    onAddedChange(added.filter((other) => other !== id));
+  const filterNames: Record<FilterId, string> = {
+    agent: t("table.filter.agent"),
+    olderThanDays: t("table.filter.olderThan"),
+    minSizeMb: t("table.filter.minSize"),
+    label: t("table.filter.label"),
+    project: t("table.filter.project"),
+    archive: t("table.filter.status"),
+    model: t("table.filter.model"),
+    agentType: t("table.filter.agentType"),
+    parentMissing: t("table.badge.parentDeleted"),
+  };
+  const offered = (id: FilterId) =>
+    (id !== "model" || models.length > 0) &&
+    (id !== "agentType" || agentTypes.length > 0);
+  const shown = shownFilters(chosen, filter);
+  const remove = (id: FilterId) => {
+    onChosenChange(chosen.filter((other) => other !== id));
     onChange({ ...filter, [id]: EMPTY_FILTER[id] });
   };
 
-  const optional: Record<OptionalFilter, ReactNode> = {
+  const controls: Record<FilterId, ReactNode> = {
+    agent: (
+      <label>
+        {t("table.filter.agent")}
+        <select
+          value={filter.agent}
+          onChange={(event) =>
+            onChange({ ...filter, agent: event.target.value })
+          }
+        >
+          <option value={ALL_AGENTS}>{t("table.filter.allAgents")}</option>
+          {agents.map((agent) => (
+            <option key={agent.id} value={agent.id}>
+              {agent.name} ({agent.sessionCount})
+            </option>
+          ))}
+        </select>
+      </label>
+    ),
+    olderThanDays: (
+      <label>
+        {t("table.filter.olderThan")}
+        <input
+          type="number"
+          min={0}
+          inputMode="numeric"
+          value={filter.olderThanDays ?? ""}
+          onChange={(event) =>
+            onChange({
+              ...filter,
+              olderThanDays: parseOptionalNumber(event.target.value),
+            })
+          }
+        />
+      </label>
+    ),
+    minSizeMb: (
+      <label>
+        {t("table.filter.minSize")}
+        <input
+          type="number"
+          min={0}
+          step="any"
+          value={filter.minSizeMb ?? ""}
+          onChange={(event) =>
+            onChange({
+              ...filter,
+              minSizeMb: parseOptionalNumber(event.target.value),
+            })
+          }
+        />
+      </label>
+    ),
+    label: (
+      <label>
+        {t("table.filter.label")}
+        <select
+          value={String(filter.label)}
+          onChange={(event) =>
+            onChange({ ...filter, label: parseLabelFilter(event.target.value) })
+          }
+        >
+          <option value="any">{t("table.filter.anyLabel")}</option>
+          <option value="none">{t("table.filter.noLabel")}</option>
+          {labels.map((label) => (
+            <option key={label.id} value={label.id}>
+              {label.name} ({label.count})
+            </option>
+          ))}
+        </select>
+      </label>
+    ),
+    project: (
+      <ProjectFilter
+        options={projects}
+        value={filter.project}
+        homeDir={homeDir}
+        onChange={(project) => onChange({ ...filter, project })}
+      />
+    ),
     parentMissing: (
       <label className="filter-toggle">
         <input
@@ -234,87 +334,25 @@ export function Filters({
 
   return (
     <div className="filters" role="search">
-      <label>
-        {t("table.filter.agent")}
-        <select
-          value={filter.agent}
-          onChange={(event) =>
-            onChange({ ...filter, agent: event.target.value })
-          }
-        >
-          <option value={ALL_AGENTS}>{t("table.filter.allAgents")}</option>
-          {agents.map((agent) => (
-            <option key={agent.id} value={agent.id}>
-              {agent.name} ({agent.sessionCount})
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        {t("table.filter.olderThan")}
-        <input
-          type="number"
-          min={0}
-          inputMode="numeric"
-          value={filter.olderThanDays ?? ""}
-          onChange={(event) =>
-            onChange({
-              ...filter,
-              olderThanDays: parseOptionalNumber(event.target.value),
-            })
-          }
-        />
-      </label>
-      <label>
-        {t("table.filter.minSize")}
-        <input
-          type="number"
-          min={0}
-          step="any"
-          value={filter.minSizeMb ?? ""}
-          onChange={(event) =>
-            onChange({
-              ...filter,
-              minSizeMb: parseOptionalNumber(event.target.value),
-            })
-          }
-        />
-      </label>
-      <label>
-        {t("table.filter.label")}
-        <select
-          value={String(filter.label)}
-          onChange={(event) =>
-            onChange({ ...filter, label: parseLabelFilter(event.target.value) })
-          }
-        >
-          <option value="any">{t("table.filter.anyLabel")}</option>
-          <option value="none">{t("table.filter.noLabel")}</option>
-          {labels.map((label) => (
-            <option key={label.id} value={label.id}>
-              {label.name} ({label.count})
-            </option>
-          ))}
-        </select>
-      </label>
-      <ProjectFilter
-        options={projects}
-        value={filter.project}
-        homeDir={homeDir}
-        onChange={(project) => onChange({ ...filter, project })}
-      />
       {shown.map((id) => (
-        <Removable key={id} label={labelOf(id)} onRemove={() => remove(id)}>
-          {optional[id]}
+        <Removable key={id} label={filterNames[id]} onRemove={() => remove(id)}>
+          {controls[id]}
         </Removable>
       ))}
       <AddFilterMenu
-        choices={available.filter((choice) => !shown.includes(choice.id))}
+        choices={FILTERS.filter((id) => offered(id) && !shown.includes(id)).map(
+          (id) => ({ id, label: filterNames[id] }),
+        )}
         onAdd={(id) => {
-          onAddedChange([...added, id]);
+          onChosenChange([...chosen, id]);
           if (id === "parentMissing")
             onChange({ ...filter, parentMissing: true });
         }}
+        onReset={
+          isDefaultFilterSet(chosen)
+            ? undefined
+            : () => onChosenChange([...DEFAULT_FILTERS])
+        }
       />
       {isFiltering(filter) && (
         <button

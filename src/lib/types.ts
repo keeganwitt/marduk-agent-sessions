@@ -46,9 +46,13 @@ export interface Label {
   count: number;
 }
 
-export interface ScanProgress {
+/** How many of a delete's or archive's sessions are finished. */
+export interface TaskProgress {
   done: number;
   total: number;
+}
+
+export interface ScanProgress extends TaskProgress {
   /** The agent being scanned, empty once the scan has finished. */
   agent: string;
 }
