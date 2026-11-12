@@ -134,11 +134,9 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn saves_applies_and_clears_a_cli_path() {
-        use std::os::unix::fs::PermissionsExt;
         let (dir, overrides, catalog, store) = setup();
         let fake = dir.path().join("codex");
-        std::fs::write(&fake, "#!/bin/sh\necho codex-cli 9.9.9\n").unwrap();
-        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        marduk_core::agents::write_test_executable(&fake, "#!/bin/sh\necho codex-cli 9.9.9\n");
 
         let result = set_path(
             &catalog,

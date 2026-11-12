@@ -1467,8 +1467,6 @@ mod tests {
     #[cfg(unix)]
     impl PurgeFixture {
         fn new(dry_run_dir: Option<&str>, extra_projects: &[&str]) -> Self {
-            use std::os::unix::fs::PermissionsExt;
-
             let root = tempfile::tempdir().unwrap();
             let config = root.path().join("config");
             let app = "/work/app".to_string();
@@ -1490,12 +1488,12 @@ mod tests {
                 .map(str::to_string)
                 .unwrap_or_else(|| folder.to_string_lossy().into_owned());
             let cli = root.path().join("claude");
-            fs::write(
+            crate::agents::write_test_executable(
                 &cli,
-                format!("#!/bin/sh\necho \"Purge plan for $3:\"\necho\necho \"  dir:    {dir}\"\n"),
-            )
-            .unwrap();
-            fs::set_permissions(&cli, fs::Permissions::from_mode(0o755)).unwrap();
+                &format!(
+                    "#!/bin/sh\necho \"Purge plan for $3:\"\necho\necho \"  dir:    {dir}\"\n"
+                ),
+            );
             Self {
                 _root: root,
                 config,

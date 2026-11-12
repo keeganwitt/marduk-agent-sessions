@@ -129,6 +129,33 @@ pub(crate) fn is_executable(path: &Path) -> bool {
     }
 }
 
+/// Writes an executable script from a child process. Written from the test process, its open fd
+/// leaks into processes other test threads fork, and running it fails with ETXTBSY on Linux.
+#[cfg(unix)]
+#[doc(hidden)]
+pub fn write_test_executable(path: &Path, contents: &str) {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new("/bin/sh")
+        .args(["-c", "cat > \"$1\" && chmod 755 \"$1\"", "sh"])
+        .arg(path)
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(contents.as_bytes())
+        .unwrap();
+    assert!(
+        child.wait().unwrap().success(),
+        "couldn't write {}",
+        path.display()
+    );
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;

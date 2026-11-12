@@ -241,13 +241,12 @@ mod tests {
     fn version_reads_the_first_line_and_reports_failures() {
         let dir = tempfile::tempdir().unwrap();
         let script = dir.path().join("fake-cli");
-        std::fs::write(&script, "#!/bin/sh\necho\necho fake-cli 1.2.3\necho more\n").unwrap();
+        crate::agents::write_test_executable(
+            &script,
+            "#!/bin/sh\necho\necho fake-cli 1.2.3\necho more\n",
+        );
         let failing = dir.path().join("broken-cli");
-        std::fs::write(&failing, "#!/bin/sh\nexit 2\n").unwrap();
-        for path in [&script, &failing] {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        crate::agents::write_test_executable(&failing, "#!/bin/sh\nexit 2\n");
 
         assert_eq!(version(&script).unwrap(), "fake-cli 1.2.3");
         assert!(version(&failing).unwrap_err().contains("failed"));
