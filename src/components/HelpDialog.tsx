@@ -5,6 +5,7 @@ import type { MessageKey } from "../i18n/messages";
 import { tildePath } from "../lib/format";
 import { agentHelp, appVersion } from "../lib/ipc";
 import type { AgentHelp } from "../lib/types";
+import { UpdateCheck } from "./UpdateCheck";
 
 interface Props {
   homeDir: string;
@@ -245,8 +246,9 @@ export function HelpDialog({ homeDir, onClose }: Props) {
   const { t } = useI18n();
   const [tab, setTab] = useState<TabId>("deleting");
   const [version, setVersion] = useState<string | null>(null);
+  const [versionError, setVersionError] = useState(false);
   useEffect(() => {
-    appVersion().then(setVersion, () => {});
+    appVersion().then(setVersion, () => setVersionError(true));
   }, []);
 
   useEffect(() => {
@@ -308,7 +310,7 @@ export function HelpDialog({ homeDir, onClose }: Props) {
           {tab === "agents" && <AgentsTab homeDir={homeDir} />}
         </div>
         <div className="actions">
-          {version && <span className="help-version">Marduk {version}</span>}
+          <UpdateCheck version={version} versionError={versionError} />
           <button type="button" onClick={onClose}>
             {t("help.done")}
           </button>

@@ -8,6 +8,7 @@ import { memory } from "./memory";
 import { settings } from "./settings";
 import { table } from "./table";
 import { transcript } from "./transcript";
+import { updates } from "./updates";
 
 export const CATALOGS = {
   common,
@@ -18,6 +19,7 @@ export const CATALOGS = {
   memory,
   dialogs,
   transcript,
+  updates,
 } satisfies Record<string, Catalog<Messages>>;
 
 export const EN = {
@@ -29,6 +31,7 @@ export const EN = {
   ...memory.en,
   ...dialogs.en,
   ...transcript.en,
+  ...updates.en,
 };
 
 export type MessageKey = keyof typeof EN;
