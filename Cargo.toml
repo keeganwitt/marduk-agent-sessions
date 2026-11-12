@@ -6,7 +6,7 @@ resolver = "3"
 version = "1.0.1"
 edition = "2024"
 authors = ["Keegan Witt <keeganwitt@gmail.com>"]
-license = "Apache-2.0"
+license = "MIT"
 
 [profile.release]
 codegen-units = 1

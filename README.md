@@ -165,4 +165,4 @@ This bypasses the download quarantine check for Marduk; it does not verify the a
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[MIT License](LICENSE)
