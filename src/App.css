@@ -1406,10 +1406,26 @@ button.filter-project svg {
 }
 
 .help-version {
-  margin-right: auto;
   align-self: center;
   color: var(--muted);
   font-size: 12px;
+}
+
+.help-updates {
+  margin-right: auto;
+  min-width: 0;
+}
+
+.help-update-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.help-updates p {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
 }
 
 .help-dialog {

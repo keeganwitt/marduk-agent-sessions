@@ -55,6 +55,8 @@ Click a session's title to read it in a side panel. Messages are rendered as Mar
 
 The app explains these too: **Help** has a tab per topic, and an **Agents** tab with how each agent deletes and archives and which folders Marduk reads on your machine.
 
+**Help → Check for updates** checks GitHub for the latest Marduk release and offers a download link when a newer version is available. Checks run only when clicked; downloads open in your browser.
+
 - **Trash, unless the agent deletes natively.** Sessions without a native delete command go to the system Trash (Recycle Bin on Windows). If that fails, Marduk reports the error rather than deleting permanently. Native deletes that can't be undone (Codex) are labeled _Permanent_ in the confirmation dialog, which also shows the exact command.
 - **Running sessions are never changed.** A session whose transcript changed in the last 5 minutes is marked _Running_ and can't be deleted or archived.
 - **Changed since scan is refused.** If a transcript's size or modification time changed after the scan, Marduk refuses to delete it and asks you to rescan.
