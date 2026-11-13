@@ -788,9 +788,14 @@ struct Parsed {
     summary: Option<String>,
     first_prompt: Option<String>,
     span: jsonl::Span,
+    has_reply: bool,
 }
 
 impl Parsed {
+    fn is_empty(&self) -> bool {
+        self.first_prompt.is_none() && !self.has_reply
+    }
+
     fn title(self) -> Option<String> {
         [
             self.custom_title,
@@ -830,6 +835,7 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
             parsed.first_prompt = record.message.and_then(user_prompt_text);
         }
         Some("assistant") => {
+            parsed.has_reply = true;
             if let Some(model) = record
                 .message
                 .and_then(|message| serde_json::from_str::<MessageModel>(message.get()).ok())
@@ -923,6 +929,7 @@ impl ClaudeAdapter {
             projectless: false,
             models: parsed.models.clone(),
             agent_type,
+            empty: parsed.is_empty(),
         })
     }
 }
@@ -941,6 +948,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         .last
         .unwrap_or_else(|| fingerprint.modified.into());
     let created = parsed.span.first.or_else(|| fs_util::created(path));
+    let empty = parsed.is_empty();
     Session {
         agent: "claude",
         size_bytes: files.iter().map(|file| fs_util::path_size(file)).sum(),
@@ -959,6 +967,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         projectless: false,
         models,
         agent_type,
+        empty,
     }
 }
 
@@ -1250,6 +1259,26 @@ mod tests {
             session.created.unwrap().to_rfc3339(),
             "2026-11-01T10:00:00+00:00"
         );
+    }
+
+    #[test]
+    fn sessions_without_a_prompt_or_reply_are_empty() {
+        let config = tempfile::tempdir().unwrap();
+        let transcript = [
+            r#"{"type":"permission-mode","permissionMode":"auto","sessionId":"x"}"#,
+            r#"{"type":"user","isMeta":true,"message":{"role":"user","content":"<local-command-caveat>ignored</local-command-caveat>"}}"#,
+            r#"{"type":"user","message":{"role":"user","content":"<command-name>/clear</command-name>"}}"#,
+        ]
+        .join("\n");
+        write_project(config.path(), "p", &[(&format!("{ID}.jsonl"), &transcript)]);
+        assert!(scan_one(config.path()).empty);
+
+        let replied = format!(
+            "{transcript}\n{}",
+            r#"{"type":"assistant","message":{"role":"assistant","content":[]}}"#
+        );
+        write_project(config.path(), "p", &[(&format!("{ID}.jsonl"), &replied)]);
+        assert!(!scan_one(config.path()).empty);
     }
 
     #[test]

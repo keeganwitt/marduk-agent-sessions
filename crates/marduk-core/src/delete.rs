@@ -311,6 +311,7 @@ mod tests {
             projectless: false,
             models: Vec::new(),
             agent_type: None,
+            empty: false,
         }
     }
 

@@ -1020,6 +1020,71 @@ describe("App", () => {
     ]);
   });
 
+  it("filters sessions by whether they have subagents", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "p", id: "p", title: "Parent" }),
+        makeSession({ uid: "c", title: "Child", parentId: "p" }),
+        makeSession({ uid: "s", id: "s", title: "Solo" }),
+      ),
+    );
+    render(<App />);
+    await screen.findByText("Parent");
+    expect(screen.queryByRole("combobox", { name: "Subagents" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    await user.click(screen.getByRole("menuitem", { name: "Subagents" }));
+    const select = screen.getByRole("combobox", { name: "Subagents" });
+    await user.selectOptions(select, "with");
+    expect(rowTitles()).toEqual(["Parent"]);
+    await user.selectOptions(select, "without");
+    expect(rowTitles()).toEqual(["Solo"]);
+  });
+
+  it("finds empty sessions through an optional filter", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({ uid: "said", title: "Said something" }),
+        makeSession({ uid: "blank", title: "Blank", empty: true }),
+      ),
+    );
+    render(<App />);
+    await screen.findByText("Blank");
+    expect(screen.queryByRole("checkbox", { name: "Empty" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    await user.click(screen.getByRole("menuitem", { name: "Empty" }));
+    expect(screen.getByRole("checkbox", { name: "Empty" })).toBeChecked();
+    expect(rowTitles()).toEqual(["Blank"]);
+
+    await user.click(screen.getByRole("checkbox", { name: "Empty" }));
+    expect(rowTitles()).toHaveLength(2);
+  });
+
+  it("offers the empty filter only when a session is empty", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "said", title: "Said something" })),
+    );
+    render(<App />);
+    await screen.findByText("Said something");
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    expect(screen.queryByRole("menuitem", { name: "Empty" })).toBeNull();
+  });
+
+  it("offers the subagents filter only when a session has subagents", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ uid: "s", id: "s", title: "Solo" })),
+    );
+    render(<App />);
+    await screen.findByText("Solo");
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    expect(screen.queryByRole("menuitem", { name: "Subagents" })).toBeNull();
+  });
+
   it("finds sessions with deleted parents through an optional filter", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(

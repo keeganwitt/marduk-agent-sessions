@@ -203,6 +203,7 @@ struct Parsed {
     name: Option<String>,
     first_prompt: Option<String>,
     span: jsonl::Span,
+    has_messages: bool,
 }
 
 fn parse_line(parsed: &mut Parsed, line: &str) {
@@ -211,6 +212,12 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
     };
     if let Some(timestamp) = record["timestamp"].as_str() {
         parsed.span.observe(jsonl::parse_timestamp(timestamp));
+    }
+    if matches!(
+        record["type"].as_str(),
+        Some("message" | "compaction" | "branch_summary")
+    ) {
+        parsed.has_messages = true;
     }
     match record["type"].as_str() {
         Some("session") => {
@@ -290,6 +297,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         projectless: false,
         models: parsed.models,
         agent_type: None,
+        empty: !parsed.has_messages,
     }
 }
 
@@ -333,6 +341,24 @@ mod tests {
         assert!(result.complete, "{:?}", result.errors);
         assert_eq!(result.sessions.len(), 1);
         result.sessions.into_iter().next().unwrap()
+    }
+
+    #[test]
+    fn sessions_without_messages_are_empty() {
+        let root = tempfile::tempdir().unwrap();
+        let header = [
+            r#"{"type":"session","version":3,"id":"01a1adaa-395a-7422-9391-5092469eda9a","timestamp":"2026-11-05T21:42:56.603Z","cwd":"/Users/me/work"}"#,
+            r#"{"type":"model_change","id":"a","parentId":null,"timestamp":"2026-11-05T21:42:57.000Z","modelId":"m"}"#,
+        ];
+        write_session(root.path(), &header.join("\n"));
+        assert!(scan_one(root.path()).empty);
+
+        let message = r#"{"type":"message","id":"b","parentId":"a","message":{"role":"user","content":"hi"}}"#;
+        write_session(
+            root.path(),
+            &[header.join("\n"), message.to_string()].join("\n"),
+        );
+        assert!(!scan_one(root.path()).empty);
     }
 
     #[test]

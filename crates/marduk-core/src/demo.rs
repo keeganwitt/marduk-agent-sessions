@@ -144,6 +144,8 @@ struct Spec {
     /// The custom agent a Claude Code session ran as (`claude --agent`).
     agent: Option<&'static str>,
     labels: &'static [&'static str],
+    /// A Codex thread opened and left before anything was sent; `title` only seeds its id.
+    empty: bool,
 }
 
 const fn spec(
@@ -164,6 +166,7 @@ const fn spec(
         chat: false,
         agent: None,
         labels: &[],
+        empty: false,
     }
 }
 
@@ -180,6 +183,11 @@ impl Spec {
 
     const fn chat(mut self) -> Self {
         self.chat = true;
+        self
+    }
+
+    const fn empty(mut self) -> Self {
+        self.empty = true;
         self
     }
 
@@ -532,6 +540,10 @@ impl Writer<'_> {
             &[],
         )?;
         self.codex(
+            spec("Opened and left", API, 4 * DAY, 4 * DAY, 23 * KB).empty(),
+            &[],
+        )?;
+        self.codex(
             spec(
                 "Convert a CSV export to JSON",
                 "",
@@ -834,8 +846,12 @@ impl Writer<'_> {
             meta["parent_thread_id"] = json!(parent);
             meta["thread_source"] = json!("guardian_review");
         }
+        let header = json!({ "timestamp": self.stamp(spec.created), "type": "session_meta", "payload": meta });
+        if spec.empty {
+            return self.write_jsonl(&self.codex_path(&spec, id), &[header], &spec);
+        }
         let records = [
-            json!({ "timestamp": self.stamp(spec.created), "type": "session_meta", "payload": meta }),
+            header,
             item(
                 spec.created,
                 json!({ "type": "message", "role": "user", "content": [{ "type": "input_text", "text": spec.title }] }),
@@ -865,10 +881,14 @@ impl Writer<'_> {
             ),
             event(spec.last, json!({ "type": "task_complete" })),
         ];
+        self.write_jsonl(&self.codex_path(&spec, id), &records, &spec)
+    }
+
+    fn codex_path(&self, spec: &Spec, id: &str) -> PathBuf {
         let created = self.datetime(spec.created);
         let name = format!("rollout-{}-{id}.jsonl", created.format("%Y-%m-%dT%H-%M-%S"));
         let codex = self.home.var("CODEX_HOME");
-        let path = if spec.archived {
+        if spec.archived {
             codex.join("archived_sessions").join(name)
         } else {
             codex
@@ -877,8 +897,7 @@ impl Writer<'_> {
                 .join(created.format("%m").to_string())
                 .join(created.format("%d").to_string())
                 .join(name)
-        };
-        self.write_jsonl(&path, &records, &spec)
+        }
     }
 
     fn copilot(&mut self, spec: Spec) -> io::Result<()> {
@@ -1705,7 +1724,7 @@ mod tests {
 
         for (adapter, sessions) in scan(&home) {
             assert!(!sessions.is_empty(), "{} has no sessions", adapter.id());
-            for session in &sessions {
+            for session in sessions.iter().filter(|session| !session.empty) {
                 let title = session.title.as_deref().unwrap_or_default();
                 assert!(!title.is_empty(), "{} {}", adapter.id(), session.id);
                 if adapter.id() != "kilo" {
@@ -1784,6 +1803,9 @@ mod tests {
             Some("Add dark mode to the settings page")
         );
         assert!(sessions.iter().any(|session| session.archived));
+        let empty: Vec<_> = sessions.iter().filter(|session| session.empty).collect();
+        assert_eq!(empty.len(), 1);
+        assert_eq!((empty[0].agent, empty[0].title.as_deref()), ("codex", None));
         assert_eq!(
             sessions
                 .iter()

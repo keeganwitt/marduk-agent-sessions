@@ -217,6 +217,7 @@ struct Parsed {
     first_prompt: Option<String>,
     span: Span,
     models: Vec<String>,
+    has_messages: bool,
 }
 
 fn parse_line(parsed: &mut Parsed, line: &str) {
@@ -233,6 +234,12 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
         if let Some(model) = data[key].as_str() {
             crate::session::note_model(&mut parsed.models, model);
         }
+    }
+    if matches!(
+        record["type"].as_str(),
+        Some("user.message" | "assistant.message" | "session.compaction_complete")
+    ) {
+        parsed.has_messages = true;
     }
     match record["type"].as_str() {
         Some("session.start") => {
@@ -311,6 +318,7 @@ fn session_from(
         projectless: false,
         models: parsed.models,
         agent_type: None,
+        empty: !parsed.has_messages,
     }
 }
 
@@ -466,6 +474,18 @@ mod tests {
         assert!(result.complete, "{:?}", result.errors);
         assert_eq!(result.sessions.len(), 1);
         result.sessions.into_iter().next().unwrap()
+    }
+
+    #[test]
+    fn sessions_without_messages_are_empty() {
+        let root = tempfile::tempdir().unwrap();
+        let start = events()[0];
+        let tool_call = events()[3];
+        write_session(root.path(), ID, &[start, tool_call], None);
+        assert!(scan_one(root.path()).empty);
+
+        write_session(root.path(), ID, &events(), None);
+        assert!(!scan_one(root.path()).empty);
     }
 
     #[test]

@@ -30,6 +30,8 @@ export interface SessionRow {
   models: string[];
   /** The agent definition the session ran as (custom agent, subagent type or role). */
   agentType: string | null;
+  /** No user or assistant messages; injected context doesn't count. */
+  empty: boolean;
   archived: boolean;
   running: boolean;
   readOnlyReason: string | null;

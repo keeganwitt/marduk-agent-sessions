@@ -6,6 +6,9 @@ export type ArchiveFilter = "all" | "active" | "archived";
 /** "any", "none" (no labels), or a label id. */
 export type LabelFilter = "any" | "none" | number;
 
+/** "without" means standalone: no subagents of its own, and not nested under a parent. */
+export type SubagentFilter = "any" | "with" | "without";
+
 export interface SessionFilter {
   agent: string;
   /** A model the session used at any point, or `ALL_MODELS`. */
@@ -13,7 +16,9 @@ export interface SessionFilter {
   /** The agent definition the session ran as, or `ALL_AGENT_TYPES`. */
   agentType: string;
   archive: ArchiveFilter;
+  subagents: SubagentFilter;
   parentMissing: boolean;
+  empty: boolean;
   label: LabelFilter;
   /** A project folder (its subfolders match too), or `NO_PROJECT`. */
   project: string | null;
@@ -34,7 +39,9 @@ export const EMPTY_FILTER: SessionFilter = {
   model: ALL_MODELS,
   agentType: ALL_AGENT_TYPES,
   archive: "all",
+  subagents: "any",
   parentMissing: false,
+  empty: false,
   label: "any",
   project: null,
   olderThanDays: null,
@@ -45,8 +52,10 @@ export const EMPTY_FILTER: SessionFilter = {
 export function sessionMatcher(
   filter: SessionFilter,
   now: Date,
+  sessions: readonly SessionRow[],
 ): (session: SessionRow) => boolean {
   const query = filter.query.trim().toLowerCase();
+  const subagentMatches = subagentMatcher(filter.subagents, sessions);
   const minBytes =
     filter.minSizeMb === null ? null : filter.minSizeMb * 1024 * 1024;
   return (session) =>
@@ -56,8 +65,10 @@ export function sessionMatcher(
       session.agentType === filter.agentType) &&
     (filter.archive === "all" ||
       session.archived === (filter.archive === "archived")) &&
+    subagentMatches(session) &&
     (!filter.parentMissing ||
       Boolean(session.parentId && session.parentMissing)) &&
+    (!filter.empty || session.empty) &&
     (filter.label === "any" ||
       (filter.label === "none"
         ? session.labelIds.length === 0
@@ -76,7 +87,44 @@ export function filterSessions(
   filter: SessionFilter,
   now: Date,
 ): SessionRow[] {
-  return sessions.filter(sessionMatcher(filter, now));
+  return sessions.filter(sessionMatcher(filter, now, sessions));
+}
+
+function sessionKey(agent: string, id: string): string {
+  return `${agent}:${id}`;
+}
+
+/** Keys of sessions that started a subagent present in the scan. */
+function parentKeys(sessions: readonly SessionRow[]): Set<string> {
+  const present = new Set(sessions.map((s) => sessionKey(s.agent, s.id)));
+  const parents = new Set<string>();
+  for (const session of sessions) {
+    if (session.parentId === null || session.parentId === session.id) continue;
+    const key = sessionKey(session.agent, session.parentId);
+    if (present.has(key)) parents.add(key);
+  }
+  return parents;
+}
+
+export function hasSubagents(sessions: readonly SessionRow[]): boolean {
+  return parentKeys(sessions).size > 0;
+}
+
+function subagentMatcher(
+  subagents: SubagentFilter,
+  sessions: readonly SessionRow[],
+): (session: SessionRow) => boolean {
+  if (subagents === "any") return () => true;
+  const parents = parentKeys(sessions);
+  const isParent = (session: SessionRow) =>
+    parents.has(sessionKey(session.agent, session.id));
+  if (subagents === "with") return isParent;
+  const nested = (session: SessionRow) =>
+    session.parentId !== null &&
+    session.parentId !== session.id &&
+    !session.parentMissing &&
+    parents.has(sessionKey(session.agent, session.parentId));
+  return (session) => !isParent(session) && !nested(session);
 }
 
 function inProjectFilter(session: SessionRow, project: string): boolean {
@@ -178,7 +226,9 @@ export const FILTERS = [
   "archive",
   "model",
   "agentType",
+  "subagents",
   "parentMissing",
+  "empty",
 ] as const;
 export type FilterId = (typeof FILTERS)[number];
 

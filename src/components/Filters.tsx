@@ -15,6 +15,7 @@ import {
   type LabelFilter,
   type ProjectOption,
   type SessionFilter,
+  type SubagentFilter,
 } from "../lib/filter";
 import { useI18n } from "../i18n/context";
 import { ProjectFilter } from "./ProjectFilter";
@@ -26,6 +27,9 @@ interface Props {
   projects: ProjectOption[];
   models: { model: string; count: number }[];
   agentTypes: { agentType: string; count: number }[];
+  hasSubagents: boolean;
+  /** Whether any session is empty. */
+  hasEmpty: boolean;
   homeDir: string;
   filter: SessionFilter;
   onChange: (filter: SessionFilter) => void;
@@ -155,6 +159,8 @@ export function Filters({
   projects,
   models,
   agentTypes,
+  hasSubagents,
+  hasEmpty,
   homeDir,
   filter,
   onChange,
@@ -171,11 +177,15 @@ export function Filters({
     archive: t("table.filter.status"),
     model: t("table.filter.model"),
     agentType: t("table.filter.agentType"),
+    subagents: t("table.filter.subagents"),
     parentMissing: t("table.badge.parentDeleted"),
+    empty: t("table.filter.empty"),
   };
   const offered = (id: FilterId) =>
     (id !== "model" || models.length > 0) &&
-    (id !== "agentType" || agentTypes.length > 0);
+    (id !== "agentType" || agentTypes.length > 0) &&
+    (id !== "subagents" || hasSubagents) &&
+    (id !== "empty" || hasEmpty);
   const shown = shownFilters(chosen, filter);
   const remove = (id: FilterId) => {
     onChosenChange(chosen.filter((other) => other !== id));
@@ -274,6 +284,36 @@ export function Filters({
         {t("table.badge.parentDeleted")}
       </label>
     ),
+    subagents: (
+      <label>
+        {t("table.filter.subagents")}
+        <select
+          value={filter.subagents}
+          onChange={(event) =>
+            onChange({
+              ...filter,
+              subagents: event.target.value as SubagentFilter,
+            })
+          }
+        >
+          <option value="any">{t("table.filter.subagentsAny")}</option>
+          <option value="with">{t("table.filter.subagentsWith")}</option>
+          <option value="without">{t("table.filter.subagentsWithout")}</option>
+        </select>
+      </label>
+    ),
+    empty: (
+      <label className="filter-toggle">
+        <input
+          type="checkbox"
+          checked={filter.empty}
+          onChange={(event) =>
+            onChange({ ...filter, empty: event.target.checked })
+          }
+        />
+        {t("table.filter.empty")}
+      </label>
+    ),
     archive: (
       <label>
         {t("table.filter.status")}
@@ -345,8 +385,8 @@ export function Filters({
         )}
         onAdd={(id) => {
           onChosenChange([...chosen, id]);
-          if (id === "parentMissing")
-            onChange({ ...filter, parentMissing: true });
+          if (id === "parentMissing" || id === "empty")
+            onChange({ ...filter, [id]: true });
         }}
         onReset={
           isDefaultFilterSet(chosen)

@@ -313,6 +313,9 @@ struct Parsed {
     agent_role: Option<String>,
     runtime_roots: Vec<String>,
     models: Vec<String>,
+    /// An assistant message, or a compaction standing in for earlier messages, outside copied
+    /// parent history.
+    has_reply: bool,
 }
 
 impl Parsed {
@@ -628,6 +631,19 @@ fn parse_line(parsed: &mut Parsed, line: &str) {
                 parsed.first_prompt = Some(text.to_string());
             }
         }
+        Some("response_item") if !parsed.has_reply && !inherited => {
+            if let Ok(item) = serde_json::from_str::<Value>(payload.get()) {
+                parsed.has_reply = item["type"] == "compaction"
+                    || (item["type"] == "message" && item["role"] == "assistant");
+                if parsed.first_prompt.is_none()
+                    && item["type"] == "message"
+                    && item["role"] == "user"
+                {
+                    parsed.first_prompt =
+                        jsonl::content_text(&item["content"]).filter(|text| !is_injected(text));
+                }
+            }
+        }
         Some("response_item")
             if parsed.first_prompt.is_none()
                 && !inherited
@@ -808,6 +824,7 @@ fn session_from(
             .collect::<Vec<_>>(),
     );
     let indexed_name = titles.get(&id).filter(|name| !is_injected(name)).cloned();
+    let empty = first_prompt.is_none() && !segments.iter().any(|segment| segment.parsed.has_reply);
     let title = [indexed_name, first.subagent_title(), first_prompt]
         .into_iter()
         .flatten()
@@ -842,6 +859,7 @@ fn session_from(
             models
         }),
         agent_type: first.agent_role.clone(),
+        empty,
     }
 }
 
@@ -873,6 +891,56 @@ mod tests {
 
     fn adapter(home: &Path, cli: Option<&str>) -> CodexAdapter {
         CodexAdapter::new(home.to_path_buf(), cli.map(PathBuf::from))
+    }
+
+    #[test]
+    fn threads_without_a_prompt_or_assistant_message_are_empty() {
+        let home = tempfile::tempdir().unwrap();
+        let path = |id: &str| {
+            home.path().join(format!(
+                "sessions/2026/11/06/rollout-2026-11-06T18-05-08-{id}.jsonl"
+            ))
+        };
+        let header = rollout(ID).lines().next().unwrap().to_string();
+        write(&path(ID), &header);
+        let injected = "019e98e4-15db-7de3-af03-a2b011ccb8d5";
+        let injected_rollout = rollout(injected);
+        let injected_lines: Vec<&str> = injected_rollout.lines().take(3).collect();
+        let developer = r#"{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"permissions"}]}}"#;
+        write(
+            &path(injected),
+            &[injected_lines.join("\n"), developer.to_string()].join("\n"),
+        );
+        let prompted = "019e98e4-15db-7de3-af03-a2b011ccb8d6";
+        write(&path(prompted), &rollout(prompted));
+        let replied = "019e98e4-15db-7de3-af03-a2b011ccb8d7";
+        let tool_only = "019e98e4-15db-7de3-af03-a2b011ccb8d8";
+        let tool_call = r#"{"type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"c1","arguments":"{}"}}"#;
+        write(
+            &path(tool_only),
+            &[header.replace(ID, tool_only), tool_call.to_string()].join("\n"),
+        );
+        let reply = r#"{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hi"}]}}"#;
+        write(
+            &path(replied),
+            &[header.replace(ID, replied), reply.to_string()].join("\n"),
+        );
+
+        let result = adapter(home.path(), None).scan();
+
+        let empty = |id: &str| {
+            result
+                .sessions
+                .iter()
+                .find(|session| session.id == id)
+                .unwrap()
+                .empty
+        };
+        assert!(empty(ID));
+        assert!(empty(injected));
+        assert!(empty(tool_only));
+        assert!(!empty(prompted));
+        assert!(!empty(replied));
     }
 
     #[test]

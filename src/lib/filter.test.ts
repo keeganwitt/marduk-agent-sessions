@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_FILTER,
   filterSessions,
+  hasSubagents,
   inProject,
   agentTypeOptions,
   isFiltering,
@@ -286,5 +287,64 @@ describe("parent deleted filter", () => {
     expect(filterSessions(sessions, filter, now)).toEqual([]);
     expect(shownFilters([], filter)).toEqual(["parentMissing"]);
     expect(isFiltering(filter)).toBe(true);
+  });
+});
+
+describe("subagents filter", () => {
+  const sessions = [
+    makeSession({ uid: "parent" }),
+    makeSession({ uid: "child", parentId: "parent" }),
+    makeSession({ uid: "grandchild", parentId: "child" }),
+    makeSession({ uid: "solo" }),
+    makeSession({ uid: "orphan", parentId: "gone", parentMissing: true }),
+    makeSession({ uid: "elsewhere", agent: "codex", parentId: "parent" }),
+    makeSession({ uid: "loop", parentId: "loop" }),
+  ];
+  const uids = (subagents: "with" | "without") =>
+    filterSessions(sessions, { ...EMPTY_FILTER, subagents }, now).map(
+      (session) => session.uid,
+    );
+
+  it("matches sessions that started a subagent in the scan", () => {
+    expect(uids("with")).toEqual(["parent", "child"]);
+  });
+
+  it("matches standalone sessions without subagents", () => {
+    expect(uids("without")).toEqual(["solo", "orphan", "elsewhere", "loop"]);
+  });
+
+  it("is offered only when some session has a subagent", () => {
+    expect(hasSubagents(sessions)).toBe(true);
+    expect(hasSubagents([sessions[3], sessions[4], sessions[6]])).toBe(false);
+  });
+
+  it("shows its filter while active and is not a default", () => {
+    const filter = { ...EMPTY_FILTER, subagents: "with" as const };
+    expect(shownFilters([], filter)).toEqual(["subagents"]);
+    expect(isFiltering(filter)).toBe(true);
+    expect(DEFAULT_FILTERS).not.toContain("subagents");
+  });
+});
+
+describe("empty filter", () => {
+  const sessions = [
+    makeSession({ uid: "said", empty: false }),
+    makeSession({ uid: "blank", empty: true }),
+  ];
+
+  it("matches only sessions with no messages", () => {
+    expect(
+      filterSessions(sessions, { ...EMPTY_FILTER, empty: true }, now).map(
+        (session) => session.uid,
+      ),
+    ).toEqual(["blank"]);
+    expect(filterSessions(sessions, EMPTY_FILTER, now)).toEqual(sessions);
+  });
+
+  it("shows its filter while active and is not a default", () => {
+    const filter = { ...EMPTY_FILTER, empty: true };
+    expect(shownFilters([], filter)).toEqual(["empty"]);
+    expect(isFiltering(filter)).toBe(true);
+    expect(DEFAULT_FILTERS).not.toContain("empty");
   });
 });

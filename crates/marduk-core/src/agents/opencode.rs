@@ -309,6 +309,7 @@ impl OpenCodeAdapter {
             projectless: false,
             models: row.model.into_iter().collect(),
             agent_type: None,
+            empty: totals.messages == 0,
             parent_id: row.parent_id,
         }
     }
@@ -1076,6 +1077,8 @@ mod tests {
         };
         assert_eq!(by_id("ses_a").title.as_deref(), Some("Refactor auth"));
         assert!(!by_id("ses_a").archived);
+        assert!(by_id("ses_a").empty);
+        assert!(!by_id("ses_b").empty);
         let b = by_id("ses_b");
         assert_eq!(b.title.as_deref(), Some("Why is CI red?"));
         assert!(b.archived);

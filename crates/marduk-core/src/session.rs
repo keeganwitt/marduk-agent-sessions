@@ -50,6 +50,9 @@ pub struct Session {
     /// The agent definition the session ran as: a custom top-level agent (`claude --agent`),
     /// a subagent's type (`Explore`) or role (`explorer`).
     pub agent_type: Option<String>,
+    /// No user or assistant messages. Context the agent injected on its own and tool calls
+    /// don't count; a compaction does, since it replaced earlier messages.
+    pub empty: bool,
 }
 
 /// Records that `model` was used, keeping `models` in order of last use. Ignores blanks and

@@ -44,6 +44,8 @@ pub struct SessionRow {
     pub models: Vec<String>,
     /// The agent definition the session ran as (custom agent, subagent type or role).
     pub agent_type: Option<String>,
+    /// No user or assistant messages; injected context doesn't count.
+    pub empty: bool,
     pub archived: bool,
     pub running: bool,
     pub read_only_reason: Option<String>,
@@ -277,6 +279,7 @@ fn session_row(catalog: &Catalog, session: &Session, now: SystemTime) -> Session
         projectless: session.projectless,
         models: session.models.clone(),
         agent_type: session.agent_type.clone(),
+        empty: session.empty,
         archived: session.archived,
         running: session.is_running(now, catalog.running_window()),
         read_only_reason: match &plan {
@@ -641,6 +644,7 @@ mod tests {
             projectless: false,
             models: vec![],
             agent_type: None,
+            empty: false,
             archived: false,
             running: false,
             read_only_reason: None,

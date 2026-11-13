@@ -15,6 +15,7 @@ import {
   modelOptions,
   projectOptions,
   restoreChosenFilters,
+  hasSubagents,
   sessionMatcher,
   type FilterId,
 } from "./lib/filter";
@@ -327,9 +328,17 @@ export default function App() {
     () => agentTypeOptions(scan?.sessions ?? []),
     [scan],
   );
+  const subagentsPresent = useMemo(
+    () => hasSubagents(scan?.sessions ?? []),
+    [scan],
+  );
+  const emptyPresent = useMemo(
+    () => (scan?.sessions ?? []).some((session) => session.empty),
+    [scan],
+  );
   const matcher = useMemo(
-    () => sessionMatcher(filter, scannedAt),
-    [filter, scannedAt],
+    () => sessionMatcher(filter, scannedAt, scan?.sessions ?? []),
+    [filter, scannedAt, scan],
   );
   const matching = useMemo(
     () => (scan ? scan.sessions.filter(matcher) : []),
@@ -775,6 +784,8 @@ export default function App() {
             projects={projects}
             models={models}
             agentTypes={agentTypes}
+            hasSubagents={subagentsPresent}
+            hasEmpty={emptyPresent}
             homeDir={scan.homeDir}
             filter={filter}
             onChange={setFilter}
