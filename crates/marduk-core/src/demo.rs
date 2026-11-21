@@ -80,6 +80,10 @@ impl DemoHome {
                 self.root.join("vscode").join("User"),
             ),
             ("CLAUDE_CONFIG_DIR", self.root.join(".claude")),
+            (
+                "MARDUK_CLAUDE_DESKTOP_DIR",
+                self.root.join("Claude").join("claude-code-sessions"),
+            ),
             ("CODEX_HOME", self.root.join(".codex")),
             ("COPILOT_HOME", self.root.join(".copilot")),
             ("PI_CODING_AGENT_DIR", self.root.join(".pi").join("agent")),
@@ -282,6 +286,7 @@ impl Writer<'_> {
             spec("Fix flaky login test", API, 26 * HOUR, HOUR, 5300 * KB).labels(&["bug"]),
             &[],
         )?;
+        self.claude_desktop_entry("Fix flaky login test")?;
         self.codex(
             spec(
                 "Summarize changes for the release notes",
@@ -733,6 +738,22 @@ impl Writer<'_> {
         }
         self.label(format!("claude:{id}"), &spec);
         Ok(())
+    }
+
+    /// Lists a Claude Code session in Claude's desktop app, which names the file by its own id.
+    fn claude_desktop_entry(&self, title: &str) -> io::Result<()> {
+        let org = self
+            .home
+            .var("MARDUK_CLAUDE_DESKTOP_DIR")
+            .join(uuid("demo account"))
+            .join(uuid("demo org"));
+        fs::create_dir_all(&org)?;
+        let desktop_id = format!("local_{}", uuid(&format!("desktop {title}")));
+        fs::write(
+            org.join(format!("{desktop_id}.json")),
+            json!({ "sessionId": desktop_id, "cliSessionId": uuid(title), "title": title, "isArchived": false })
+                .to_string(),
+        )
     }
 
     fn claude_records(&self, spec: &Spec, id: &str, cwd: &str, sidechain: bool) -> Vec<Value> {
@@ -1668,7 +1689,10 @@ mod tests {
     fn adapters(home: &DemoHome) -> Vec<Box<dyn AgentAdapter>> {
         let data = home.var("XDG_DATA_HOME");
         vec![
-            Box::new(ClaudeAdapter::new(home.var("CLAUDE_CONFIG_DIR"))),
+            Box::new(
+                ClaudeAdapter::new(home.var("CLAUDE_CONFIG_DIR"))
+                    .with_desktop_sessions_dirs(vec![home.var("MARDUK_CLAUDE_DESKTOP_DIR")]),
+            ),
             Box::new(CodexAdapter::new(home.var("CODEX_HOME"), None)),
             Box::new(CopilotAdapter::new(
                 home.var("COPILOT_HOME").join("session-state"),
@@ -1782,6 +1806,29 @@ mod tests {
             .filter(|message| message.tool.is_some())
             .count();
         assert_eq!((prompts, tools), (2, 3), "{messages:?}");
+    }
+
+    #[test]
+    fn only_the_claude_session_the_desktop_app_lists_warns_about_it() {
+        let (_dir, home, _) = write_demo(false);
+        let (adapter, sessions) = scan(&home)
+            .into_iter()
+            .find(|(adapter, _)| adapter.id() == "claude")
+            .unwrap();
+        let warned: Vec<_> = sessions
+            .iter()
+            .filter(|session| {
+                matches!(
+                    adapter.delete_plan(session),
+                    crate::adapter::DeletePlan::Trash {
+                        warning: Some(_),
+                        ..
+                    }
+                )
+            })
+            .filter_map(|session| session.title.as_deref())
+            .collect();
+        assert_eq!(warned, ["Fix flaky login test"]);
     }
 
     #[test]

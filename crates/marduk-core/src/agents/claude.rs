@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::cli::{Cli, CliOverrides};
 use super::{env_dir, home_dir, jsonl_two_levels, total_size};
@@ -29,6 +29,9 @@ pub struct ClaudeAdapter {
     /// Claude Code's `claude-<uid>` temp folder, with a `<project>/<session id>` folder of
     /// task output per session.
     temp_dir: Option<PathBuf>,
+    desktop_sessions_dirs: Vec<PathBuf>,
+    /// Session ids Claude's desktop app listed at the last scan.
+    desktop_listed: Mutex<HashSet<String>>,
     cli: Cli,
     cache: ParseCache<Fingerprint, Parsed>,
 }
@@ -39,6 +42,51 @@ const INSTALL_URL: &str = "https://code.claude.com/docs/en/setup";
 const SESSION_STATE_DIRS: [&str; 3] = ["file-history", "session-env", "tasks"];
 const DEBUG_DIR: &str = "debug";
 const PURGE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+const DESKTOP_WARNING: &str = "Claude's desktop app lists this session too. It keeps the \
+     session in its sidebar after the delete, and after a restart opening it shows \"Session not \
+     found on disk\".";
+
+const DESKTOP_SESSIONS: &str = "claude-code-sessions";
+/// The Microsoft Store build's package, whose `%APPDATA%` writes Windows redirects here.
+#[cfg(windows)]
+const DESKTOP_MSIX_PACKAGE: &str = "Claude_pzs8sxrjxfjjc";
+
+/// Where Claude's desktop app may list the Claude Code sessions it shows, one
+/// `<account>/<org>/local_<desktop id>.json` per session. The file name isn't the session id;
+/// `cliSessionId` inside it is.
+pub fn desktop_sessions_dirs(home: &Path) -> Vec<PathBuf> {
+    #[cfg(target_os = "macos")]
+    let app_dirs = vec![
+        home.join("Library")
+            .join("Application Support")
+            .join("Claude"),
+    ];
+    #[cfg(windows)]
+    let app_dirs = {
+        let roaming = env_dir("APPDATA").unwrap_or_else(|| home.join("AppData").join("Roaming"));
+        let local = env_dir("LOCALAPPDATA").unwrap_or_else(|| home.join("AppData").join("Local"));
+        vec![
+            roaming.join("Claude"),
+            local
+                .join("Packages")
+                .join(DESKTOP_MSIX_PACKAGE)
+                .join("LocalCache")
+                .join("Roaming")
+                .join("Claude"),
+        ]
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let app_dirs = vec![
+        env_dir("XDG_CONFIG_HOME")
+            .unwrap_or_else(|| home.join(".config"))
+            .join("Claude"),
+    ];
+    app_dirs
+        .into_iter()
+        .map(|dir| dir.join(DESKTOP_SESSIONS))
+        .collect()
+}
 
 const MEMORY_INDEX: &str = "MEMORY.md";
 /// Claude Code loads only the start of `MEMORY.md` into a session.
@@ -52,6 +100,8 @@ impl ClaudeAdapter {
             global_config: config_dir.join(".claude.json"),
             config_dir,
             temp_dir: None,
+            desktop_sessions_dirs: Vec::new(),
+            desktop_listed: Mutex::default(),
             cli: Cli::fixed(PROGRAM, INSTALL_URL, None).optional(),
             cache: ParseCache::default(),
         }
@@ -64,6 +114,13 @@ impl ClaudeAdapter {
         }
     }
 
+    pub fn with_desktop_sessions_dirs(self, dirs: Vec<PathBuf>) -> Self {
+        Self {
+            desktop_sessions_dirs: dirs,
+            ..self
+        }
+    }
+
     pub fn with_cli(self, cli: Option<PathBuf>) -> Self {
         Self {
             cli: Cli::fixed(PROGRAM, INSTALL_URL, cli).optional(),
@@ -71,7 +128,8 @@ impl ClaudeAdapter {
         }
     }
 
-    /// With `CLAUDE_CONFIG_DIR` set, `.claude.json` is inside it; otherwise it's `~/.claude.json`,
+    /// `MARDUK_CLAUDE_DESKTOP_DIR` replaces the desktop app's session list folders with one,
+    /// for the demo home. With `CLAUDE_CONFIG_DIR` set, `.claude.json` is inside it; otherwise it's `~/.claude.json`,
     /// next to (not inside) `~/.claude`.
     pub fn from_env(overrides: Arc<CliOverrides>) -> Self {
         let adapter = match env_dir("CLAUDE_CONFIG_DIR") {
@@ -83,6 +141,9 @@ impl ClaudeAdapter {
         };
         Self {
             temp_dir: default_temp_dir(),
+            desktop_sessions_dirs: env_dir("MARDUK_CLAUDE_DESKTOP_DIR")
+                .map(|dir| vec![dir])
+                .unwrap_or_else(|| desktop_sessions_dirs(&home_dir())),
             cli: Cli::detect("claude", PROGRAM, INSTALL_URL, overrides).optional(),
             ..adapter
         }
@@ -413,6 +474,14 @@ impl AgentAdapter for ClaudeAdapter {
 
     fn scan_with(&self, progress: &dyn ScanProgress) -> ScanResult {
         self.cli.refresh();
+        *self
+            .desktop_listed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = self
+            .desktop_sessions_dirs
+            .iter()
+            .flat_map(|dir| desktop_listed_sessions(dir))
+            .collect();
         let mut result = ScanResult::empty_complete();
         let files = jsonl_two_levels(&self.projects_dir, &mut result);
         let mut seen: Vec<PathBuf> = Vec::new();
@@ -453,9 +522,14 @@ impl AgentAdapter for ClaudeAdapter {
                 reason: "This subagent is part of its parent session; deleting the parent deletes it too.".to_string(),
             };
         }
+        let listed_in_desktop = self
+            .desktop_listed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&session.id);
         DeletePlan::Trash {
             files: session.files.clone(),
-            warning: None,
+            warning: listed_in_desktop.then(|| DESKTOP_WARNING.to_string()),
         }
     }
 
@@ -568,7 +642,9 @@ impl AgentAdapter for ClaudeAdapter {
                      their session. When a delete removes a project's last session, you can \
                      also run `claude purge -y <project>`, which permanently deletes the \
                      project's memory, its prompts in the prompt history and its entry in \
-                     `.claude.json` (trust, allowed tools, MCP servers)."
+                     `.claude.json` (trust, allowed tools, MCP servers). Claude's desktop app \
+                     keeps its own list of the sessions it has shown, which Marduk doesn't \
+                     change, so a deleted session stays in its sidebar."
                 .to_string(),
             archive: "Claude Code has no archive.".to_string(),
         }
@@ -577,6 +653,40 @@ impl AgentAdapter for ClaudeAdapter {
     fn transcript(&self, session: &Session) -> std::io::Result<Transcript> {
         read_transcript(&session.primary_file, session.part_of_parent)
     }
+}
+
+/// The `cliSessionId`s of the Claude desktop app's session list. Read only to warn before a
+/// delete, so an unreadable entry is skipped rather than making the scan incomplete.
+fn desktop_listed_sessions(dir: &Path) -> HashSet<String> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Entry {
+        cli_session_id: Option<String>,
+    }
+    let children = |dir: &Path| -> Vec<PathBuf> {
+        fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .collect()
+    };
+    children(dir)
+        .iter()
+        .flat_map(|account| children(account))
+        .flat_map(|org| children(&org))
+        .filter(|path| {
+            path.extension().is_some_and(|ext| ext == "json")
+                && path
+                    .file_name()
+                    .and_then(OsStr::to_str)
+                    .is_some_and(|name| name.starts_with("local_"))
+        })
+        .filter_map(|path| {
+            let entry: Entry = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+            entry.cli_session_id
+        })
+        .collect()
 }
 
 /// Project folders none of whose top-level sessions in `all` would be left after `deleting`.
@@ -1408,6 +1518,53 @@ mod tests {
                 warning: None,
             }
         );
+    }
+
+    fn write_desktop_entry(desktop: &Path, file_name: &str, contents: &str) {
+        let org = desktop.join("account").join("org");
+        fs::create_dir_all(&org).unwrap();
+        fs::write(org.join(file_name), contents).unwrap();
+    }
+
+    #[test]
+    fn warns_when_the_desktop_app_lists_the_session() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        let desktop = root.path().join("desktop");
+        write_project(
+            &config,
+            "p",
+            &[
+                (&format!("{ID}.jsonl"), "{}"),
+                (&format!("{OTHER_ID}.jsonl"), "{}"),
+            ],
+        );
+        write_desktop_entry(
+            &desktop,
+            "local_39362ece-5abf-41be-ab2e-6255661bcd1a.json",
+            &format!(
+                r#"{{"sessionId":"local_39362ece-5abf-41be-ab2e-6255661bcd1a","cliSessionId":"{ID}"}}"#
+            ),
+        );
+        write_desktop_entry(&desktop, "local_broken.json", "{");
+        write_desktop_entry(
+            &desktop,
+            &format!("{OTHER_ID}.json"),
+            &format!(r#"{{"cliSessionId":"{OTHER_ID}"}}"#),
+        );
+        let adapter = ClaudeAdapter::new(config)
+            .with_desktop_sessions_dirs(vec![root.path().join("missing"), desktop]);
+        let result = adapter.scan();
+        assert!(result.complete);
+        let warning = |id: &str| {
+            let session = result.sessions.iter().find(|s| s.id == id).unwrap();
+            match adapter.delete_plan(session) {
+                DeletePlan::Trash { warning, .. } => warning,
+                plan => panic!("unexpected plan {plan:?}"),
+            }
+        };
+        assert_eq!(warning(ID).as_deref(), Some(DESKTOP_WARNING));
+        assert_eq!(warning(OTHER_ID), None);
     }
 
     #[test]
