@@ -286,7 +286,7 @@ impl Writer<'_> {
             spec("Fix flaky login test", API, 26 * HOUR, HOUR, 5300 * KB).labels(&["bug"]),
             &[],
         )?;
-        self.claude_desktop_entry("Fix flaky login test")?;
+        self.claude_desktop_entry("Fix flaky login test", false)?;
         self.codex(
             spec(
                 "Summarize changes for the release notes",
@@ -579,6 +579,7 @@ impl Writer<'_> {
             spec("Upgrade to React 19", WEB, 9 * DAY, 8 * DAY, 8 * MB),
             &[],
         )?;
+        self.claude_desktop_entry("Upgrade to React 19", true)?;
         self.codex(
             spec(
                 "Debug Docker build cache misses",
@@ -741,7 +742,7 @@ impl Writer<'_> {
     }
 
     /// Lists a Claude Code session in Claude's desktop app, which names the file by its own id.
-    fn claude_desktop_entry(&self, title: &str) -> io::Result<()> {
+    fn claude_desktop_entry(&self, title: &str, archived: bool) -> io::Result<()> {
         let org = self
             .home
             .var("MARDUK_CLAUDE_DESKTOP_DIR")
@@ -751,7 +752,7 @@ impl Writer<'_> {
         let desktop_id = format!("local_{}", uuid(&format!("desktop {title}")));
         fs::write(
             org.join(format!("{desktop_id}.json")),
-            json!({ "sessionId": desktop_id, "cliSessionId": uuid(title), "title": title, "isArchived": false })
+            json!({ "sessionId": desktop_id, "cliSessionId": uuid(title), "title": title, "isArchived": archived })
                 .to_string(),
         )
     }
@@ -1809,13 +1810,13 @@ mod tests {
     }
 
     #[test]
-    fn only_the_claude_session_the_desktop_app_lists_warns_about_it() {
+    fn claude_sessions_the_desktop_app_lists_warn_and_show_its_archive() {
         let (_dir, home, _) = write_demo(false);
         let (adapter, sessions) = scan(&home)
             .into_iter()
             .find(|(adapter, _)| adapter.id() == "claude")
             .unwrap();
-        let warned: Vec<_> = sessions
+        let mut warned: Vec<_> = sessions
             .iter()
             .filter(|session| {
                 matches!(
@@ -1828,7 +1829,14 @@ mod tests {
             })
             .filter_map(|session| session.title.as_deref())
             .collect();
-        assert_eq!(warned, ["Fix flaky login test"]);
+        warned.sort();
+        assert_eq!(warned, ["Fix flaky login test", "Upgrade to React 19"]);
+        let archived: Vec<_> = sessions
+            .iter()
+            .filter(|session| session.archived)
+            .filter_map(|session| session.title.as_deref())
+            .collect();
+        assert_eq!(archived, ["Upgrade to React 19"]);
     }
 
     #[test]

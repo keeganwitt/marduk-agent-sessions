@@ -30,8 +30,8 @@ pub struct ClaudeAdapter {
     /// task output per session.
     temp_dir: Option<PathBuf>,
     desktop_sessions_dirs: Vec<PathBuf>,
-    /// Session ids Claude's desktop app listed at the last scan.
-    desktop_listed: Mutex<HashSet<String>>,
+    /// Session ids Claude's desktop app listed at the last scan, and whether it archived them.
+    desktop_listed: Mutex<HashMap<String, bool>>,
     cli: Cli,
     cache: ParseCache<Fingerprint, Parsed>,
 }
@@ -168,6 +168,15 @@ impl ClaudeAdapter {
         }
         paths.retain(|path| path.symlink_metadata().is_ok());
         paths
+    }
+
+    fn archived_in_desktop(&self, id: &str) -> bool {
+        self.desktop_listed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(id)
+            .copied()
+            .unwrap_or_default()
     }
 
     /// Folders `session_state` takes paths from.
@@ -481,13 +490,17 @@ impl AgentAdapter for ClaudeAdapter {
             .desktop_sessions_dirs
             .iter()
             .flat_map(|dir| desktop_listed_sessions(dir))
-            .collect();
+            .fold(HashMap::new(), |mut listed, (id, archived)| {
+                *listed.entry(id).or_default() |= archived;
+                listed
+            });
         let mut result = ScanResult::empty_complete();
         let files = jsonl_two_levels(&self.projects_dir, &mut result);
         let mut seen: Vec<PathBuf> = Vec::new();
         for path in &files {
             match self.read_session(path, progress) {
-                Ok(session) => {
+                Ok(mut session) => {
+                    session.archived = self.archived_in_desktop(&session.id);
                     for subagent in subagent_transcripts(path) {
                         match self.read_subagent(&subagent, &session, progress) {
                             Ok(child) => result.sessions.push(child),
@@ -526,7 +539,7 @@ impl AgentAdapter for ClaudeAdapter {
             .desktop_listed
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .contains(&session.id);
+            .contains_key(&session.id);
         DeletePlan::Trash {
             files: session.files.clone(),
             warning: listed_in_desktop.then(|| DESKTOP_WARNING.to_string()),
@@ -646,7 +659,10 @@ impl AgentAdapter for ClaudeAdapter {
                      keeps its own list of the sessions it has shown, which Marduk doesn't \
                      change, so a deleted session stays in its sidebar."
                 .to_string(),
-            archive: "Claude Code has no archive.".to_string(),
+            archive: "Claude Code has no archive. Claude's desktop app archives sessions in its \
+                      sidebar; Marduk shows those as archived but can't archive or unarchive \
+                      them."
+                .to_string(),
         }
     }
 
@@ -655,13 +671,15 @@ impl AgentAdapter for ClaudeAdapter {
     }
 }
 
-/// The `cliSessionId`s of the Claude desktop app's session list. Read only to warn before a
-/// delete, so an unreadable entry is skipped rather than making the scan incomplete.
-fn desktop_listed_sessions(dir: &Path) -> HashSet<String> {
+/// The `cliSessionId`s of the Claude desktop app's session list, with `isArchived`. Only used to
+/// warn before a delete and to show its archive, so an unreadable entry is skipped rather than
+/// making the scan incomplete.
+fn desktop_listed_sessions(dir: &Path) -> Vec<(String, bool)> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Entry {
         cli_session_id: Option<String>,
+        is_archived: Option<bool>,
     }
     let children = |dir: &Path| -> Vec<PathBuf> {
         fs::read_dir(dir)
@@ -684,7 +702,7 @@ fn desktop_listed_sessions(dir: &Path) -> HashSet<String> {
         })
         .filter_map(|path| {
             let entry: Entry = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
-            entry.cli_session_id
+            Some((entry.cli_session_id?, entry.is_archived.unwrap_or_default()))
         })
         .collect()
 }
@@ -1029,7 +1047,7 @@ impl ClaudeAdapter {
                 .last
                 .unwrap_or_else(|| fingerprint.modified.into()),
             size_bytes: files.iter().map(|file| fs_util::path_size(file)).sum(),
-            archived: false,
+            archived: parent.archived,
             primary_file: path.to_path_buf(),
             files,
             fingerprint,
@@ -1565,6 +1583,49 @@ mod tests {
         };
         assert_eq!(warning(ID).as_deref(), Some(DESKTOP_WARNING));
         assert_eq!(warning(OTHER_ID), None);
+    }
+
+    #[test]
+    fn shows_the_desktop_apps_archive_without_offering_to_change_it() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        let desktop = root.path().join("desktop");
+        let dir = write_project(
+            &config,
+            "p",
+            &[
+                (&format!("{ID}.jsonl"), "{}"),
+                (&format!("{OTHER_ID}.jsonl"), "{}"),
+            ],
+        );
+        fs::create_dir_all(dir.join(ID).join("subagents")).unwrap();
+        fs::write(dir.join(ID).join("subagents").join("agent-1.jsonl"), "{}").unwrap();
+        write_desktop_entry(
+            &desktop,
+            "local_1.json",
+            &format!(r#"{{"cliSessionId":"{ID}","isArchived":true}}"#),
+        );
+        write_desktop_entry(
+            &desktop,
+            "local_2.json",
+            &format!(r#"{{"cliSessionId":"{OTHER_ID}","isArchived":false}}"#),
+        );
+        let adapter = ClaudeAdapter::new(config).with_desktop_sessions_dirs(vec![desktop]);
+        let sessions = adapter.scan().sessions;
+        let archived: BTreeSet<&str> = sessions
+            .iter()
+            .filter(|s| s.archived)
+            .map(|s| s.id.as_str())
+            .collect();
+        assert_eq!(
+            archived,
+            BTreeSet::from([ID, format!("{ID}/agent-1").as_str()])
+        );
+        assert!(
+            sessions
+                .iter()
+                .all(|s| adapter.archive_command(s).is_none())
+        );
     }
 
     #[test]

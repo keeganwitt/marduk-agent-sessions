@@ -15,7 +15,7 @@ Each run rewrites the demo home, so ages are relative to now: one Claude Code se
 
 The sessions come from `crates/marduk-core/src/demo.rs`, which writes each agent's files the way that agent does:
 
-- **Claude Code:** JSONL transcripts in `.claude/projects/<folder>/`, one of them running with four subagents in `<id>/subagents/`, and one listed in Claude's desktop app (`Claude/claude-code-sessions/`), whose delete warns that the app keeps showing it.
+- **Claude Code:** JSONL transcripts in `.claude/projects/<folder>/`, one of them running with four subagents in `<id>/subagents/`, and two listed in Claude's desktop app (`Claude/claude-code-sessions/`), whose deletes warn that the app keeps showing them; the app has archived one of them (_Upgrade to React 19_), which Marduk shows as archived but can't unarchive.
 - **Codex:** rollouts in `.codex/sessions/YYYY/MM/DD/` and `.codex/archived_sessions/`, with spawned subagents, a Guardian review that `codex delete` would leave behind (under _Review PR 282_), one subagent whose parent is gone (shown with _Parent deleted_), and an empty thread that was opened but never sent anything (found with the _Empty_ filter).
 - **GitHub Copilot:** `events.jsonl` and `workspace.yaml` folders in `.copilot/session-state/`.
 - **OpenCode:** a SQLite database with the current `session_v2` tables, including a child session and an archived one.
