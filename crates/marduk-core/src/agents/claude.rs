@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
 use serde_json::value::RawValue;
@@ -29,7 +29,8 @@ pub struct ClaudeAdapter {
     /// Claude Code's `claude-<uid>` temp folder, with a `<project>/<session id>` folder of
     /// task output per session.
     temp_dir: Option<PathBuf>,
-    desktop_sessions_dirs: Vec<PathBuf>,
+    /// Folders Claude's desktop app may keep its data in (`desktop_dirs`).
+    desktop_dirs: Vec<PathBuf>,
     /// Session ids Claude's desktop app listed at the last scan, and whether it archived them.
     desktop_listed: Mutex<HashMap<String, bool>>,
     cli: Cli,
@@ -48,14 +49,17 @@ const DESKTOP_WARNING: &str = "Claude's desktop app lists this session too. It k
      found on disk\".";
 
 const DESKTOP_SESSIONS: &str = "claude-code-sessions";
+/// Where the desktop app makes a throwaway `<account>/<org>/scratch-<YYYY-MM-DD>-<n>` folder
+/// for each session started without a project.
+const DESKTOP_SCRATCH: &str = "scratch-workspaces";
 /// The Microsoft Store build's package, whose `%APPDATA%` writes Windows redirects here.
 #[cfg(windows)]
 const DESKTOP_MSIX_PACKAGE: &str = "Claude_pzs8sxrjxfjjc";
 
-/// Where Claude's desktop app may list the Claude Code sessions it shows, one
-/// `<account>/<org>/local_<desktop id>.json` per session. The file name isn't the session id;
-/// `cliSessionId` inside it is.
-pub fn desktop_sessions_dirs(home: &Path) -> Vec<PathBuf> {
+/// Where Claude's desktop app may keep its data. It lists the Claude Code sessions it shows in
+/// `claude-code-sessions`, one `<account>/<org>/local_<desktop id>.json` per session. The file
+/// name isn't the session id; `cliSessionId` inside it is.
+pub fn desktop_dirs(home: &Path) -> Vec<PathBuf> {
     #[cfg(target_os = "macos")]
     let app_dirs = vec![
         home.join("Library")
@@ -83,9 +87,6 @@ pub fn desktop_sessions_dirs(home: &Path) -> Vec<PathBuf> {
             .join("Claude"),
     ];
     app_dirs
-        .into_iter()
-        .map(|dir| dir.join(DESKTOP_SESSIONS))
-        .collect()
 }
 
 const MEMORY_INDEX: &str = "MEMORY.md";
@@ -100,7 +101,7 @@ impl ClaudeAdapter {
             global_config: config_dir.join(".claude.json"),
             config_dir,
             temp_dir: None,
-            desktop_sessions_dirs: Vec::new(),
+            desktop_dirs: Vec::new(),
             desktop_listed: Mutex::default(),
             cli: Cli::fixed(PROGRAM, INSTALL_URL, None).optional(),
             cache: ParseCache::default(),
@@ -114,9 +115,9 @@ impl ClaudeAdapter {
         }
     }
 
-    pub fn with_desktop_sessions_dirs(self, dirs: Vec<PathBuf>) -> Self {
+    pub fn with_desktop_dirs(self, dirs: Vec<PathBuf>) -> Self {
         Self {
-            desktop_sessions_dirs: dirs,
+            desktop_dirs: dirs,
             ..self
         }
     }
@@ -128,7 +129,7 @@ impl ClaudeAdapter {
         }
     }
 
-    /// `MARDUK_CLAUDE_DESKTOP_DIR` replaces the desktop app's session list folders with one,
+    /// `MARDUK_CLAUDE_DESKTOP_DIR` replaces the desktop app's possible folders with one,
     /// for the demo home. With `CLAUDE_CONFIG_DIR` set, `.claude.json` is inside it; otherwise it's `~/.claude.json`,
     /// next to (not inside) `~/.claude`.
     pub fn from_env(overrides: Arc<CliOverrides>) -> Self {
@@ -141,9 +142,9 @@ impl ClaudeAdapter {
         };
         Self {
             temp_dir: default_temp_dir(),
-            desktop_sessions_dirs: env_dir("MARDUK_CLAUDE_DESKTOP_DIR")
+            desktop_dirs: env_dir("MARDUK_CLAUDE_DESKTOP_DIR")
                 .map(|dir| vec![dir])
-                .unwrap_or_else(|| desktop_sessions_dirs(&home_dir())),
+                .unwrap_or_else(|| desktop_dirs(&home_dir())),
             cli: Cli::detect("claude", PROGRAM, INSTALL_URL, overrides).optional(),
             ..adapter
         }
@@ -168,6 +169,21 @@ impl ClaudeAdapter {
         }
         paths.retain(|path| path.symlink_metadata().is_ok());
         paths
+    }
+
+    /// True for `<desktop>/scratch-workspaces/<account>/<org>/scratch-<YYYY-MM-DD>-<n>`.
+    fn in_desktop_scratch(&self, cwd: &Path) -> bool {
+        self.desktop_dirs.iter().any(|dir| {
+            cwd.strip_prefix(dir.join(DESKTOP_SCRATCH))
+                .is_ok_and(|rest| {
+                    let parts: Vec<_> = rest.components().collect();
+                    matches!(
+                        parts.as_slice(),
+                        [Component::Normal(_), Component::Normal(_), Component::Normal(name)]
+                            if is_scratch_name(name)
+                    )
+                })
+        })
     }
 
     fn archived_in_desktop(&self, id: &str) -> bool {
@@ -487,9 +503,9 @@ impl AgentAdapter for ClaudeAdapter {
             .desktop_listed
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = self
-            .desktop_sessions_dirs
+            .desktop_dirs
             .iter()
-            .flat_map(|dir| desktop_listed_sessions(dir))
+            .flat_map(|dir| desktop_listed_sessions(&dir.join(DESKTOP_SESSIONS)))
             .fold(HashMap::new(), |mut listed, (id, archived)| {
                 *listed.entry(id).or_default() |= archived;
                 listed
@@ -501,6 +517,10 @@ impl AgentAdapter for ClaudeAdapter {
             match self.read_session(path, progress) {
                 Ok(mut session) => {
                     session.archived = self.archived_in_desktop(&session.id);
+                    session.projectless = session
+                        .project_dir
+                        .as_deref()
+                        .is_some_and(|cwd| self.in_desktop_scratch(Path::new(cwd)));
                     for subagent in subagent_transcripts(path) {
                         match self.read_subagent(&subagent, &session, progress) {
                             Ok(child) => result.sessions.push(child),
@@ -669,6 +689,17 @@ impl AgentAdapter for ClaudeAdapter {
     fn transcript(&self, session: &Session) -> std::io::Result<Transcript> {
         read_transcript(&session.primary_file, session.part_of_parent)
     }
+}
+
+fn is_scratch_name(name: &OsStr) -> bool {
+    let Some(rest) = name.to_str().and_then(|name| name.strip_prefix("scratch-")) else {
+        return false;
+    };
+    let (Some(date), Some(n)) = (rest.get(..10), rest.get(10..)) else {
+        return false;
+    };
+    chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_ok()
+        && n.strip_prefix('-').is_some_and(|n| !n.is_empty())
 }
 
 /// The `cliSessionId`s of the Claude desktop app's session list, with `isArchived`. Only used to
@@ -1054,7 +1085,7 @@ impl ClaudeAdapter {
             parent_id: Some(parent.id.clone()),
             deleted_with_parent: true,
             part_of_parent: true,
-            projectless: false,
+            projectless: parent.projectless,
             models: parsed.models.clone(),
             agent_type,
             empty: parsed.is_empty(),
@@ -1539,7 +1570,7 @@ mod tests {
     }
 
     fn write_desktop_entry(desktop: &Path, file_name: &str, contents: &str) {
-        let org = desktop.join("account").join("org");
+        let org = desktop.join(DESKTOP_SESSIONS).join("account").join("org");
         fs::create_dir_all(&org).unwrap();
         fs::write(org.join(file_name), contents).unwrap();
     }
@@ -1571,7 +1602,7 @@ mod tests {
             &format!(r#"{{"cliSessionId":"{OTHER_ID}"}}"#),
         );
         let adapter = ClaudeAdapter::new(config)
-            .with_desktop_sessions_dirs(vec![root.path().join("missing"), desktop]);
+            .with_desktop_dirs(vec![root.path().join("missing"), desktop]);
         let result = adapter.scan();
         assert!(result.complete);
         let warning = |id: &str| {
@@ -1610,7 +1641,7 @@ mod tests {
             "local_2.json",
             &format!(r#"{{"cliSessionId":"{OTHER_ID}","isArchived":false}}"#),
         );
-        let adapter = ClaudeAdapter::new(config).with_desktop_sessions_dirs(vec![desktop]);
+        let adapter = ClaudeAdapter::new(config).with_desktop_dirs(vec![desktop]);
         let sessions = adapter.scan().sessions;
         let archived: BTreeSet<&str> = sessions
             .iter()
@@ -1625,6 +1656,78 @@ mod tests {
             sessions
                 .iter()
                 .all(|s| adapter.archive_command(s).is_none())
+        );
+    }
+
+    #[test]
+    fn sessions_in_a_desktop_scratch_folder_have_no_project() {
+        let root = tempfile::tempdir().unwrap();
+        let desktop = root.path().join("Claude");
+        let org = desktop.join(DESKTOP_SCRATCH).join("account").join("org");
+        let cases = [
+            (org.join("scratch-2026-11-21-959605"), true),
+            (org.join("scratch-2026-11-21-959605").join("sub"), false),
+            (org.join("scratch-notes"), false),
+            (org.join("scratch-2026-13-40-1"), false),
+            (org.join("scratch-2026-11-21-"), false),
+            (
+                desktop.join(DESKTOP_SCRATCH).join("scratch-2026-11-21-1"),
+                false,
+            ),
+            (root.path().join("project"), false),
+        ];
+        let adapter = ClaudeAdapter::new(root.path().join("config"))
+            .with_desktop_dirs(vec![root.path().join("missing"), desktop]);
+        for (cwd, expected) in &cases {
+            assert_eq!(
+                adapter.in_desktop_scratch(cwd),
+                *expected,
+                "{}",
+                cwd.display()
+            );
+        }
+    }
+
+    #[test]
+    fn scratch_sessions_and_their_subagents_are_projectless() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        let desktop = root.path().join("Claude");
+        let scratch = desktop
+            .join(DESKTOP_SCRATCH)
+            .join("account")
+            .join("org")
+            .join("scratch-2026-11-21-1");
+        let record = |cwd: &Path| {
+            serde_json::json!({ "type": "user", "cwd": cwd, "sessionId": ID,
+                "message": { "role": "user", "content": "hi" } })
+            .to_string()
+        };
+        let dir = write_project(
+            &config,
+            "p",
+            &[
+                (&format!("{ID}.jsonl"), &record(&scratch)),
+                (
+                    &format!("{OTHER_ID}.jsonl"),
+                    &record(&root.path().join("project")),
+                ),
+            ],
+        );
+        fs::create_dir_all(dir.join(ID).join("subagents")).unwrap();
+        fs::write(dir.join(ID).join("subagents").join("agent-1.jsonl"), "{}").unwrap();
+        let sessions = ClaudeAdapter::new(config)
+            .with_desktop_dirs(vec![desktop])
+            .scan()
+            .sessions;
+        let projectless: BTreeSet<&str> = sessions
+            .iter()
+            .filter(|s| s.projectless)
+            .map(|s| s.id.as_str())
+            .collect();
+        assert_eq!(
+            projectless,
+            BTreeSet::from([ID, format!("{ID}/agent-1").as_str()])
         );
     }
 

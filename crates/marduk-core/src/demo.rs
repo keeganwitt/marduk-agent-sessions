@@ -80,10 +80,7 @@ impl DemoHome {
                 self.root.join("vscode").join("User"),
             ),
             ("CLAUDE_CONFIG_DIR", self.root.join(".claude")),
-            (
-                "MARDUK_CLAUDE_DESKTOP_DIR",
-                self.root.join("Claude").join("claude-code-sessions"),
-            ),
+            ("MARDUK_CLAUDE_DESKTOP_DIR", self.root.join("Claude")),
             ("CODEX_HOME", self.root.join(".codex")),
             ("COPILOT_HOME", self.root.join(".copilot")),
             ("PI_CODING_AGENT_DIR", self.root.join(".pi").join("agent")),
@@ -143,7 +140,8 @@ struct Spec {
     size: u64,
     archived: bool,
     running: bool,
-    /// A Codex Desktop chat started without a project; `project` is ignored.
+    /// A Codex Desktop or Claude desktop app chat started without a project; `project` is
+    /// ignored.
     chat: bool,
     /// The custom agent a Claude Code session ran as (`claude --agent`).
     agent: Option<&'static str>,
@@ -580,6 +578,11 @@ impl Writer<'_> {
             &[],
         )?;
         self.claude_desktop_entry("Upgrade to React 19", true)?;
+        self.claude(
+            spec("Compare two CSV exports", "", 5 * DAY, 5 * DAY, 210 * KB).chat(),
+            &[],
+        )?;
+        self.claude_desktop_entry("Compare two CSV exports", false)?;
         self.codex(
             spec(
                 "Debug Docker build cache misses",
@@ -706,7 +709,17 @@ impl Writer<'_> {
     }
 
     fn claude(&mut self, spec: Spec, subagents: &[(Spec, &str)]) -> io::Result<()> {
-        let cwd = self.project(spec.project)?;
+        let cwd = if spec.chat {
+            let dir = self.claude_desktop_org("scratch-workspaces").join(format!(
+                "scratch-{}-{}",
+                self.datetime(spec.created).format("%Y-%m-%d"),
+                fnv(spec.title, 3) % 1_000_000
+            ));
+            fs::create_dir_all(&dir)?;
+            dir.to_string_lossy().into_owned()
+        } else {
+            self.project(spec.project)?
+        };
         let id = uuid(spec.title);
         let folder = self
             .home
@@ -741,13 +754,17 @@ impl Writer<'_> {
         Ok(())
     }
 
+    fn claude_desktop_org(&self, folder: &str) -> PathBuf {
+        self.home
+            .var("MARDUK_CLAUDE_DESKTOP_DIR")
+            .join(folder)
+            .join(uuid("demo account"))
+            .join(uuid("demo org"))
+    }
+
     /// Lists a Claude Code session in Claude's desktop app, which names the file by its own id.
     fn claude_desktop_entry(&self, title: &str, archived: bool) -> io::Result<()> {
-        let org = self
-            .home
-            .var("MARDUK_CLAUDE_DESKTOP_DIR")
-            .join(uuid("demo account"))
-            .join(uuid("demo org"));
+        let org = self.claude_desktop_org("claude-code-sessions");
         fs::create_dir_all(&org)?;
         let desktop_id = format!("local_{}", uuid(&format!("desktop {title}")));
         fs::write(
@@ -1692,7 +1709,7 @@ mod tests {
         vec![
             Box::new(
                 ClaudeAdapter::new(home.var("CLAUDE_CONFIG_DIR"))
-                    .with_desktop_sessions_dirs(vec![home.var("MARDUK_CLAUDE_DESKTOP_DIR")]),
+                    .with_desktop_dirs(vec![home.var("MARDUK_CLAUDE_DESKTOP_DIR")]),
             ),
             Box::new(CodexAdapter::new(home.var("CODEX_HOME"), None)),
             Box::new(CopilotAdapter::new(
@@ -1830,13 +1847,26 @@ mod tests {
             .filter_map(|session| session.title.as_deref())
             .collect();
         warned.sort();
-        assert_eq!(warned, ["Fix flaky login test", "Upgrade to React 19"]);
+        assert_eq!(
+            warned,
+            [
+                "Compare two CSV exports",
+                "Fix flaky login test",
+                "Upgrade to React 19"
+            ]
+        );
         let archived: Vec<_> = sessions
             .iter()
             .filter(|session| session.archived)
             .filter_map(|session| session.title.as_deref())
             .collect();
         assert_eq!(archived, ["Upgrade to React 19"]);
+        let projectless: Vec<_> = sessions
+            .iter()
+            .filter(|session| session.projectless)
+            .filter_map(|session| session.title.as_deref())
+            .collect();
+        assert_eq!(projectless, ["Compare two CSV exports"]);
     }
 
     #[test]
@@ -1889,7 +1919,7 @@ mod tests {
         assert!(ids.contains(guardian.parent_id.as_deref().unwrap()));
         let chats: Vec<_> = sessions
             .iter()
-            .filter(|session| session.projectless)
+            .filter(|session| session.projectless && session.agent == "codex")
             .collect();
         assert_eq!(chats.len(), 2);
         let chats_dir = home.root().join("Documents").join("Codex");
