@@ -14,6 +14,7 @@ import { Markdown } from "./Markdown";
 interface Props {
   session: SessionRow;
   labelsById?: ReadonlyMap<number, Label>;
+  onCopyId: (session: SessionRow) => void;
   onClose: () => void;
 }
 
@@ -77,6 +78,7 @@ function promptLabel(text: string): string {
 export function TranscriptPanel({
   session,
   labelsById = new Map(),
+  onCopyId,
   onClose,
 }: Props) {
   const { t } = useI18n();
@@ -145,6 +147,12 @@ export function TranscriptPanel({
             {session.agentName}
             {session.projectDir && ` · ${session.projectDir}`}
           </p>
+          <div className="transcript-session-id">
+            <code>{session.id}</code>
+            <button type="button" onClick={() => onCopyId(session)}>
+              {t("table.copyId")}
+            </button>
+          </div>
         </div>
         <button
           type="button"

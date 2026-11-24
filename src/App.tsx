@@ -877,6 +877,7 @@ export default function App() {
             ) ?? transcriptFor
           }
           labelsById={labelsById}
+          onCopyId={(session) => void copyId(session)}
           onClose={closeTranscript}
         />
       )}

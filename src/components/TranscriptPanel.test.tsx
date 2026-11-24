@@ -46,6 +46,7 @@ describe("TranscriptPanel", () => {
     render(
       <TranscriptPanel
         session={makeSession({ uid: "u1", title: "Explore src" })}
+        onCopyId={() => {}}
         onClose={() => {}}
       />,
     );
@@ -84,6 +85,7 @@ describe("TranscriptPanel", () => {
     render(
       <TranscriptPanel
         session={makeSession({ running: true })}
+        onCopyId={() => {}}
         onClose={() => {}}
       />,
     );
@@ -102,7 +104,13 @@ describe("TranscriptPanel", () => {
       }),
     );
 
-    render(<TranscriptPanel session={makeSession()} onClose={() => {}} />);
+    render(
+      <TranscriptPanel
+        session={makeSession()}
+        onCopyId={() => {}}
+        onClose={() => {}}
+      />,
+    );
 
     expect(
       await screen.findByText(/Read through `opencode session export`/),
@@ -114,7 +122,13 @@ describe("TranscriptPanel", () => {
       transcriptOf([message("context", "# AGENTS.md")]),
     );
 
-    render(<TranscriptPanel session={makeSession()} onClose={() => {}} />);
+    render(
+      <TranscriptPanel
+        session={makeSession()}
+        onCopyId={() => {}}
+        onClose={() => {}}
+      />,
+    );
 
     expect(
       await screen.findByText(/hidden by the filters above/),
@@ -129,7 +143,13 @@ describe("TranscriptPanel", () => {
       }),
     );
 
-    render(<TranscriptPanel session={makeSession()} onClose={() => {}} />);
+    render(
+      <TranscriptPanel
+        session={makeSession()}
+        onCopyId={() => {}}
+        onClose={() => {}}
+      />,
+    );
 
     expect(
       await screen.findByText(/encrypted context record/),
@@ -146,7 +166,13 @@ describe("TranscriptPanel", () => {
       ]),
     );
 
-    render(<TranscriptPanel session={makeSession()} onClose={() => {}} />);
+    render(
+      <TranscriptPanel
+        session={makeSession()}
+        onCopyId={() => {}}
+        onClose={() => {}}
+      />,
+    );
 
     const jump = await screen.findByRole("combobox", {
       name: "Jump to prompt",
@@ -161,7 +187,13 @@ describe("TranscriptPanel", () => {
     const onClose = vi.fn();
     loadTranscript.mockRejectedValue("Couldn't read /x: permission denied");
 
-    render(<TranscriptPanel session={makeSession()} onClose={onClose} />);
+    render(
+      <TranscriptPanel
+        session={makeSession()}
+        onCopyId={() => {}}
+        onClose={onClose}
+      />,
+    );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "permission denied",

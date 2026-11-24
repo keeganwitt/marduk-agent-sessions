@@ -637,6 +637,16 @@ button.title-link {
   overflow-wrap: anywhere;
 }
 
+.transcript-session-id {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .transcript-controls {
   display: flex;
   gap: 14px;
