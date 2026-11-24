@@ -80,6 +80,7 @@ impl DemoHome {
                 self.root.join("vscode").join("User"),
             ),
             ("CLAUDE_CONFIG_DIR", self.root.join(".claude")),
+            ("MARDUK_CLAUDE_DESKTOP_DIR", self.root.join("Claude")),
             ("CODEX_HOME", self.root.join(".codex")),
             ("COPILOT_HOME", self.root.join(".copilot")),
             ("PI_CODING_AGENT_DIR", self.root.join(".pi").join("agent")),
@@ -139,7 +140,8 @@ struct Spec {
     size: u64,
     archived: bool,
     running: bool,
-    /// A Codex Desktop chat started without a project; `project` is ignored.
+    /// A Codex Desktop or Claude desktop app chat started without a project; `project` is
+    /// ignored.
     chat: bool,
     /// The custom agent a Claude Code session ran as (`claude --agent`).
     agent: Option<&'static str>,
@@ -282,6 +284,7 @@ impl Writer<'_> {
             spec("Fix flaky login test", API, 26 * HOUR, HOUR, 5300 * KB).labels(&["bug"]),
             &[],
         )?;
+        self.claude_desktop_entry("Fix flaky login test", false)?;
         self.codex(
             spec(
                 "Summarize changes for the release notes",
@@ -574,6 +577,12 @@ impl Writer<'_> {
             spec("Upgrade to React 19", WEB, 9 * DAY, 8 * DAY, 8 * MB),
             &[],
         )?;
+        self.claude_desktop_entry("Upgrade to React 19", true)?;
+        self.claude(
+            spec("Compare two CSV exports", "", 5 * DAY, 5 * DAY, 210 * KB).chat(),
+            &[],
+        )?;
+        self.claude_desktop_entry("Compare two CSV exports", false)?;
         self.codex(
             spec(
                 "Debug Docker build cache misses",
@@ -700,7 +709,17 @@ impl Writer<'_> {
     }
 
     fn claude(&mut self, spec: Spec, subagents: &[(Spec, &str)]) -> io::Result<()> {
-        let cwd = self.project(spec.project)?;
+        let cwd = if spec.chat {
+            let dir = self.claude_desktop_org("scratch-workspaces").join(format!(
+                "scratch-{}-{}",
+                self.datetime(spec.created).format("%Y-%m-%d"),
+                fnv(spec.title, 3) % 1_000_000
+            ));
+            fs::create_dir_all(&dir)?;
+            dir.to_string_lossy().into_owned()
+        } else {
+            self.project(spec.project)?
+        };
         let id = uuid(spec.title);
         let folder = self
             .home
@@ -733,6 +752,26 @@ impl Writer<'_> {
         }
         self.label(format!("claude:{id}"), &spec);
         Ok(())
+    }
+
+    fn claude_desktop_org(&self, folder: &str) -> PathBuf {
+        self.home
+            .var("MARDUK_CLAUDE_DESKTOP_DIR")
+            .join(folder)
+            .join(uuid("demo account"))
+            .join(uuid("demo org"))
+    }
+
+    /// Lists a Claude Code session in Claude's desktop app, which names the file by its own id.
+    fn claude_desktop_entry(&self, title: &str, archived: bool) -> io::Result<()> {
+        let org = self.claude_desktop_org("claude-code-sessions");
+        fs::create_dir_all(&org)?;
+        let desktop_id = format!("local_{}", uuid(&format!("desktop {title}")));
+        fs::write(
+            org.join(format!("{desktop_id}.json")),
+            json!({ "sessionId": desktop_id, "cliSessionId": uuid(title), "title": title, "isArchived": archived })
+                .to_string(),
+        )
     }
 
     fn claude_records(&self, spec: &Spec, id: &str, cwd: &str, sidechain: bool) -> Vec<Value> {
@@ -1668,7 +1707,10 @@ mod tests {
     fn adapters(home: &DemoHome) -> Vec<Box<dyn AgentAdapter>> {
         let data = home.var("XDG_DATA_HOME");
         vec![
-            Box::new(ClaudeAdapter::new(home.var("CLAUDE_CONFIG_DIR"))),
+            Box::new(
+                ClaudeAdapter::new(home.var("CLAUDE_CONFIG_DIR"))
+                    .with_desktop_dirs(vec![home.var("MARDUK_CLAUDE_DESKTOP_DIR")]),
+            ),
             Box::new(CodexAdapter::new(home.var("CODEX_HOME"), None)),
             Box::new(CopilotAdapter::new(
                 home.var("COPILOT_HOME").join("session-state"),
@@ -1785,6 +1827,49 @@ mod tests {
     }
 
     #[test]
+    fn claude_sessions_the_desktop_app_lists_warn_and_show_its_archive() {
+        let (_dir, home, _) = write_demo(false);
+        let (adapter, sessions) = scan(&home)
+            .into_iter()
+            .find(|(adapter, _)| adapter.id() == "claude")
+            .unwrap();
+        let mut warned: Vec<_> = sessions
+            .iter()
+            .filter(|session| {
+                matches!(
+                    adapter.delete_plan(session),
+                    crate::adapter::DeletePlan::Trash {
+                        warning: Some(_),
+                        ..
+                    }
+                )
+            })
+            .filter_map(|session| session.title.as_deref())
+            .collect();
+        warned.sort();
+        assert_eq!(
+            warned,
+            [
+                "Compare two CSV exports",
+                "Fix flaky login test",
+                "Upgrade to React 19"
+            ]
+        );
+        let archived: Vec<_> = sessions
+            .iter()
+            .filter(|session| session.archived)
+            .filter_map(|session| session.title.as_deref())
+            .collect();
+        assert_eq!(archived, ["Upgrade to React 19"]);
+        let projectless: Vec<_> = sessions
+            .iter()
+            .filter(|session| session.projectless)
+            .filter_map(|session| session.title.as_deref())
+            .collect();
+        assert_eq!(projectless, ["Compare two CSV exports"]);
+    }
+
+    #[test]
     fn demo_has_running_archived_nested_orphaned_and_labeled_sessions() {
         let (_dir, home, now) = write_demo(false);
         let sessions: Vec<Session> = scan(&home)
@@ -1834,7 +1919,7 @@ mod tests {
         assert!(ids.contains(guardian.parent_id.as_deref().unwrap()));
         let chats: Vec<_> = sessions
             .iter()
-            .filter(|session| session.projectless)
+            .filter(|session| session.projectless && session.agent == "codex")
             .collect();
         assert_eq!(chats.len(), 2);
         let chats_dir = home.root().join("Documents").join("Codex");

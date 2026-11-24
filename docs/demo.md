@@ -15,7 +15,7 @@ Each run rewrites the demo home, so ages are relative to now: one Claude Code se
 
 The sessions come from `crates/marduk-core/src/demo.rs`, which writes each agent's files the way that agent does:
 
-- **Claude Code:** JSONL transcripts in `.claude/projects/<folder>/`, one of them running with four subagents in `<id>/subagents/`.
+- **Claude Code:** JSONL transcripts in `.claude/projects/<folder>/`, one of them running with four subagents in `<id>/subagents/`, and three listed in Claude's desktop app (`Claude/claude-code-sessions/`), whose deletes warn that the app keeps showing them. The app has archived one (_Upgrade to React 19_), which Marduk shows as archived but can't unarchive, and started another (_Compare two CSV exports_) without a project, in its `Claude/scratch-workspaces/` folder, which shows as _No project_ like Codex Desktop's chats.
 - **Codex:** rollouts in `.codex/sessions/YYYY/MM/DD/` and `.codex/archived_sessions/`, with spawned subagents, a Guardian review that `codex delete` would leave behind (under _Review PR 282_), one subagent whose parent is gone (shown with _Parent deleted_), and an empty thread that was opened but never sent anything (found with the _Empty_ filter).
 - **GitHub Copilot:** `events.jsonl` and `workspace.yaml` folders in `.copilot/session-state/`.
 - **OpenCode:** a SQLite database with the current `session_v2` tables, including a child session and an archived one.
@@ -33,17 +33,18 @@ The tests in `demo.rs` scan the demo home with every adapter and read every tran
 
 The demo sets these variables for Marduk (and for any agent CLI that Marduk runs):
 
-| Variable              | Points at                           |
-| --------------------- | ----------------------------------- |
-| `MARDUK_HOME`         | the demo home, as Marduk's `~`      |
-| `MARDUK_DATA_DIR`     | `marduk/` (labels and settings)     |
-| `CLAUDE_CONFIG_DIR`   | `.claude`                           |
-| `CODEX_HOME`          | `.codex`                            |
-| `COPILOT_HOME`        | `.copilot`                          |
-| `PI_CODING_AGENT_DIR` | `.pi/agent`                         |
-| `XDG_DATA_HOME`       | `.local/share` (OpenCode and Kilo)  |
-| `OPENCODE_DB`         | `.local/share/opencode/opencode.db` |
-| `KILO_DB`             | `.local/share/kilo/kilo.db`         |
+| Variable                    | Points at                           |
+| --------------------------- | ----------------------------------- |
+| `MARDUK_HOME`               | the demo home, as Marduk's `~`      |
+| `MARDUK_DATA_DIR`           | `marduk/` (labels and settings)     |
+| `CLAUDE_CONFIG_DIR`         | `.claude`                           |
+| `MARDUK_CLAUDE_DESKTOP_DIR` | `Claude` (Claude's desktop app)     |
+| `CODEX_HOME`                | `.codex`                            |
+| `COPILOT_HOME`              | `.copilot`                          |
+| `PI_CODING_AGENT_DIR`       | `.pi/agent`                         |
+| `XDG_DATA_HOME`             | `.local/share` (OpenCode and Kilo)  |
+| `OPENCODE_DB`               | `.local/share/opencode/opencode.db` |
+| `KILO_DB`                   | `.local/share/kilo/kilo.db`         |
 
 Every agent's own variable is set, rather than only `MARDUK_HOME`, so that one already exported in your shell can't point the demo at real sessions. We don't override `HOME`, because `tauri dev` would pass it on to Cargo and pnpm, which would then look for their caches in the demo home.
 
