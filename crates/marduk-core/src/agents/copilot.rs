@@ -4,12 +4,14 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
+use super::cli::{Cli, CliOverrides};
 use super::{env_dir, home_dir, total_size};
 use crate::adapter::ScanProgress;
 use crate::adapter::{AgentAdapter, DeletePlan, Mechanics, ScanResult};
 use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl::{self, Span};
+use crate::resume::{ResumeMode, ResumeTarget};
 use crate::session::Fingerprint;
 use crate::session::Session;
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
@@ -22,13 +24,19 @@ const INDEX_WARNING: &str = "Copilot's session search index keeps an entry for t
 /// `events.jsonl` event log and a flat `workspace.yaml` with the name, summary and folders.
 pub struct CopilotAdapter {
     sessions_dir: PathBuf,
+    cli: Cli,
     cache: ParseCache<Fingerprint, Parsed>,
 }
+
+const PROGRAM: &str = "copilot";
+const INSTALL_URL: &str =
+    "https://docs.github.com/en/copilot/how-tos/copilot-cli/install-copilot-cli";
 
 impl CopilotAdapter {
     pub fn new(sessions_dir: PathBuf) -> Self {
         Self {
             sessions_dir,
+            cli: Cli::fixed(PROGRAM, INSTALL_URL, None).optional(),
             cache: ParseCache::default(),
         }
     }
@@ -64,8 +72,15 @@ impl CopilotAdapter {
     }
 
     pub fn from_env() -> Self {
+        Self::with_detected_cli(Default::default())
+    }
+
+    pub(crate) fn with_detected_cli(overrides: std::sync::Arc<CliOverrides>) -> Self {
         let home = env_dir("COPILOT_HOME").unwrap_or_else(|| home_dir().join(".copilot"));
-        Self::new(home.join("session-state"))
+        Self {
+            cli: Cli::detect("copilot", PROGRAM, INSTALL_URL, overrides).optional(),
+            ..Self::new(home.join("session-state"))
+        }
     }
 }
 
@@ -76,6 +91,21 @@ impl AgentAdapter for CopilotAdapter {
 
     fn display_name(&self) -> &'static str {
         "GitHub Copilot"
+    }
+
+    fn resume_target(&self, session: &Session, mode: ResumeMode) -> Option<ResumeTarget> {
+        (mode == ResumeMode::Terminal && fs_util::looks_like_uuid(&session.id)).then(|| {
+            ResumeTarget::cli_with_env(
+                ["--resume", &session.id],
+                self.sessions_dir
+                    .parent()
+                    .map(|dir| ("COPILOT_HOME", dir.to_path_buf())),
+            )
+        })
+    }
+
+    fn cli(&self) -> Option<&Cli> {
+        Some(&self.cli)
     }
 
     fn roots(&self) -> Vec<PathBuf> {

@@ -9,6 +9,8 @@ import { SettingsDialog } from "./SettingsDialog";
 vi.mock("../lib/ipc", () => ({
   cliStatuses: vi.fn(),
   setCliPath: vi.fn(),
+  terminalSettings: vi.fn(),
+  setTerminal: vi.fn(),
   saveTheme: vi.fn(),
   getLanguage: vi.fn(),
   saveLanguage: vi.fn(),
@@ -201,6 +203,33 @@ describe("SettingsDialog", () => {
 
     expect(setCliPath).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledWith(false);
+  });
+
+  it("shows the automatic terminal and saves or clears a manual choice", async () => {
+    const user = userEvent.setup();
+    cliStatuses.mockResolvedValue([]);
+    vi.mocked(ipc.terminalSettings).mockResolvedValue({
+      selected: "automatic",
+      automatic: "macTerminal",
+      options: ["macTerminal", "iTerm2", "cmux"],
+    });
+    vi.mocked(ipc.setTerminal).mockResolvedValue();
+
+    render(<SettingsDialog onClose={() => {}} />);
+    await user.click(screen.getByRole("tab", { name: "Terminal" }));
+    const select = await screen.findByRole("combobox", { name: "Terminal" });
+    expect(select).toHaveDisplayValue("Automatic (Terminal.app)");
+    expect(
+      within(select).queryByRole("option", { name: "Windows Terminal" }),
+    ).toBeNull();
+
+    await user.selectOptions(select, "iTerm2");
+    expect(ipc.setTerminal).toHaveBeenNthCalledWith(1, "iTerm2");
+    expect(select).toHaveDisplayValue("iTerm2");
+
+    await user.selectOptions(select, "automatic");
+    expect(ipc.setTerminal).toHaveBeenNthCalledWith(2, "automatic");
+    expect(select).toHaveDisplayValue("Automatic (Terminal.app)");
   });
 
   it("opens on Appearance and switches sections with tabs or arrow keys", async () => {

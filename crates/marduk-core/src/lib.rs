@@ -8,6 +8,7 @@ pub mod fs_util;
 mod jsonl;
 pub mod labels;
 pub mod memory;
+pub mod resume;
 pub mod session;
 pub mod transcript;
 
@@ -34,16 +35,18 @@ pub fn default_adapters(
     vec![
         Box::new(agents::claude::ClaudeAdapter::from_env(overrides.clone())),
         Box::new(agents::codex::CodexAdapter::from_env(overrides.clone())),
-        Box::new(agents::copilot::CopilotAdapter::from_env()),
+        Box::new(agents::copilot::CopilotAdapter::with_detected_cli(
+            overrides.clone(),
+        )),
         Box::new(agents::opencode::OpenCodeAdapter::from_env(
             &agents::opencode::OPENCODE,
             overrides.clone(),
         )),
         Box::new(agents::opencode::OpenCodeAdapter::from_env(
             &agents::opencode::KILO,
-            overrides,
+            overrides.clone(),
         )),
-        Box::new(agents::pi::PiAdapter::from_env()),
+        Box::new(agents::pi::PiAdapter::with_detected_cli(overrides)),
         Box::new(agents::vscode_chat::VsCodeChatAdapter::from_env()),
         Box::new(agents::jetbrains::AiAssistantAdapter::from_env()),
         Box::new(agents::jetbrains::AirAdapter::from_env()),

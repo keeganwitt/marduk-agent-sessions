@@ -52,6 +52,8 @@ pub struct SessionRow {
     pub read_only_reason: Option<String>,
     pub permanent_delete: bool,
     pub can_archive: bool,
+    pub can_resume: bool,
+    pub can_resume_desktop: bool,
     pub label_ids: Vec<i64>,
 }
 
@@ -291,6 +293,10 @@ fn session_row(catalog: &Catalog, session: &Session, now: SystemTime) -> Session
         permanent_delete: matches!(plan, Some(DeletePlan::AgentCommand { .. })),
         label_ids: Vec::new(),
         can_archive: catalog.can_archive(session),
+        can_resume: !crate::demo_mode()
+            && catalog.can_resume(session, marduk_core::resume::ResumeMode::Terminal),
+        can_resume_desktop: !crate::demo_mode()
+            && catalog.can_resume(session, marduk_core::resume::ResumeMode::Desktop),
     }
 }
 
@@ -653,6 +659,8 @@ mod tests {
             read_only_reason: None,
             permanent_delete: false,
             can_archive: false,
+            can_resume: false,
+            can_resume_desktop: false,
             label_ids: vec![],
         }
     }

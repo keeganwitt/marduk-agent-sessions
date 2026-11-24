@@ -44,6 +44,7 @@ interface Props {
   onFilterProject: (project: string) => void;
   onShowFiles: (session: SessionRow) => void;
   onReveal: (path: string) => void;
+  onResume: (session: SessionRow, desktop: boolean) => void;
   onCopyId: (session: SessionRow) => void;
   onOpenTranscript: (session: SessionRow) => void;
   columns: ColumnPrefs;
@@ -406,6 +407,7 @@ export function SessionTable(props: Props) {
     onFilterProject,
     onShowFiles,
     onReveal,
+    onResume,
     onCopyId,
     onOpenTranscript,
     columns,
@@ -668,6 +670,7 @@ export function SessionTable(props: Props) {
                   session={session}
                   onShowFiles={onShowFiles}
                   onReveal={onReveal}
+                  onResume={onResume}
                   onCopyId={onCopyId}
                 />
               </td>

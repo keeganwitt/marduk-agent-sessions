@@ -30,6 +30,14 @@ For JetBrains Air, Marduk shows sessions with a local Air conversation log. Air'
 
 When an agent has its own delete or archive command, Marduk uses it so the agent's indexes stay consistent. For other deletable sessions, Marduk uses the system Trash. Claude Code and Pi have no per-session delete command. Pi's own session picker also uses the Trash.
 
+## Reopen a session
+
+Use the row’s **More actions** menu to reopen a Claude Code, Codex, GitHub Copilot CLI, OpenCode, Kilo, or Pi session in its own terminal UI. Claude Code can also open in Claude Desktop on macOS and Windows. Local Codex chats can open directly in the ChatGPT desktop app. For a Claude Code subagent, the action opens its parent conversation.
+
+**Settings → Terminal** defaults to **Automatic**. On macOS, automatic selection uses the system’s command-file association when it points to a supported terminal and otherwise uses Terminal.app. On Windows, it uses the system’s default console host. On Linux, it tries the desktop’s terminal resolver or the system terminal alternative before looking for an installed terminal. You can pick a terminal in Settings, including iTerm2 and cmux on macOS, Ghostty and kitty on macOS and Linux, Windows Terminal, Windows PowerShell, and mintty (Cygwin) on Windows, and WezTerm and Alacritty on all three platforms.
+
+Terminal.app and iTerm2 may ask for macOS Automation permission. cmux requires a socket access mode that accepts connections from external apps. Marduk uses the cmux CLI and its configured authentication. [cmux Automation settings](https://cmux.com/docs/configuration#automation)
+
 ## Subagent sessions
 
 Sessions an agent started on its own (Codex Guardian reviews and spawned subagents, OpenCode and Kilo child sessions) are nested under the session that started them. Expand a parent to see them. They go with their parent: select the parent to delete it and them. Codex leaves a session's Guardian reviews behind when it deletes the session, so Marduk deletes them too. A subagent whose parent was deleted is shown at the top level with a _Parent deleted_ badge, and can be selected on its own. Use **+ Filter → Parent deleted** to find these sessions. Claude Code keeps its subagents inside the parent session's folder (`<session>/subagents/`), so they appear under their session titled from their description and agent type, and can be read but not deleted, archived or labeled on their own: deleting the parent moves them to the Trash with it.

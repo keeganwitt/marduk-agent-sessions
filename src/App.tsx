@@ -38,6 +38,7 @@ import {
   purgeProject,
   purgesLeftBehind,
   openProjectDir,
+  resumeSession,
   previewDelete,
   revealSessionFile,
   saveColumns,
@@ -607,6 +608,15 @@ export default function App() {
     }
   };
 
+  const resume = async (session: SessionRow, desktop: boolean) => {
+    setError(null);
+    try {
+      await resumeSession(session.uid, desktop);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  };
+
   const copyId = async (session: SessionRow) => {
     try {
       await navigator.clipboard.writeText(session.id);
@@ -847,6 +857,7 @@ export default function App() {
               }
               onShowFiles={setFilesFor}
               onReveal={(path) => void reveal(path)}
+              onResume={(session, desktop) => void resume(session, desktop)}
               onCopyId={(session) => void copyId(session)}
               onOpenTranscript={setTranscriptFor}
             />

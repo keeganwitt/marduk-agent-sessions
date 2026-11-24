@@ -3,12 +3,14 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
+use super::cli::{Cli, CliOverrides};
 use super::{env_dir, home_dir, jsonl_two_levels, total_size};
 use crate::adapter::ScanProgress;
 use crate::adapter::{AgentAdapter, DeletePlan, Mechanics, ScanResult};
 use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl;
+use crate::resume::{ResumeMode, ResumeTarget};
 use crate::session::Fingerprint;
 use crate::session::Session;
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
@@ -16,21 +18,33 @@ use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 /// Pi stores one JSONL file per session at `<sessions>/--<encoded cwd>--/<timestamp>_<id>.jsonl`.
 pub struct PiAdapter {
     sessions_dir: PathBuf,
+    cli: Cli,
     cache: ParseCache<Fingerprint, Parsed>,
 }
+
+const PROGRAM: &str = "pi";
+const INSTALL_URL: &str = "https://pi.dev/";
 
 impl PiAdapter {
     pub fn new(sessions_dir: PathBuf) -> Self {
         Self {
             sessions_dir,
+            cli: Cli::fixed(PROGRAM, INSTALL_URL, None).optional(),
             cache: ParseCache::default(),
         }
     }
 
     pub fn from_env() -> Self {
+        Self::with_detected_cli(Default::default())
+    }
+
+    pub(crate) fn with_detected_cli(overrides: std::sync::Arc<CliOverrides>) -> Self {
         let agent_dir =
             env_dir("PI_CODING_AGENT_DIR").unwrap_or_else(|| home_dir().join(".pi").join("agent"));
-        Self::new(agent_dir.join("sessions"))
+        Self {
+            cli: Cli::detect("pi", PROGRAM, INSTALL_URL, overrides).optional(),
+            ..Self::new(agent_dir.join("sessions"))
+        }
     }
 }
 
@@ -41,6 +55,19 @@ impl AgentAdapter for PiAdapter {
 
     fn display_name(&self) -> &'static str {
         "Pi"
+    }
+
+    fn resume_target(&self, session: &Session, mode: ResumeMode) -> Option<ResumeTarget> {
+        (mode == ResumeMode::Terminal).then(|| {
+            ResumeTarget::cli([
+                std::ffi::OsStr::new("--session"),
+                session.primary_file.as_os_str(),
+            ])
+        })
+    }
+
+    fn cli(&self) -> Option<&Cli> {
+        Some(&self.cli)
     }
 
     fn roots(&self) -> Vec<PathBuf> {
