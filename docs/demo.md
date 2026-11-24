@@ -22,6 +22,8 @@ The sessions come from `crates/marduk-core/src/demo.rs`, which writes each agent
 - **Kilo:** a SQLite database with OpenCode's older `session`/`message`/`part` tables.
 - **Copilot Chat (VS Code):** a `.json` chat and a `.jsonl` change-log chat in `vscode/User/workspaceStorage/`.
 - **Pi:** JSONL session trees in `.pi/agent/sessions/`, each with a reply the user rewound past, which Marduk should hide.
+- **JetBrains AI Assistant:** an IntelliJ workspace with an agent chat and its `aia-task-history` event log.
+- **JetBrains Air:** an archived IntelliJ session with a local event journal under `acp/projects/`.
 - **Labels:** five labels applied to eight sessions, in `marduk/labels.db`.
 - **Memory:** Claude Code memory for four projects (healthy, a memory missing from its index, a deleted project, an empty folder), and a Codex memory store with memories turned on.
 
@@ -33,18 +35,20 @@ The tests in `demo.rs` scan the demo home with every adapter and read every tran
 
 The demo sets these variables for Marduk (and for any agent CLI that Marduk runs):
 
-| Variable                    | Points at                           |
-| --------------------------- | ----------------------------------- |
-| `MARDUK_HOME`               | the demo home, as Marduk's `~`      |
-| `MARDUK_DATA_DIR`           | `marduk/` (labels and settings)     |
-| `CLAUDE_CONFIG_DIR`         | `.claude`                           |
-| `MARDUK_CLAUDE_DESKTOP_DIR` | `Claude` (Claude's desktop app)     |
-| `CODEX_HOME`                | `.codex`                            |
-| `COPILOT_HOME`              | `.copilot`                          |
-| `PI_CODING_AGENT_DIR`       | `.pi/agent`                         |
-| `XDG_DATA_HOME`             | `.local/share` (OpenCode and Kilo)  |
-| `OPENCODE_DB`               | `.local/share/opencode/opencode.db` |
-| `KILO_DB`                   | `.local/share/kilo/kilo.db`         |
+| Variable                      | Points at                           |
+| ----------------------------- | ----------------------------------- |
+| `MARDUK_HOME`                 | the demo home, as Marduk's `~`      |
+| `MARDUK_DATA_DIR`             | `marduk/` (labels and settings)     |
+| `CLAUDE_CONFIG_DIR`           | `.claude`                           |
+| `MARDUK_CLAUDE_DESKTOP_DIR`   | `Claude` (Claude's desktop app)     |
+| `CODEX_HOME`                  | `.codex`                            |
+| `COPILOT_HOME`                | `.copilot`                          |
+| `PI_CODING_AGENT_DIR`         | `.pi/agent`                         |
+| `MARDUK_JETBRAINS_CONFIG_DIR` | `jetbrains/config`                  |
+| `MARDUK_JETBRAINS_SYSTEM_DIR` | `jetbrains/system`                  |
+| `XDG_DATA_HOME`               | `.local/share` (OpenCode and Kilo)  |
+| `OPENCODE_DB`                 | `.local/share/opencode/opencode.db` |
+| `KILO_DB`                     | `.local/share/kilo/kilo.db`         |
 
 Every agent's own variable is set, rather than only `MARDUK_HOME`, so that one already exported in your shell can't point the demo at real sessions. We don't override `HOME`, because `tauri dev` would pass it on to Cargo and pnpm, which would then look for their caches in the demo home.
 

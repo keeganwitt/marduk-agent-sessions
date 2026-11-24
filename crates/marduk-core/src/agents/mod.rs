@@ -2,6 +2,7 @@ pub mod claude;
 pub mod cli;
 pub mod codex;
 pub mod copilot;
+pub mod jetbrains;
 pub mod opencode;
 pub mod pi;
 pub mod vscode_chat;
