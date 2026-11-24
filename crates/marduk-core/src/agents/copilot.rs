@@ -309,6 +309,7 @@ fn session_from(
             .unwrap_or_else(|| fingerprint.modified.into()),
         size_bytes: fs_util::path_size(dir),
         archived: false,
+        pinned: None,
         primary_file: events.to_path_buf(),
         files: vec![dir.to_path_buf()],
         fingerprint,

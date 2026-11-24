@@ -288,6 +288,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
             .unwrap_or_else(|| fingerprint.modified.into()),
         size_bytes: fingerprint.len,
         archived: false,
+        pinned: None,
         primary_file: path.to_path_buf(),
         files: vec![path.to_path_buf()],
         fingerprint,

@@ -47,6 +47,7 @@ pub struct SessionRow {
     /// No user or assistant messages; injected context doesn't count.
     pub empty: bool,
     pub archived: bool,
+    pub pinned: Option<bool>,
     pub running: bool,
     pub read_only_reason: Option<String>,
     pub permanent_delete: bool,
@@ -281,6 +282,7 @@ fn session_row(catalog: &Catalog, session: &Session, now: SystemTime) -> Session
         agent_type: session.agent_type.clone(),
         empty: session.empty,
         archived: session.archived,
+        pinned: session.pinned,
         running: session.is_running(now, catalog.running_window()),
         read_only_reason: match &plan {
             Some(DeletePlan::ReadOnly { reason }) => Some(reason.clone()),
@@ -646,6 +648,7 @@ mod tests {
             agent_type: None,
             empty: false,
             archived: false,
+            pinned: None,
             running: false,
             read_only_reason: None,
             permanent_delete: false,

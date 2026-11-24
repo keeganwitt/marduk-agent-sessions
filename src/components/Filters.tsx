@@ -11,6 +11,7 @@ import {
   isFiltering,
   shownFilters,
   type ArchiveFilter,
+  type PinFilter,
   type FilterId,
   type LabelFilter,
   type ProjectOption,
@@ -175,6 +176,7 @@ export function Filters({
     label: t("table.filter.label"),
     project: t("table.filter.project"),
     archive: t("table.filter.status"),
+    pin: t("table.filter.pin"),
     model: t("table.filter.model"),
     agentType: t("table.filter.agentType"),
     subagents: t("table.filter.subagents"),
@@ -329,6 +331,21 @@ export function Filters({
           <option value="all">{t("table.filter.statusAll")}</option>
           <option value="active">{t("table.filter.statusActive")}</option>
           <option value="archived">{t("table.filter.statusArchived")}</option>
+        </select>
+      </label>
+    ),
+    pin: (
+      <label>
+        {t("table.filter.pin")}
+        <select
+          value={filter.pin}
+          onChange={(event) =>
+            onChange({ ...filter, pin: event.target.value as PinFilter })
+          }
+        >
+          <option value="all">{t("table.filter.pinAll")}</option>
+          <option value="pinned">{t("table.filter.pinned")}</option>
+          <option value="unpinned">{t("table.filter.unpinned")}</option>
         </select>
       </label>
     ),

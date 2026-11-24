@@ -1,6 +1,8 @@
 import { ageInDays, tildePath } from "./format";
 import type { SessionRow } from "./types";
 
+export type PinFilter = "all" | "pinned" | "unpinned";
+
 export type ArchiveFilter = "all" | "active" | "archived";
 
 /** "any", "none" (no labels), or a label id. */
@@ -16,6 +18,7 @@ export interface SessionFilter {
   /** The agent definition the session ran as, or `ALL_AGENT_TYPES`. */
   agentType: string;
   archive: ArchiveFilter;
+  pin: PinFilter;
   subagents: SubagentFilter;
   parentMissing: boolean;
   empty: boolean;
@@ -39,6 +42,7 @@ export const EMPTY_FILTER: SessionFilter = {
   model: ALL_MODELS,
   agentType: ALL_AGENT_TYPES,
   archive: "all",
+  pin: "all",
   subagents: "any",
   parentMissing: false,
   empty: false,
@@ -65,6 +69,7 @@ export function sessionMatcher(
       session.agentType === filter.agentType) &&
     (filter.archive === "all" ||
       session.archived === (filter.archive === "archived")) &&
+    (filter.pin === "all" || session.pinned === (filter.pin === "pinned")) &&
     subagentMatches(session) &&
     (!filter.parentMissing ||
       Boolean(session.parentId && session.parentMissing)) &&
@@ -224,6 +229,7 @@ export const FILTERS = [
   "label",
   "project",
   "archive",
+  "pin",
   "model",
   "agentType",
   "subagents",

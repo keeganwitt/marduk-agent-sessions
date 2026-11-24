@@ -24,6 +24,7 @@ export function makeSession(overrides: Partial<SessionRow> = {}): SessionRow {
     agentType: null,
     empty: false,
     archived: false,
+    pinned: null,
     running: false,
     readOnlyReason: null,
     permanentDelete: false,

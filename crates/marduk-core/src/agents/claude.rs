@@ -32,7 +32,7 @@ pub struct ClaudeAdapter {
     /// Folders Claude's desktop app may keep its data in (`desktop_dirs`).
     desktop_dirs: Vec<PathBuf>,
     /// Session ids Claude's desktop app listed at the last scan, and whether it archived them.
-    desktop_listed: Mutex<HashMap<String, bool>>,
+    desktop_listed: Mutex<HashMap<String, DesktopSessionState>>,
     cli: Cli,
     cache: ParseCache<Fingerprint, Parsed>,
 }
@@ -186,13 +186,12 @@ impl ClaudeAdapter {
         })
     }
 
-    fn archived_in_desktop(&self, id: &str) -> bool {
+    fn desktop_state(&self, id: &str) -> Option<DesktopSessionState> {
         self.desktop_listed
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .get(id)
             .copied()
-            .unwrap_or_default()
     }
 
     /// Folders `session_state` takes paths from.
@@ -506,8 +505,10 @@ impl AgentAdapter for ClaudeAdapter {
             .desktop_dirs
             .iter()
             .flat_map(|dir| desktop_listed_sessions(&dir.join(DESKTOP_SESSIONS)))
-            .fold(HashMap::new(), |mut listed, (id, archived)| {
-                *listed.entry(id).or_default() |= archived;
+            .fold(HashMap::new(), |mut listed, (id, state)| {
+                let entry: &mut DesktopSessionState = listed.entry(id).or_default();
+                entry.archived |= state.archived;
+                entry.starred |= state.starred;
                 listed
             });
         let mut result = ScanResult::empty_complete();
@@ -516,7 +517,10 @@ impl AgentAdapter for ClaudeAdapter {
         for path in &files {
             match self.read_session(path, progress) {
                 Ok(mut session) => {
-                    session.archived = self.archived_in_desktop(&session.id);
+                    if let Some(state) = self.desktop_state(&session.id) {
+                        session.archived = state.archived;
+                        session.pinned = Some(state.starred);
+                    }
                     session.projectless = session
                         .project_dir
                         .as_deref()
@@ -702,15 +706,19 @@ fn is_scratch_name(name: &OsStr) -> bool {
         && n.strip_prefix('-').is_some_and(|n| !n.is_empty())
 }
 
-/// The `cliSessionId`s of the Claude desktop app's session list, with `isArchived`. Only used to
-/// warn before a delete and to show its archive, so an unreadable entry is skipped rather than
-/// making the scan incomplete.
-fn desktop_listed_sessions(dir: &Path) -> Vec<(String, bool)> {
+#[derive(Clone, Copy, Default)]
+struct DesktopSessionState {
+    archived: bool,
+    starred: bool,
+}
+
+fn desktop_listed_sessions(dir: &Path) -> Vec<(String, DesktopSessionState)> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Entry {
         cli_session_id: Option<String>,
         is_archived: Option<bool>,
+        is_starred: Option<bool>,
     }
     let children = |dir: &Path| -> Vec<PathBuf> {
         fs::read_dir(dir)
@@ -733,7 +741,13 @@ fn desktop_listed_sessions(dir: &Path) -> Vec<(String, bool)> {
         })
         .filter_map(|path| {
             let entry: Entry = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
-            Some((entry.cli_session_id?, entry.is_archived.unwrap_or_default()))
+            Some((
+                entry.cli_session_id?,
+                DesktopSessionState {
+                    archived: entry.is_archived.unwrap_or_default(),
+                    starred: entry.is_starred.unwrap_or_default(),
+                },
+            ))
         })
         .collect()
 }
@@ -1079,6 +1093,7 @@ impl ClaudeAdapter {
                 .unwrap_or_else(|| fingerprint.modified.into()),
             size_bytes: files.iter().map(|file| fs_util::path_size(file)).sum(),
             archived: parent.archived,
+            pinned: None,
             primary_file: path.to_path_buf(),
             files,
             fingerprint,
@@ -1117,6 +1132,7 @@ fn session_from(path: &Path, parsed: Parsed, fingerprint: Fingerprint) -> Sessio
         created,
         last_activity,
         archived: false,
+        pinned: None,
         primary_file: path.to_path_buf(),
         files,
         fingerprint,
@@ -1617,7 +1633,7 @@ mod tests {
     }
 
     #[test]
-    fn shows_the_desktop_apps_archive_without_offering_to_change_it() {
+    fn shows_the_desktop_apps_archive_and_pin_status() {
         let root = tempfile::tempdir().unwrap();
         let config = root.path().join("config");
         let desktop = root.path().join("desktop");
@@ -1634,7 +1650,7 @@ mod tests {
         write_desktop_entry(
             &desktop,
             "local_1.json",
-            &format!(r#"{{"cliSessionId":"{ID}","isArchived":true}}"#),
+            &format!(r#"{{"cliSessionId":"{ID}","isArchived":true,"isStarred":true}}"#),
         );
         write_desktop_entry(
             &desktop,
@@ -1643,6 +1659,10 @@ mod tests {
         );
         let adapter = ClaudeAdapter::new(config).with_desktop_dirs(vec![desktop]);
         let sessions = adapter.scan().sessions;
+        let pin_status = |id: &str| sessions.iter().find(|s| s.id == id).unwrap().pinned;
+        assert_eq!(pin_status(ID), Some(true));
+        assert_eq!(pin_status(OTHER_ID), Some(false));
+        assert_eq!(pin_status(&format!("{ID}/agent-1")), None);
         let archived: BTreeSet<&str> = sessions
             .iter()
             .filter(|s| s.archived)

@@ -442,6 +442,7 @@ impl AgentAdapter for VsCodeChatAdapter {
                 last_activity: parsed.last.unwrap_or_else(|| fingerprint.modified.into()),
                 size_bytes: files.iter().map(|file| fs_util::path_size(file)).sum(),
                 archived: false,
+                pinned: None,
                 primary_file: location.primary,
                 files,
                 fingerprint,

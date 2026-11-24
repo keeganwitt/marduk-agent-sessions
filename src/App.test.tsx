@@ -972,6 +972,38 @@ describe("App", () => {
     expect(screen.queryByRole("menuitem", { name: "Agent type" })).toBeNull();
   });
 
+  it("filters by known pin status", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({
+          uid: "a",
+          title: "Starred Claude session",
+          pinned: true,
+        }),
+        makeSession({
+          uid: "b",
+          title: "Unpinned Codex thread",
+          pinned: false,
+        }),
+        makeSession({ uid: "c", title: "Unknown pin status" }),
+      ),
+    );
+
+    render(<App />);
+    await screen.findByText("Starred Claude session");
+    await user.click(screen.getByRole("button", { name: "+ Filter" }));
+    await user.click(screen.getByRole("menuitem", { name: "Pin status" }));
+
+    const pinFilter = screen.getByRole("combobox", { name: "Pin status" });
+    await user.selectOptions(pinFilter, "pinned");
+    expect(rowTitles()).toEqual(["Starred Claude session"]);
+    await user.selectOptions(pinFilter, "unpinned");
+    expect(rowTitles()).toEqual(["Unpinned Codex thread"]);
+    await user.selectOptions(pinFilter, "all");
+    expect(rowTitles()).toHaveLength(3);
+  });
+
   it("adds, saves and removes optional filters, and clears them all", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(

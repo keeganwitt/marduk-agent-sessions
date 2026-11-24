@@ -302,6 +302,7 @@ mod tests {
             last_activity: Utc::now(),
             size_bytes: 1,
             archived: false,
+            pinned: None,
             primary_file: path.to_path_buf(),
             files: vec![path.to_path_buf()],
             fingerprint: fs_util::fingerprint(path).unwrap(),
