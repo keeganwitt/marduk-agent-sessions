@@ -469,13 +469,26 @@ export default function App() {
           )
           .map((r) => r.uid),
       );
+      const trashedPaths = outcome.flatMap((result) =>
+        result.status === "trashed" ? result.files : [],
+      );
       setScan(
         (current) =>
           current && {
             ...current,
-            sessions: current.sessions.filter(
-              (session) => !removed.has(session.uid),
-            ),
+            sessions: current.sessions.filter((session) => {
+              if (removed.has(session.uid)) return false;
+              const transcript = session.files[0];
+              return (
+                !session.partOfParent ||
+                !transcript ||
+                !trashedPaths.some(
+                  (path) =>
+                    transcript.startsWith(`${path}/`) ||
+                    transcript.startsWith(`${path}\\`),
+                )
+              );
+            }),
           },
       );
       setSelected(new Set());

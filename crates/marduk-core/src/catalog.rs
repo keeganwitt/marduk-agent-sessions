@@ -447,6 +447,14 @@ impl Catalog {
                 ) {
                     snapshot.remove(uid);
                 }
+                if let DeleteOutcome::Trashed { files } = &outcome {
+                    snapshot.retain(|_, (_, session)| {
+                        !session.part_of_parent
+                            || !files
+                                .iter()
+                                .any(|path| session.primary_file.starts_with(path))
+                    });
+                }
                 progress.advance();
                 (uid.clone(), outcome)
             })
@@ -1037,6 +1045,13 @@ mod tests {
             preview[0].result.as_ref().unwrap().warning.as_deref(),
             Some("This also moves its 1 subagent session to the Trash.")
         );
+
+        let outcome = catalog.delete(&[uid(main)], &RecordingTrash::default(), SystemTime::now());
+        assert!(matches!(outcome[0].1, DeleteOutcome::Trashed { .. }));
+        assert!(!parent.exists());
+        assert!(!subagents.exists());
+        assert!(catalog.key_of(&uid(sub)).is_none());
+        assert!(catalog.scan()[0].sessions.is_empty());
     }
 
     #[test]
