@@ -21,6 +21,7 @@ vi.mock("./lib/ipc", () => ({
   toggleArchive: vi.fn(),
   revealSessionFile: vi.fn(),
   openProjectDir: vi.fn(),
+  resumeSession: vi.fn(),
   agentHelp: vi.fn(),
   appVersion: vi.fn(),
   getColumns: vi.fn(),
@@ -1335,6 +1336,58 @@ describe("App", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "no longer exists",
     );
+  });
+
+  it("opens the exact row in the terminal or desktop app and surfaces launch errors", async () => {
+    const user = userEvent.setup();
+    const resumeSession = vi.mocked(ipc.resumeSession);
+    resumeSession
+      .mockResolvedValueOnce()
+      .mockRejectedValueOnce("Claude Desktop is unavailable.");
+    scanSessions.mockResolvedValue(
+      scanOf(
+        makeSession({
+          uid: "claude-copy-1",
+          title: "Previous conversation",
+          canResume: true,
+          canResumeDesktop: true,
+        }),
+      ),
+    );
+
+    render(<App />);
+    const menu = await screen.findByRole("button", {
+      name: "More actions for Previous conversation",
+    });
+    await user.click(menu);
+    await user.click(
+      screen.getByRole("menuitem", { name: "Open in Claude Code (terminal)" }),
+    );
+    expect(resumeSession).toHaveBeenNthCalledWith(1, "claude-copy-1", false);
+    await user.click(menu);
+    await user.click(
+      screen.getByRole("menuitem", { name: "Open in Claude Desktop" }),
+    );
+    expect(resumeSession).toHaveBeenNthCalledWith(2, "claude-copy-1", true);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Claude Desktop is unavailable.",
+    );
+  });
+
+  it("does not offer to reopen unsupported sessions", async () => {
+    const user = userEvent.setup();
+    scanSessions.mockResolvedValue(
+      scanOf(makeSession({ title: "Unsupported" })),
+    );
+    render(<App />);
+    await user.click(
+      await screen.findByRole("button", {
+        name: "More actions for Unsupported",
+      }),
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: /^Open (in|parent)/ }),
+    ).toBeNull();
   });
 
   it("filters to a project from the table, and clears it", async () => {

@@ -37,6 +37,16 @@ pub trait AgentAdapter: Send + Sync {
     fn cli(&self) -> Option<&crate::agents::cli::Cli> {
         None
     }
+    fn resume_target(
+        &self,
+        _session: &Session,
+        _mode: crate::resume::ResumeMode,
+    ) -> Option<crate::resume::ResumeTarget> {
+        None
+    }
+    fn owns_resume_source(&self, session: &Session) -> bool {
+        crate::fs_util::is_strictly_within(&session.primary_file, &self.roots())
+    }
     /// Memory the agent keeps on disk; `sessions` are this agent's from the last scan.
     fn memory(&self, _sessions: &[Session]) -> Vec<crate::memory::MemoryStore> {
         Vec::new()

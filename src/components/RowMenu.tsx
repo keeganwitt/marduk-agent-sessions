@@ -6,6 +6,7 @@ interface Props {
   session: SessionRow;
   onShowFiles: (session: SessionRow) => void;
   onReveal: (path: string) => void;
+  onResume: (session: SessionRow, desktop: boolean) => void;
   onCopyId: (session: SessionRow) => void;
 }
 
@@ -15,15 +16,21 @@ const MENU_HEIGHT = 110;
  * The table scrolls inside its own container, which would clip an absolutely placed menu on
  * the last rows, so the menu is fixed to the viewport and follows its button when it scrolls.
  */
-function placement(button: HTMLElement): CSSProperties {
+function placement(button: HTMLElement, height: number): CSSProperties {
   const rect = button.getBoundingClientRect();
   const right = window.innerWidth - rect.right;
-  return rect.bottom + MENU_HEIGHT > window.innerHeight
+  return rect.bottom + height > window.innerHeight
     ? { right, bottom: window.innerHeight - rect.top + 4 }
     : { right, top: rect.bottom + 4 };
 }
 
-export function RowMenu({ session, onShowFiles, onReveal, onCopyId }: Props) {
+export function RowMenu({
+  session,
+  onShowFiles,
+  onReveal,
+  onResume,
+  onCopyId,
+}: Props) {
   const { t } = useI18n();
   const [style, setStyle] = useState<CSSProperties | null>(null);
   const anchor = useRef<HTMLDivElement>(null);
@@ -31,11 +38,19 @@ export function RowMenu({ session, onShowFiles, onReveal, onCopyId }: Props) {
   const label = session.title ?? session.id;
   const revealPath = session.files[0] ?? session.database;
 
+  const menuHeight =
+    MENU_HEIGHT +
+    32 * (Number(session.canResume) + Number(session.canResumeDesktop));
+  const desktopAgent = t(
+    session.agent === "codex" ? "resume.codexDesktop" : "resume.claudeDesktop",
+  );
+
   useEffect(() => {
     if (!style) return;
     const close = () => setStyle(null);
     // Clicking a half-hidden last row scrolls it into view, which must not close the menu.
-    const follow = () => button.current && setStyle(placement(button.current));
+    const follow = () =>
+      button.current && setStyle(placement(button.current, menuHeight));
     const onPointer = (event: PointerEvent) => {
       if (!anchor.current?.contains(event.target as Node)) close();
     };
@@ -55,7 +70,7 @@ export function RowMenu({ session, onShowFiles, onReveal, onCopyId }: Props) {
       window.removeEventListener("scroll", follow, true);
       window.removeEventListener("resize", follow);
     };
-  }, [style]);
+  }, [style, menuHeight]);
 
   const choose = (action: () => void) => {
     setStyle(null);
@@ -73,7 +88,7 @@ export function RowMenu({ session, onShowFiles, onReveal, onCopyId }: Props) {
         aria-label={t("table.rowMenu", { title: label })}
         title={t("table.actions")}
         onClick={(event) =>
-          setStyle(style ? null : placement(event.currentTarget))
+          setStyle(style ? null : placement(event.currentTarget, menuHeight))
         }
       >
         <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -84,6 +99,34 @@ export function RowMenu({ session, onShowFiles, onReveal, onCopyId }: Props) {
       </button>
       {style && (
         <div className="filter-menu row-menu-list" role="menu" style={style}>
+          {session.canResume && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => choose(() => onResume(session, false))}
+            >
+              {t(
+                session.partOfParent
+                  ? "resume.parentTerminal"
+                  : "resume.terminal",
+                { agent: session.agentName },
+              )}
+            </button>
+          )}
+          {session.canResumeDesktop && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => choose(() => onResume(session, true))}
+            >
+              {t(
+                session.partOfParent
+                  ? "resume.parentDesktop"
+                  : "resume.desktop",
+                { agent: desktopAgent },
+              )}
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"

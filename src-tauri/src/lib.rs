@@ -1,11 +1,13 @@
 mod cli_settings;
 mod dto;
 mod settings;
+mod terminal;
 
 use std::sync::Arc;
 use std::time::SystemTime;
 
 use marduk_core::catalog::Catalog;
+use marduk_core::resume::{ResumeLaunch, ResumeMode};
 use marduk_core::{CliOverrides, RUNNING_WINDOW, SystemBackend};
 use tauri::Manager;
 
@@ -321,6 +323,90 @@ async fn open_project_dir(
 }
 
 #[tauri::command]
+async fn resume_session(
+    catalog: tauri::State<'_, SharedCatalog>,
+    settings: tauri::State<'_, AppSettings>,
+    uid: String,
+    desktop: bool,
+) -> Result<(), String> {
+    let catalog = catalog.inner().clone();
+    let terminal = settings.store.get().terminal;
+    blocking(move || {
+        if demo_mode() {
+            return Err("Reopening in an agent is available for real sessions.".into());
+        }
+        let mode = if desktop {
+            ResumeMode::Desktop
+        } else {
+            ResumeMode::Terminal
+        };
+        match catalog.resume(&uid, mode)? {
+            ResumeLaunch::Url(url) => {
+                tauri_plugin_opener::open_url(url, None::<&str>).map_err(|error| {
+                    format!("Couldn't open the local chat in the ChatGPT desktop app: {error}")
+                })
+            }
+            ResumeLaunch::Cli {
+                program,
+                args,
+                cwd,
+                env,
+            } => {
+                let invocation = terminal::Invocation {
+                    program,
+                    args,
+                    cwd,
+                    env,
+                };
+                if desktop {
+                    let output = invocation
+                        .command()
+                        .output()
+                        .map_err(|error| format!("Couldn't open Claude Desktop: {error}"))?;
+                    if output.status.success() {
+                        Ok(())
+                    } else {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        let detail: String = stderr.trim().chars().take(400).collect();
+                        Err(format!(
+                            "Couldn't open Claude Desktop ({}). {detail}",
+                            output.status
+                        ))
+                    }
+                } else {
+                    terminal::open(terminal, &invocation)
+                }
+            }
+        }
+    })
+    .await?
+}
+
+fn demo_mode() -> bool {
+    std::env::var_os("MARDUK_HOME").is_some_and(|value| !value.is_empty())
+}
+
+#[tauri::command]
+async fn terminal_settings(
+    settings: tauri::State<'_, AppSettings>,
+) -> Result<terminal::TerminalSettings, String> {
+    let selected = settings.store.get().terminal;
+    blocking(move || terminal::settings(selected)).await
+}
+
+#[tauri::command]
+fn set_terminal(
+    settings: tauri::State<'_, AppSettings>,
+    terminal: terminal::TerminalPreference,
+) -> Result<(), String> {
+    terminal::validate(terminal)?;
+    settings
+        .store
+        .update(|settings| settings.terminal = terminal)?;
+    Ok(())
+}
+
+#[tauri::command]
 async fn load_transcript(
     catalog: tauri::State<'_, SharedCatalog>,
     uid: String,
@@ -514,6 +600,9 @@ pub fn run() {
             toggle_archive,
             reveal_session_file,
             open_project_dir,
+            resume_session,
+            terminal_settings,
+            set_terminal,
             file_details,
             load_transcript,
             cli_statuses,

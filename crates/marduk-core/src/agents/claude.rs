@@ -17,6 +17,7 @@ use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl;
 use crate::memory::{self, MemoryFile, MemoryStore};
+use crate::resume::{ResumeMode, ResumeTarget};
 use crate::session::Fingerprint;
 use crate::session::Session;
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
@@ -490,6 +491,23 @@ impl AgentAdapter for ClaudeAdapter {
                     .filter(|dir| dir.is_dir()),
             )
             .collect()
+    }
+
+    fn resume_target(&self, session: &Session, mode: ResumeMode) -> Option<ResumeTarget> {
+        if !fs_util::looks_like_uuid(&session.id) {
+            return None;
+        }
+        let mut args = vec!["--resume", session.id.as_str()];
+        if mode == ResumeMode::Desktop {
+            if !cfg!(any(target_os = "macos", windows)) {
+                return None;
+            }
+            args.insert(0, "--desktop");
+        }
+        Some(ResumeTarget::cli_with_env(
+            args,
+            env_dir("CLAUDE_CONFIG_DIR").map(|_| ("CLAUDE_CONFIG_DIR", self.config_dir.clone())),
+        ))
     }
 
     fn cli(&self) -> Option<&Cli> {

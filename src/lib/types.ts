@@ -38,7 +38,33 @@ export interface SessionRow {
   readOnlyReason: string | null;
   permanentDelete: boolean;
   canArchive: boolean;
+  canResume: boolean;
+  canResumeDesktop: boolean;
   labelIds: number[];
+}
+
+export type TerminalApp =
+  | "macTerminal"
+  | "iTerm2"
+  | "cmux"
+  | "windowsTerminal"
+  | "powerShell"
+  | "gnomeTerminal"
+  | "konsole"
+  | "xfceTerminal"
+  | "kitty"
+  | "alacritty"
+  | "xterm"
+  | "ghostty"
+  | "wezTerm"
+  | "mintty";
+
+export type TerminalPreference = "automatic" | TerminalApp;
+
+export interface TerminalSettings {
+  selected: TerminalPreference;
+  automatic: TerminalApp | null;
+  options: TerminalApp[];
 }
 
 export interface Label {

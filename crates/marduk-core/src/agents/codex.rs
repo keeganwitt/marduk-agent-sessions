@@ -16,6 +16,7 @@ use crate::cache::ParseCache;
 use crate::fs_util;
 use crate::jsonl;
 use crate::memory::{self, MemoryFile, MemoryStore};
+use crate::resume::{ResumeMode, ResumeTarget};
 use crate::session::Fingerprint;
 use crate::session::Session;
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
@@ -222,6 +223,23 @@ impl AgentAdapter for CodexAdapter {
 
     fn still_present(&self, session: &Session) -> bool {
         session.files.iter().any(|file| file.exists())
+    }
+
+    fn resume_target(&self, session: &Session, mode: ResumeMode) -> Option<ResumeTarget> {
+        if session.archived || session.parent_id.is_some() || !fs_util::looks_like_uuid(&session.id)
+        {
+            return None;
+        }
+        Some(match mode {
+            ResumeMode::Terminal => ResumeTarget::cli_with_env(
+                ["resume", &session.id],
+                Some(("CODEX_HOME", self.home.clone())),
+            ),
+            ResumeMode::Desktop if self.home == home_dir().join(".codex") => {
+                ResumeTarget::Url(format!("codex://threads/{}", session.id))
+            }
+            ResumeMode::Desktop => return None,
+        })
     }
 
     fn cli(&self) -> Option<&Cli> {
@@ -1567,6 +1585,48 @@ mod tests {
 
         write(&path, &prompt("a longer, changed prompt"));
         assert_eq!(title(&codex).as_deref(), Some("a longer, changed prompt"));
+    }
+
+    #[test]
+    fn resume_uses_the_exact_id_and_default_store_for_desktop_links() {
+        let storage = tempfile::tempdir().unwrap();
+        let path = storage.path().join(format!("sessions/rollout-{ID}.jsonl"));
+        write(&path, &rollout(ID));
+        let custom = adapter(storage.path(), None);
+        let default_home = home_dir().join(".codex");
+        let default = adapter(&default_home, None);
+        let mut session = custom.scan().sessions.remove(0);
+
+        let Some(ResumeTarget::Cli { args, env }) =
+            custom.resume_target(&session, ResumeMode::Terminal)
+        else {
+            panic!("expected a Codex CLI target");
+        };
+        assert_eq!(args, ["resume", ID]);
+        assert_eq!(env, Some(("CODEX_HOME", storage.path().to_path_buf())));
+        assert!(matches!(
+            default.resume_target(&session, ResumeMode::Desktop),
+            Some(ResumeTarget::Url(url)) if url == format!("codex://threads/{ID}")
+        ));
+        assert!(
+            custom
+                .resume_target(&session, ResumeMode::Desktop)
+                .is_none()
+        );
+
+        session.archived = true;
+        assert!(
+            default
+                .resume_target(&session, ResumeMode::Terminal)
+                .is_none()
+        );
+        session.archived = false;
+        session.parent_id = Some("parent".into());
+        assert!(
+            default
+                .resume_target(&session, ResumeMode::Desktop)
+                .is_none()
+        );
     }
 
     #[test]

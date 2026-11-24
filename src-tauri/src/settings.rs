@@ -4,6 +4,8 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
+use crate::terminal::TerminalPreference;
+
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 pub enum Theme {
@@ -21,6 +23,8 @@ pub struct Settings {
     pub cli_paths: BTreeMap<String, PathBuf>,
     #[serde(default)]
     pub theme: Theme,
+    #[serde(default)]
+    pub terminal: TerminalPreference,
     /// `system`, or a UI language id such as `de` or `zh-Hans`; the UI validates it.
     #[serde(default = "system_language")]
     pub language: String,
@@ -38,6 +42,7 @@ impl Default for Settings {
         Self {
             cli_paths: BTreeMap::new(),
             theme: Theme::default(),
+            terminal: TerminalPreference::default(),
             language: system_language(),
             columns: None,
             ui: BTreeMap::new(),
@@ -190,6 +195,22 @@ mod tests {
                 .unwrap()
                 .contains(r#""theme": "dark""#)
         );
+    }
+
+    #[test]
+    fn terminal_defaults_to_automatic_and_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"cliPaths":{},"theme":"dark"}"#).unwrap();
+        let store = SettingsStore::load(path.clone());
+        assert_eq!(store.get().terminal, TerminalPreference::Automatic);
+
+        store
+            .update(|settings| settings.terminal = TerminalPreference::ITerm2)
+            .unwrap();
+        let settings = SettingsStore::load(path).get();
+        assert_eq!(settings.terminal, TerminalPreference::ITerm2);
+        assert_eq!(settings.theme, Theme::Dark);
     }
 
     #[test]

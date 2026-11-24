@@ -10,6 +10,7 @@ use super::cli::{Cli, CliOverrides};
 use super::{env_dir, home_dir};
 use crate::adapter::{AgentAdapter, AgentCommand, DeletePlan, Mechanics, ScanProgress, ScanResult};
 use crate::jsonl;
+use crate::resume::{ResumeMode, ResumeTarget};
 use crate::session::{Fingerprint, Session};
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
@@ -711,8 +712,22 @@ impl AgentAdapter for OpenCodeAdapter {
         }
     }
 
+    fn resume_target(&self, session: &Session, mode: ResumeMode) -> Option<ResumeTarget> {
+        (mode == ResumeMode::Terminal && is_safe_id(&session.id)).then(|| {
+            ResumeTarget::cli_with_env(
+                ["--session", &session.id],
+                Some((self.flavor.db_env, session.primary_file.clone())),
+            )
+        })
+    }
+
     fn cli(&self) -> Option<&Cli> {
         Some(&self.cli)
+    }
+
+    fn owns_resume_source(&self, session: &Session) -> bool {
+        self.explicit_db.as_ref() == Some(&session.primary_file)
+            || crate::fs_util::is_strictly_within(&session.primary_file, &self.roots())
     }
 
     fn still_present(&self, session: &Session) -> bool {

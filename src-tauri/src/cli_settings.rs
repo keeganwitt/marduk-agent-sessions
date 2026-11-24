@@ -108,7 +108,10 @@ mod tests {
     fn lists_only_agents_that_need_a_cli() {
         let (_dir, _overrides, catalog, _store) = setup();
         let agents: Vec<&str> = catalog.cli_status().iter().map(|(id, _, _)| *id).collect();
-        assert_eq!(agents, vec!["claude", "codex", "opencode", "kilo"]);
+        assert_eq!(
+            agents,
+            vec!["claude", "codex", "copilot", "opencode", "kilo", "pi"]
+        );
     }
 
     #[test]
@@ -117,7 +120,16 @@ mod tests {
         let plain = dir.path().join("plain");
         std::fs::write(&plain, "").unwrap();
 
-        assert!(set_path(&catalog, &overrides, &store, "pi", Some("/bin/sh".into())).is_err());
+        assert!(
+            set_path(
+                &catalog,
+                &overrides,
+                &store,
+                "unknown",
+                Some("/bin/sh".into())
+            )
+            .is_err()
+        );
         assert!(set_path(&catalog, &overrides, &store, "codex", Some("codex".into())).is_err());
         let error = set_path(
             &catalog,

@@ -13,8 +13,9 @@ import type { MessageKey } from "../i18n/messages";
 import { LabelManager } from "./LabelManager";
 import { panelId, tabId } from "../lib/tabs";
 import { Tabs } from "./Tabs";
+import { TerminalSetting } from "./TerminalSetting";
 
-type SettingsTab = "appearance" | "labels" | "cli";
+type SettingsTab = "appearance" | "labels" | "cli" | "terminal";
 import type { CliStatus } from "../lib/types";
 
 interface Props {
@@ -62,9 +63,11 @@ function CliRow({
         </div>
       ) : (
         <div className="cli-detail missing">
-          {status.optional
-            ? t("settings.cli.missingOptional", { agent: status.agentName })
-            : t("settings.cli.missing", { agent: status.agentName })}{" "}
+          {status.agent === "pi" || status.agent === "copilot"
+            ? t("resume.cliMissing", { agent: status.agentName })
+            : status.optional
+              ? t("settings.cli.missingOptional", { agent: status.agentName })
+              : t("settings.cli.missing", { agent: status.agentName })}{" "}
           <a href={status.installUrl}>
             {t("settings.cli.install", { program: status.program })}
           </a>
@@ -183,6 +186,7 @@ export function SettingsDialog({ onClose }: Props) {
             { id: "appearance", label: t("settings.appearance") },
             { id: "labels", label: t("settings.labels") },
             { id: "cli", label: t("settings.cli.title") },
+            { id: "terminal", label: t("resume.terminalSetting") },
           ]}
           selected={tab}
           onSelect={setTab}
@@ -233,6 +237,7 @@ export function SettingsDialog({ onClose }: Props) {
               onError={setError}
             />
           )}
+          {tab === "terminal" && <TerminalSetting onError={setError} />}
           {tab === "cli" && (
             <>
               <p className="muted">{t("settings.cli.intro")}</p>

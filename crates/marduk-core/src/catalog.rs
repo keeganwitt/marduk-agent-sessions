@@ -5,6 +5,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::adapter::{AgentAdapter, DeletePlan, ScanProgress};
 use crate::delete::{self, ArchiveOutcome, DeleteBackend, DeleteOutcome, PlannedDelete};
+use crate::resume::{ResumeLaunch, ResumeMode, ResumeTarget};
 use crate::session::Session;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -111,12 +112,37 @@ pub struct Catalog {
 /// Unique per stored copy of a session, unlike `Session::key`, which two copies share.
 /// Includes the id because database-backed agents keep every session in one file.
 pub fn uid(session: &Session) -> String {
-    format!(
-        "{}:{}#{}",
-        session.agent,
-        session.primary_file.to_string_lossy(),
-        session.id
-    )
+    session_uid(session.agent, &session.primary_file, &session.id)
+}
+
+fn session_uid(agent: &str, file: &std::path::Path, id: &str) -> String {
+    format!("{agent}:{}#{id}", file.to_string_lossy())
+}
+
+fn embedded_parent_uid(session: &Session) -> Option<String> {
+    let parent_id = session.parent_id.as_deref()?;
+    let parent_file = session
+        .primary_file
+        .parent()?
+        .parent()?
+        .with_file_name(format!("{parent_id}.jsonl"));
+    Some(session_uid(session.agent, &parent_file, parent_id))
+}
+
+fn checked_project_dir(session: &Session) -> Result<std::path::PathBuf, String> {
+    let dir = session
+        .project_dir
+        .as_ref()
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| "This session doesn't record its project folder.".to_string())?;
+    if dir.is_dir() {
+        Ok(dir)
+    } else {
+        Err(format!(
+            "The project folder {} no longer exists.",
+            dir.display()
+        ))
+    }
 }
 
 impl Catalog {
@@ -356,6 +382,71 @@ impl Catalog {
             .is_some_and(|adapter| adapter.archive_command(session).is_some())
     }
 
+    pub fn can_resume(&self, session: &Session, mode: ResumeMode) -> bool {
+        if session.part_of_parent {
+            return embedded_parent_uid(session)
+                .and_then(|uid| {
+                    let snapshot = self.snapshot.lock().unwrap();
+                    let (index, parent) = snapshot.get(&uid)?;
+                    self.adapters[*index].resume_target(parent, mode)
+                })
+                .is_some();
+        }
+        self.adapter_for(session)
+            .is_some_and(|adapter| adapter.resume_target(session, mode).is_some())
+    }
+
+    pub fn resume(&self, uid: &str, mode: ResumeMode) -> Result<ResumeLaunch, String> {
+        let (index, session) = {
+            let snapshot = self.snapshot.lock().unwrap();
+            let (index, session) = snapshot.get(uid).ok_or_else(not_found)?;
+            if session.part_of_parent {
+                let uid = embedded_parent_uid(session).ok_or_else(not_found)?;
+                snapshot
+                    .get(&uid)
+                    .ok_or("The parent session is missing. Refresh the session list.")?
+                    .clone()
+            } else {
+                (*index, session.clone())
+            }
+        };
+        let adapter = &self.adapters[index];
+        let target = adapter
+            .resume_target(&session, mode)
+            .ok_or("This session cannot be reopened in that interface.")?;
+        if !adapter.owns_resume_source(&session) {
+            return Err("The session is missing or outside the agent's session storage. Refresh the session list.".into());
+        }
+        adapter.fingerprint(&session).map_err(|error| {
+            format!(
+                "Couldn't verify that the session still exists. Refresh the session list. {error}"
+            )
+        })?;
+        match target {
+            ResumeTarget::Url(url) => Ok(ResumeLaunch::Url(url)),
+            ResumeTarget::Cli { args, env } => {
+                let cwd = checked_project_dir(&session)?;
+                if !cwd.is_absolute() {
+                    return Err("This session doesn't record an absolute project folder.".into());
+                }
+                let cli = adapter.cli().ok_or("This agent has no configured CLI.")?;
+                cli.refresh();
+                let program = cli
+                    .path()
+                    .filter(|path| path.is_absolute() && crate::agents::cli::is_executable(path))
+                    .ok_or_else(|| {
+                        cli.missing_reason(adapter.display_name(), "reopen this session")
+                    })?;
+                Ok(ResumeLaunch::Cli {
+                    program,
+                    args,
+                    cwd,
+                    env,
+                })
+            }
+        }
+    }
+
     pub fn preview(&self, uids: &[String], now: SystemTime) -> Vec<Preview> {
         let snapshot = self.snapshot.lock().unwrap();
         let selected: std::collections::HashSet<(&str, &str)> = uids
@@ -465,19 +556,7 @@ impl Catalog {
     pub fn project_dir(&self, uid: &str) -> Result<std::path::PathBuf, String> {
         let snapshot = self.snapshot.lock().unwrap();
         let (_, session) = snapshot.get(uid).ok_or_else(not_found)?;
-        let dir = session
-            .project_dir
-            .as_ref()
-            .map(std::path::PathBuf::from)
-            .ok_or_else(|| "This session doesn't record its project folder.".to_string())?;
-        if dir.is_dir() {
-            Ok(dir)
-        } else {
-            Err(format!(
-                "The project folder {} no longer exists.",
-                dir.display()
-            ))
-        }
+        checked_project_dir(session)
     }
 
     /// The path-independent `Session::key` of a scanned session.
@@ -842,6 +921,77 @@ mod tests {
                 .unwrap_err()
                 .contains("not in the current scan")
         );
+    }
+
+    #[test]
+    fn claude_subagent_reopens_its_own_parent_and_refuses_missing_files() {
+        use crate::agents::claude::ClaudeAdapter;
+
+        let config = tempfile::tempdir().unwrap();
+        let id = "01a1b209-2d68-7e51-bd0c-2954bbab717e";
+        let project = config.path().join("original project");
+        fs::create_dir(&project).unwrap();
+        let file = config.path().join(format!("projects/current/{id}.jsonl"));
+        let subagent = config
+            .path()
+            .join(format!("projects/current/{id}/subagents/agent-child.jsonl"));
+        fs::create_dir_all(subagent.parent().unwrap()).unwrap();
+        let message =
+            serde_json::json!({ "type": "user", "cwd": project, "message": { "content": "Hi" } });
+        fs::write(&file, message.to_string()).unwrap();
+        fs::write(&subagent, message.to_string()).unwrap();
+
+        let duplicate = config.path().join(format!("projects/copy/{id}.jsonl"));
+        fs::create_dir(duplicate.parent().unwrap()).unwrap();
+        fs::write(&duplicate, message.to_string()).unwrap();
+        let cli = config.path().join("claude.exe");
+        #[cfg(unix)]
+        crate::agents::write_test_executable(&cli, "#!/bin/sh\n");
+        #[cfg(windows)]
+        fs::write(&cli, "").unwrap();
+        let adapter = ClaudeAdapter::new(config.path().to_path_buf()).with_cli(Some(cli.clone()));
+        let catalog = Catalog::new(vec![Box::new(adapter)], Duration::from_secs(60));
+        let scans = catalog.scan();
+        let child = scans[0]
+            .sessions
+            .iter()
+            .find(|session| session.part_of_parent)
+            .unwrap();
+        let uid = uid(child);
+
+        assert!(catalog.can_resume(child, ResumeMode::Terminal));
+        let ResumeLaunch::Cli {
+            program, args, cwd, ..
+        } = catalog.resume(&uid, ResumeMode::Terminal).unwrap()
+        else {
+            panic!("expected a Claude Code invocation");
+        };
+        assert_eq!(program, cli);
+        assert_eq!(args, ["--resume", id]);
+        assert_eq!(cwd, project);
+        #[cfg(any(target_os = "macos", windows))]
+        {
+            let ResumeLaunch::Cli { args, .. } = catalog.resume(&uid, ResumeMode::Desktop).unwrap()
+            else {
+                panic!("expected Claude Desktop CLI handoff");
+            };
+            assert_eq!(args, ["--desktop", "--resume", id]);
+        }
+        fs::remove_dir(&project).unwrap();
+        assert!(
+            catalog
+                .resume(&uid, ResumeMode::Terminal)
+                .unwrap_err()
+                .contains("no longer exists")
+        );
+        fs::remove_file(&file).unwrap();
+        assert!(
+            catalog
+                .resume(&uid, ResumeMode::Terminal)
+                .unwrap_err()
+                .contains("The session is missing")
+        );
+        assert!(duplicate.exists());
     }
 
     #[test]

@@ -130,6 +130,10 @@ impl Cli {
     }
 }
 
+pub fn find_program(name: &str) -> Option<PathBuf> {
+    super::find_program(name)
+}
+
 pub fn is_executable(path: &Path) -> bool {
     super::is_executable(path)
 }

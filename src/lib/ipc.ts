@@ -15,6 +15,8 @@ import type {
   ScanProgress,
   ScanResponse,
   TaskProgress,
+  TerminalPreference,
+  TerminalSettings,
   Transcript,
 } from "./types";
 
@@ -64,6 +66,18 @@ export function revealSessionFile(path: string): Promise<void> {
 
 export function openProjectDir(uid: string): Promise<void> {
   return invoke("open_project_dir", { uid });
+}
+
+export function resumeSession(uid: string, desktop: boolean): Promise<void> {
+  return invoke("resume_session", { uid, desktop });
+}
+
+export function terminalSettings(): Promise<TerminalSettings> {
+  return invoke("terminal_settings");
+}
+
+export function setTerminal(terminal: TerminalPreference): Promise<void> {
+  return invoke("set_terminal", { terminal });
 }
 
 export function loadTranscript(uid: string): Promise<Transcript> {
