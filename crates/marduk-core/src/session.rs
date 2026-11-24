@@ -32,6 +32,7 @@ pub struct Session {
     pub last_activity: DateTime<Utc>,
     pub size_bytes: u64,
     pub archived: bool,
+    pub pinned: Option<bool>,
     pub primary_file: PathBuf,
     /// Every path that makes up the session, including `primary_file`.
     pub files: Vec<PathBuf>,

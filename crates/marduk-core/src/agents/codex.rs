@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use rusqlite::{Connection, OpenFlags};
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::value::RawValue;
@@ -130,14 +131,12 @@ impl AgentAdapter for CodexAdapter {
                 Err(error) => result.record_error(format!("{}: {error}", path.display())),
             }
         }
+        let pins = read_thread_pins(&self.home.join("state_5.sqlite")).unwrap_or_default();
         for ((id, archived), segments) in threads {
-            result.sessions.push(session_from(
-                id,
-                archived,
-                &titles,
-                &self.chats_dir,
-                segments,
-            ));
+            let pinned = pins.get(&id).copied();
+            let mut session = session_from(id, archived, &titles, &self.chats_dir, segments);
+            session.pinned = pinned;
+            result.sessions.push(session);
         }
         self.cache
             .retain(&rollouts.into_iter().map(|(path, _)| path).collect());
@@ -795,6 +794,14 @@ fn combined_fingerprint(fingerprints: &[Fingerprint]) -> Fingerprint {
     }
 }
 
+fn read_thread_pins(path: &Path) -> rusqlite::Result<HashMap<String, bool>> {
+    let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let mut statement = connection.prepare("SELECT id, is_pinned FROM threads")?;
+    statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect()
+}
+
 /// Builds one session from a thread's files, ordered by their first record ordinal (a
 /// paginated thread continues in files named `rollout-…-<id>_<page>.jsonl`).
 fn session_from(
@@ -839,6 +846,7 @@ fn session_from(
         last_activity: span.last.unwrap_or_else(|| fingerprint.modified.into()),
         size_bytes: fingerprint.len,
         archived,
+        pinned: None,
         files: segments
             .iter()
             .map(|segment| segment.path.clone())
@@ -891,6 +899,41 @@ mod tests {
 
     fn adapter(home: &Path, cli: Option<&str>) -> CodexAdapter {
         CodexAdapter::new(home.to_path_buf(), cli.map(PathBuf::from))
+    }
+
+    #[test]
+    fn refreshes_thread_pins_from_the_state_database() {
+        let home = tempfile::tempdir().unwrap();
+        write(
+            &home.path().join(format!("sessions/rollout-{ID}.jsonl")),
+            &rollout(ID),
+        );
+        let adapter = adapter(home.path(), None);
+        let pinned = || {
+            let result = adapter.scan();
+            assert!(result.complete);
+            result.sessions[0].pinned
+        };
+        assert_eq!(pinned(), None);
+
+        let database = Connection::open(home.path().join("state_5.sqlite")).unwrap();
+        database
+            .execute("CREATE TABLE threads (id TEXT PRIMARY KEY)", [])
+            .unwrap();
+        assert_eq!(pinned(), None);
+
+        database
+            .execute("ALTER TABLE threads ADD COLUMN is_pinned INTEGER", [])
+            .unwrap();
+        database
+            .execute("INSERT INTO threads VALUES (?1, 1)", [ID])
+            .unwrap();
+        assert_eq!(pinned(), Some(true));
+
+        database
+            .execute("UPDATE threads SET is_pinned = 0 WHERE id = ?1", [ID])
+            .unwrap();
+        assert_eq!(pinned(), Some(false));
     }
 
     #[test]

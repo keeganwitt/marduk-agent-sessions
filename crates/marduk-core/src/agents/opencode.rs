@@ -301,6 +301,7 @@ impl OpenCodeAdapter {
             last_activity: fingerprint.modified.into(),
             size_bytes: totals.bytes,
             archived: row.archived,
+            pinned: None,
             primary_file: db.to_path_buf(),
             files: Vec::new(),
             fingerprint,

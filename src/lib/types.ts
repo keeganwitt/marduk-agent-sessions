@@ -33,6 +33,7 @@ export interface SessionRow {
   /** No user or assistant messages; injected context doesn't count. */
   empty: boolean;
   archived: boolean;
+  pinned: boolean | null;
   running: boolean;
   readOnlyReason: string | null;
   permanentDelete: boolean;
