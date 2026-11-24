@@ -18,7 +18,7 @@ export const help = defineMessages(
       "<strong>Delete…</strong> lists every file that will be moved and every command that will run. Nothing changes until you confirm.",
     "help.deleting.trash.title": "Trash",
     "help.deleting.trash.body":
-      "Agents without a delete command of their own have their files moved to the system Trash (the Recycle Bin on Windows), where you can restore them. If a file can't be moved to the Trash, Marduk reports the error rather than deleting it permanently.",
+      "For sessions that support file-based deletion, Marduk moves the files to the system Trash (the Recycle Bin on Windows), where you can restore them. If a file can't be moved to the Trash, Marduk reports the error rather than deleting it permanently.",
     "help.deleting.permanent.title": "Permanent",
     "help.deleting.permanent.body":
       "When an agent has its own delete command, Marduk runs it, so the agent's own indexes stay consistent. These deletes can't be undone. The confirmation marks them <em>Permanent</em> and shows the exact command.",
@@ -69,7 +69,7 @@ export const help = defineMessages(
         "<strong>Eliminar…</strong> muestra cada archivo que se moverá y cada comando que se ejecutará. Nada cambia hasta que lo confirmes.",
       "help.deleting.trash.title": "Papelera",
       "help.deleting.trash.body":
-        "Los agentes sin un comando propio para eliminar mueven sus archivos a la Papelera del sistema (la Papelera de reciclaje en Windows), desde donde puedes restaurarlos. Si un archivo no se puede mover a la Papelera, Marduk informa del error en lugar de eliminarlo permanentemente.",
+        "Si una sesión se puede eliminar mediante sus archivos, Marduk los mueve a la Papelera del sistema (la Papelera de reciclaje en Windows), desde donde puedes restaurarlos. Si un archivo no se puede mover a la Papelera, Marduk informa del error en lugar de eliminarlo permanentemente.",
       "help.deleting.permanent.title": "Permanente",
       "help.deleting.permanent.body":
         "Cuando un agente tiene su propio comando para eliminar, Marduk lo ejecuta para que los índices del agente sigan siendo coherentes. Estas eliminaciones no se pueden deshacer. La confirmación las marca como <em>Permanente</em> y muestra el comando exacto.",
@@ -119,7 +119,7 @@ export const help = defineMessages(
         "<strong>Excluir…</strong> lista cada arquivo que será movido e cada comando que será executado. Nada muda até você confirmar.",
       "help.deleting.trash.title": "Lixeira",
       "help.deleting.trash.body":
-        "Agentes sem um comando próprio de exclusão têm seus arquivos movidos para a Lixeira do sistema (a Lixeira no Windows), de onde você pode restaurá-los. Se um arquivo não puder ser movido para a Lixeira, o Marduk informa o erro em vez de excluí-lo permanentemente.",
+        "Quando uma sessão pode ser excluída pelos seus arquivos, o Marduk os move para a Lixeira do sistema (a Lixeira no Windows), de onde você pode restaurá-los. Se um arquivo não puder ser movido para a Lixeira, o Marduk informa o erro em vez de excluí-lo permanentemente.",
       "help.deleting.permanent.title": "Permanente",
       "help.deleting.permanent.body":
         "Quando um agente tem seu próprio comando de exclusão, o Marduk o executa para que os índices do agente continuem consistentes. Essas exclusões não podem ser desfeitas. A confirmação as marca como <em>Permanente</em> e mostra o comando exato.",
@@ -169,7 +169,7 @@ export const help = defineMessages(
         "<strong>Supprimer…</strong> liste chaque fichier qui sera déplacé et chaque commande qui sera exécutée. Rien ne change tant que vous n'avez pas confirmé.",
       "help.deleting.trash.title": "Corbeille",
       "help.deleting.trash.body":
-        "Les agents sans commande de suppression propre voient leurs fichiers déplacés vers la Corbeille du système (la Corbeille sous Windows), d'où vous pouvez les restaurer. Si un fichier ne peut pas être déplacé vers la Corbeille, Marduk signale l'erreur au lieu de le supprimer définitivement.",
+        "Lorsqu’une session peut être supprimée par ses fichiers, Marduk les déplace vers la Corbeille du système (la Corbeille sous Windows), d’où vous pouvez les restaurer. Si un fichier ne peut pas être déplacé vers la Corbeille, Marduk signale l'erreur au lieu de le supprimer définitivement.",
       "help.deleting.permanent.title": "Définitive",
       "help.deleting.permanent.body":
         "Quand un agent a sa propre commande de suppression, Marduk l'exécute afin que les index de l'agent restent cohérents. Ces suppressions sont irréversibles. La confirmation les marque comme <em>Définitive</em> et affiche la commande exacte.",
@@ -219,7 +219,7 @@ export const help = defineMessages(
         "<strong>Löschen…</strong> listet jede Datei auf, die verschoben wird, und jeden Befehl, der ausgeführt wird. Nichts ändert sich, bevor Sie bestätigen.",
       "help.deleting.trash.title": "Papierkorb",
       "help.deleting.trash.body":
-        "Bei Agents ohne eigenen Löschbefehl werden die Dateien in den Papierkorb des Systems verschoben (unter Windows den Papierkorb), wo Sie sie wiederherstellen können. Lässt sich eine Datei nicht in den Papierkorb verschieben, meldet Marduk den Fehler, statt sie endgültig zu löschen.",
+        "Bei Sitzungen, die sich über ihre Dateien löschen lassen, verschiebt Marduk die Dateien in den Papierkorb des Systems, wo Sie sie wiederherstellen können. Lässt sich eine Datei nicht in den Papierkorb verschieben, meldet Marduk den Fehler, statt sie endgültig zu löschen.",
       "help.deleting.permanent.title": "Endgültig",
       "help.deleting.permanent.body":
         "Hat ein Agent einen eigenen Löschbefehl, führt Marduk ihn aus, damit die Indizes des Agents stimmig bleiben. Diese Löschvorgänge lassen sich nicht rückgängig machen. Die Bestätigung kennzeichnet sie als <em>Endgültig</em> und zeigt den genauen Befehl.",
@@ -269,7 +269,7 @@ export const help = defineMessages(
         "<strong>削除…</strong> では、移動されるすべてのファイルと実行されるすべてのコマンドが一覧表示されます。確認するまで何も変更されません。",
       "help.deleting.trash.title": "ゴミ箱",
       "help.deleting.trash.body":
-        "独自の削除コマンドを持たないエージェントのファイルは、システムのゴミ箱（Windows ではごみ箱）に移動され、そこから復元できます。ファイルをゴミ箱に移動できない場合、Marduk は完全に削除せずにエラーを報告します。",
+        "ファイルの削除でセッションを削除できる場合、Marduk はファイルをシステムのゴミ箱（Windows ではごみ箱）に移動します。ファイルはそこから復元できます。ファイルをゴミ箱に移動できない場合、Marduk は完全に削除せずにエラーを報告します。",
       "help.deleting.permanent.title": "完全削除",
       "help.deleting.permanent.body":
         "エージェントに独自の削除コマンドがある場合、エージェントのインデックスの整合性を保つため Marduk はそのコマンドを実行します。この削除は元に戻せません。確認画面では <em>完全削除</em> と表示され、実行するコマンドがそのまま示されます。",
@@ -319,7 +319,7 @@ export const help = defineMessages(
         "<strong>삭제…</strong>는 이동될 모든 파일과 실행될 모든 명령을 보여 줍니다. 확인하기 전에는 아무것도 바뀌지 않습니다.",
       "help.deleting.trash.title": "휴지통",
       "help.deleting.trash.body":
-        "자체 삭제 명령이 없는 에이전트의 파일은 시스템 휴지통(Windows에서는 휴지통)으로 이동하며, 그곳에서 복원할 수 있습니다. 파일을 휴지통으로 옮길 수 없으면 Marduk은 영구 삭제하지 않고 오류를 알립니다.",
+        "파일을 삭제해 세션을 지울 수 있는 경우 Marduk은 파일을 시스템 휴지통으로 옮깁니다. 휴지통에서 파일을 복원할 수 있습니다. 파일을 휴지통으로 옮길 수 없으면 Marduk은 영구 삭제하지 않고 오류를 알립니다.",
       "help.deleting.permanent.title": "영구 삭제",
       "help.deleting.permanent.body":
         "에이전트에 자체 삭제 명령이 있으면 Marduk은 에이전트의 인덱스가 일관되게 유지되도록 그 명령을 실행합니다. 이 삭제는 되돌릴 수 없습니다. 확인 창에 <em>영구 삭제</em>로 표시되고 실행할 명령이 그대로 나옵니다.",
@@ -368,7 +368,7 @@ export const help = defineMessages(
         "<strong>删除…</strong>会列出将要移动的每个文件和将要运行的每条命令。在你确认之前不会有任何更改。",
       "help.deleting.trash.title": "废纸篓",
       "help.deleting.trash.body":
-        "没有自带删除命令的智能体，其文件会被移到系统废纸篓（Windows 上为回收站），你可以从那里恢复。如果某个文件无法移到废纸篓，Marduk 会报告错误，而不会将其永久删除。",
+        "对于可通过文件删除的会话，Marduk 会将文件移到系统废纸篓（Windows 上为回收站），你可以从那里恢复。如果某个文件无法移到废纸篓，Marduk 会报告错误，而不会将其永久删除。",
       "help.deleting.permanent.title": "永久",
       "help.deleting.permanent.body":
         "如果智能体有自带的删除命令，Marduk 会运行该命令，以保持智能体自身索引的一致。这类删除无法撤销。确认窗口会将其标记为<em>永久</em>，并显示确切的命令。",
@@ -417,7 +417,7 @@ export const help = defineMessages(
         "<strong>Удалить…</strong> показывает каждый файл, который будет перемещён, и каждую команду, которая будет выполнена. Ничего не меняется, пока вы не подтвердите.",
       "help.deleting.trash.title": "Корзина",
       "help.deleting.trash.body":
-        "Файлы агентов без собственной команды удаления перемещаются в системную Корзину (в Windows — в Корзину), откуда их можно восстановить. Если файл нельзя переместить в Корзину, Marduk сообщает об ошибке, а не удаляет его безвозвратно.",
+        "Если сеанс можно удалить через его файлы, Marduk перемещает их в системную Корзину, откуда их можно восстановить. Если файл нельзя переместить в Корзину, Marduk сообщает об ошибке, а не удаляет его безвозвратно.",
       "help.deleting.permanent.title": "Безвозвратно",
       "help.deleting.permanent.body":
         "Если у агента есть собственная команда удаления, Marduk запускает её, чтобы индексы агента оставались согласованными. Такое удаление нельзя отменить. В подтверждении оно помечено как <em>Безвозвратно</em>, и показана точная команда.",

@@ -7,7 +7,9 @@ use std::io::{self, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{DateTime, SecondsFormat, Utc};
+use quick_xml::escape::escape;
 use rusqlite::{Connection, params};
 use serde_json::{Value, json};
 
@@ -79,6 +81,14 @@ impl DemoHome {
                 "MARDUK_VSCODE_USER_DIR",
                 self.root.join("vscode").join("User"),
             ),
+            (
+                "MARDUK_JETBRAINS_CONFIG_DIR",
+                self.root.join("jetbrains/config"),
+            ),
+            (
+                "MARDUK_JETBRAINS_SYSTEM_DIR",
+                self.root.join("jetbrains/system"),
+            ),
             ("CLAUDE_CONFIG_DIR", self.root.join(".claude")),
             ("MARDUK_CLAUDE_DESKTOP_DIR", self.root.join("Claude")),
             ("CODEX_HOME", self.root.join(".codex")),
@@ -108,6 +118,7 @@ impl DemoHome {
         };
         writer.sessions()?;
         writer.vscode_chats()?;
+        writer.jetbrains_sessions()?;
         writer.claude_memory()?;
         writer.codex_memory()?;
         writer.save_labels()
@@ -1334,6 +1345,105 @@ impl Writer<'_> {
         Ok(())
     }
 
+    fn jetbrains_sessions(&self) -> io::Result<()> {
+        let project = self.project(WEB)?;
+        let config = self
+            .home
+            .var("MARDUK_JETBRAINS_CONFIG_DIR")
+            .join("IntelliJIdea2026.3");
+        let workspace = config.join("workspace");
+        let history = config.join("aia-task-history");
+        fs::create_dir_all(&workspace)?;
+        fs::create_dir_all(&history)?;
+        fs::create_dir_all(config.join("options"))?;
+        fs::write(
+            config.join("options/recentProjects.xml"),
+            format!(
+                r#"<application><component name="RecentProjectsManager"><option name="additionalInfo"><map>
+                <entry key="{}"><value><RecentProjectMetaInfo projectWorkspaceId="demo"/></value></entry>
+            </map></option></component></application>"#,
+                escape(&project),
+            ),
+        )?;
+        let title = "Find the source of the duplicate API calls";
+        let id = uuid(title);
+        let created = self.millis(3 * DAY + HOUR);
+        let modified = self.millis(3 * DAY);
+        let workspace = workspace.join("demo.xml");
+        fs::write(
+            &workspace,
+            format!(
+                r#"<project><component name="ChatSessionStateTemp"><option name="chats"><list>
+                <SerializedChat>
+                  <option name="uid" value="{id}"/><option name="chatModelId" value="agent_acp.registry.claude-acp"/>
+                  <option name="modifiedAt" value="{modified}"/>
+                  <option name="statisticInformation"><ChatStatisticInformation><option name="timestamp" value="{created}"/></ChatStatisticInformation></option>
+                  <option name="messages"><list><SerializedChatMessage><option name="displayContent" value="{title}"/></SerializedChatMessage></list></option>
+                </SerializedChat>
+            </list></option></component></project>"#,
+            ),
+        )?;
+        self.set_modified(&workspace, 3 * DAY)?;
+        let events = history.join(format!("{id}.events"));
+        let mut file = File::create(&events)?;
+        writeln!(file, "AUI_EVENTS_V1")?;
+        for record in [
+            json!({"prompt": title}),
+            json!({"event": {"kind": "TerminalBlockUpdatedEvent", "stepId": "terminal", "command": COMMAND, "output": LISTING}}),
+            json!({"event": {"kind": "MarkdownBlockUpdatedEvent", "stepId": "answer", "text": summary(title)}}),
+        ] {
+            writeln!(file, "{}", STANDARD.encode(record.to_string()))?;
+        }
+        self.set_modified(&events, 3 * DAY)?;
+
+        let store = self
+            .home
+            .var("MARDUK_JETBRAINS_SYSTEM_DIR")
+            .join("IntelliJIdea2026.3/acp/projects/demo");
+        let thread = store.join("threads/acp%3Ademo");
+        fs::create_dir_all(&thread)?;
+        fs::write(
+            store.join("store.json"),
+            json!({"schemaVersion": 1, "projectDirectory": project}).to_string(),
+        )?;
+        let title = "Review the retry policy for timeouts";
+        fs::write(thread.join("summary.json"), json!({"schemaVersion": 10, "threadId": "acp:demo", "displayTitle": title, "archived": true}).to_string())?;
+        let event = |kind: &str, payload: Value| {
+            json!({
+                "threadId": "acp:demo", "type": kind, "timestamp": self.millis(7 * DAY),
+                "turnId": "turn", "payload": payload, "version": 1,
+            })
+        };
+        let records = [
+            event("ThreadCreated", json!({"cwd": project, "agentId": "codex"})),
+            event(
+                "ConfigOptionUpdated",
+                json!({"configOptions": [{"id": "model", "category": "model", "value": model("codex", title)}]}),
+            ),
+            event(
+                "MessageDelta",
+                json!({"role": "User", "messageId": "prompt", "contentDelta": title}),
+            ),
+            event(
+                "ToolCallStarted",
+                json!({"toolCallId": "tool", "attributes": {"kind": "Terminal", "command": COMMAND}}),
+            ),
+            event(
+                "ToolCallFinished",
+                json!({"toolCallId": "tool", "summary": LISTING}),
+            ),
+            event(
+                "MessageChunk",
+                json!({"role": "Agent", "protocolMessageId": "answer", "messagePhase": "Final", "contentDelta": summary(title)}),
+            ),
+        ];
+        self.write_jsonl(
+            &thread.join("events.jsonl"),
+            &records,
+            &spec(title, WEB, 7 * DAY, 7 * DAY, 0),
+        )
+    }
+
     /// Claude Code memory: a healthy project, one with a memory missing from its index, one
     /// whose project folder is gone, and an empty memory folder. `.claude.json` lists them all.
     fn claude_memory(&self) -> io::Result<()> {
@@ -1698,6 +1808,7 @@ mod tests {
     use crate::agents::claude::ClaudeAdapter;
     use crate::agents::codex::CodexAdapter;
     use crate::agents::copilot::CopilotAdapter;
+    use crate::agents::jetbrains::{AiAssistantAdapter, AirAdapter};
     use crate::agents::opencode::{self, OpenCodeAdapter};
     use crate::agents::pi::PiAdapter;
     use crate::session::Session;
@@ -1733,6 +1844,11 @@ mod tests {
             Box::new(crate::agents::vscode_chat::VsCodeChatAdapter::new(vec![
                 home.var("MARDUK_VSCODE_USER_DIR"),
             ])),
+            Box::new(AiAssistantAdapter::new(
+                home.var("MARDUK_JETBRAINS_CONFIG_DIR"),
+                home.root().to_path_buf(),
+            )),
+            Box::new(AirAdapter::new(home.var("MARDUK_JETBRAINS_SYSTEM_DIR"))),
         ]
     }
 
@@ -1771,7 +1887,9 @@ mod tests {
                 assert!(!title.is_empty(), "{} {}", adapter.id(), session.id);
                 if adapter.id() != "kilo" {
                     assert!(
-                        !session.models.is_empty(),
+                        !session.models.is_empty()
+                            || (adapter.id() == "jetbrains-ai-assistant"
+                                && session.agent_type.is_some()),
                         "{} {title} has no model",
                         adapter.id()
                     );
