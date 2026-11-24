@@ -1515,7 +1515,7 @@ describe("App", () => {
     ).toBeChecked();
   });
 
-  it("shows Claude subagents under their session as rows that can't be selected", async () => {
+  it("shows Claude subagents as unselectable and removes them when their parent is trashed", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
       scanOf(
@@ -1524,6 +1524,7 @@ describe("App", () => {
           uid: "s",
           id: "p/agent-a1",
           title: "Research the API · general-purpose",
+          files: ["/p/p/subagents/agent-a1.jsonl"],
           parentId: "p",
           deletedWithParent: true,
           partOfParent: true,
@@ -1531,6 +1532,16 @@ describe("App", () => {
         }),
       ),
     );
+    previewDelete.mockResolvedValue([
+      previewOf({
+        uid: "p",
+        title: "Main task",
+        files: ["/p/p.jsonl", "/p/p"],
+      }),
+    ]);
+    deleteSessions.mockResolvedValue([
+      { status: "trashed", uid: "p", files: ["/p/p.jsonl", "/p/p"] },
+    ]);
 
     render(<App />);
     await user.click(
@@ -1548,6 +1559,23 @@ describe("App", () => {
       }),
     ).toBeDisabled();
     expect(screen.queryByText("Read-only")).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select Main task" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Move to Trash" }),
+    );
+
+    expect(deleteSessions).toHaveBeenCalledWith(["p"], expect.any(Function));
+    expect(
+      await screen.findByText(/Moved 1 session to the Trash/),
+    ).toBeVisible();
+    expect(screen.queryByText("Main task")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Research the API · general-purpose"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a parent, dimmed and opened, when only its subagent matches the search", async () => {
