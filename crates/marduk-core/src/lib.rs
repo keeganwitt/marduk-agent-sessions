@@ -46,10 +46,11 @@ pub fn default_adapters(
             &agents::opencode::KILO,
             overrides.clone(),
         )),
-        Box::new(agents::pi::PiAdapter::with_detected_cli(overrides)),
+        Box::new(agents::pi::PiAdapter::with_detected_cli(overrides.clone())),
         Box::new(agents::vscode_chat::VsCodeChatAdapter::from_env()),
         Box::new(agents::jetbrains::AiAssistantAdapter::from_env()),
         Box::new(agents::jetbrains::AirAdapter::from_env()),
+        Box::new(agents::antigravity::AntigravityAdapter::from_env(overrides)),
     ]
 }
 

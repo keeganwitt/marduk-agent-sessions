@@ -110,7 +110,15 @@ mod tests {
         let agents: Vec<&str> = catalog.cli_status().iter().map(|(id, _, _)| *id).collect();
         assert_eq!(
             agents,
-            vec!["claude", "codex", "copilot", "opencode", "kilo", "pi"]
+            vec![
+                "claude",
+                "codex",
+                "copilot",
+                "opencode",
+                "kilo",
+                "pi",
+                "antigravity"
+            ]
         );
     }
 
