@@ -21,8 +21,9 @@ use crate::session::Fingerprint;
 use crate::session::Session;
 use crate::transcript::{self, Role, Transcript, TranscriptBuilder};
 
-/// Codex keeps rollouts at `sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl` and moves them to
-/// `archived_sessions/` with `codex archive`. Thread names live in `session_index.jsonl`.
+/// Codex keeps rollouts at `sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl` (or `.jsonl.zst`)
+/// and moves them to `archived_sessions/` with `codex archive`. Thread names live in
+/// `session_index.jsonl`.
 pub struct CodexAdapter {
     home: PathBuf,
     /// Where Codex Desktop makes a folder for each chat started without a project.
@@ -53,16 +54,15 @@ impl CodexAdapter {
         }
     }
 
-    /// Every rollout with whether it's archived, plus how many compressed ones were skipped.
-    fn rollouts(&self, result: &mut ScanResult) -> (Vec<(PathBuf, bool)>, usize) {
-        let mut compressed = 0usize;
+    /// Every rollout with whether it's archived.
+    fn rollouts(&self, result: &mut ScanResult) -> Vec<(PathBuf, bool)> {
         let mut rollouts = Vec::new();
         for (root, archived) in [(self.sessions_dir(), false), (self.archive_dir(), true)] {
             let mut files = Vec::new();
-            collect_rollouts(&root, &mut files, &mut compressed, result);
+            collect_rollouts(&root, &mut files, result);
             rollouts.extend(files.into_iter().map(|path| (path, archived)));
         }
-        (rollouts, compressed)
+        rollouts
     }
 
     fn read_segment(&self, path: &Path, progress: &dyn ScanProgress) -> std::io::Result<Segment> {
@@ -117,7 +117,7 @@ impl AgentAdapter for CodexAdapter {
         self.cli.refresh();
         let mut result = ScanResult::empty_complete();
         let titles = read_thread_names(&self.home.join("session_index.jsonl"));
-        let (rollouts, compressed) = self.rollouts(&mut result);
+        let rollouts = self.rollouts(&mut result);
         let mut threads: HashMap<(String, bool), Vec<Segment>> = HashMap::new();
         for (path, archived) in &rollouts {
             match self.read_segment(path, progress) {
@@ -141,16 +141,11 @@ impl AgentAdapter for CodexAdapter {
         }
         self.cache
             .retain(&rollouts.into_iter().map(|(path, _)| path).collect());
-        if compressed > 0 {
-            result.record_error(format!(
-                "{compressed} compressed rollouts (.jsonl.zst) were skipped; Marduk can't read them yet."
-            ));
-        }
         result
     }
 
     fn estimate_scan_bytes(&self) -> u64 {
-        let (rollouts, _) = self.rollouts(&mut ScanResult::default());
+        let rollouts = self.rollouts(&mut ScanResult::default());
         total_size(
             &rollouts
                 .into_iter()
@@ -256,12 +251,11 @@ impl AgentAdapter for CodexAdapter {
     }
 }
 
-fn collect_rollouts(
-    dir: &Path,
-    files: &mut Vec<PathBuf>,
-    compressed: &mut usize,
-    result: &mut ScanResult,
-) {
+fn is_rollout_file(name: &str) -> bool {
+    name.starts_with("rollout-") && (name.ends_with(".jsonl") || name.ends_with(".jsonl.zst"))
+}
+
+fn collect_rollouts(dir: &Path, files: &mut Vec<PathBuf>, result: &mut ScanResult) {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
@@ -278,11 +272,9 @@ fn collect_rollouts(
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if file_type.is_dir() {
-            collect_rollouts(&path, files, compressed, result);
-        } else if name.starts_with("rollout-") && name.ends_with(".jsonl") {
+            collect_rollouts(&path, files, result);
+        } else if is_rollout_file(&name) {
             files.push(path);
-        } else if name.starts_with("rollout-") && name.ends_with(".jsonl.zst") {
-            *compressed += 1;
         }
     }
 }
@@ -780,11 +772,15 @@ fn pretty_arguments(arguments: &Value) -> String {
 }
 
 fn id_from_file_name(path: &Path) -> String {
-    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let stem = name
+        .strip_suffix(".jsonl.zst")
+        .or_else(|| name.strip_suffix(".jsonl"))
+        .unwrap_or(&name);
     let tail = stem.len().saturating_sub(36);
     match stem.get(tail..) {
         Some(id) if fs_util::looks_like_uuid(id) => id.to_string(),
-        _ => stem.into_owned(),
+        _ => stem.to_string(),
     }
 }
 
@@ -913,6 +909,12 @@ mod tests {
     fn write(path: &Path, content: &str) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, content).unwrap();
+    }
+
+    fn write_zst(path: &Path, content: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let compressed = zstd::encode_all(content.as_bytes(), 0).unwrap();
+        fs::write(path, compressed).unwrap();
     }
 
     fn adapter(home: &Path, cli: Option<&str>) -> CodexAdapter {
@@ -1255,31 +1257,136 @@ mod tests {
     }
 
     #[test]
-    fn compressed_rollouts_make_the_scan_incomplete() {
+    fn reads_compressed_rollouts_and_transcripts() {
+        let home = tempfile::tempdir().unwrap();
+        let active = home.path().join(format!(
+            "sessions/2026/01/01/rollout-2026-01-01T00-00-00-{ID}.jsonl.zst"
+        ));
+        let content = format!(
+            "{}\n{}",
+            rollout(ID),
+            r#"{"timestamp":"2026-11-06T19:00:00Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Added pagination."}]}}"#
+        );
+        write_zst(&active, &content);
+        let archived_id = "019e98e4-15db-7de3-af03-a2b011ccb8d5";
+        write_zst(
+            &home.path().join(format!(
+                "archived_sessions/rollout-2026-06-05T17-45-50-{archived_id}.jsonl.zst"
+            )),
+            &rollout(archived_id),
+        );
+        let codex = adapter(home.path(), Some("/bin/codex"));
+
+        let result = codex.scan();
+
+        assert!(result.complete, "{:?}", result.errors);
+        let mut sessions = result.sessions;
+        sessions.sort_by_key(|session| session.archived);
+        assert_eq!(sessions.len(), 2);
+        let session = &sessions[0];
+        assert_eq!(session.id, ID);
+        assert_eq!(session.project_dir.as_deref(), Some("/work/api"));
+        assert_eq!(
+            session.title.as_deref(),
+            Some("Add pagination to the users endpoint")
+        );
+        assert_eq!(session.files, vec![active]);
+        assert!(sessions[1].archived);
+        let transcript = codex.transcript(session).unwrap();
+        assert_eq!(
+            transcript.head.last().map(|m| m.text.as_str()),
+            Some("Added pagination.")
+        );
+        assert_eq!(
+            codex.archive_command(session).unwrap().args,
+            vec!["archive", ID]
+        );
+    }
+
+    #[test]
+    fn corrupt_compressed_rollouts_make_the_scan_incomplete() {
         let home = tempfile::tempdir().unwrap();
         write(
             &home
                 .path()
                 .join(format!("sessions/2026/01/01/rollout-x-{ID}.jsonl.zst")),
-            "",
+            "not valid zstd",
         );
 
         let result = adapter(home.path(), None).scan();
 
         assert!(!result.complete);
-        assert!(result.errors[0].contains("compressed"));
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].contains(".jsonl.zst"));
+    }
+
+    #[test]
+    fn paginated_threads_combine_compressed_and_plain_pages() {
+        let home = tempfile::tempdir().unwrap();
+        let day = home.path().join("sessions/2026/09/18");
+        let page1 = [
+            format!(
+                r#"{{"ordinal":100,"timestamp":"2026-09-18T01:00:00Z","type":"session_meta","payload":{{"id":"{ID}","cwd":"/w","history_mode":"paginated"}}}}"#
+            ),
+            r#"{"ordinal":101,"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"first page"}]}}"#.to_string(),
+        ]
+        .join("\n");
+        let page2 = [
+            format!(
+                r#"{{"ordinal":600,"timestamp":"2026-09-18T06:00:00Z","type":"session_meta","payload":{{"id":"{ID}","cwd":"/w","history_mode":"paginated"}}}}"#
+            ),
+            r#"{"ordinal":601,"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"second page"}]}}"#.to_string(),
+        ]
+        .join("\n");
+        write_zst(
+            &day.join(format!("rollout-2026-09-18T00-20-09-{ID}.jsonl.zst")),
+            &page1,
+        );
+        write(
+            &day.join(format!(
+                "rollout-2026-09-18T11-39-28-{ID}_01a0b52c-341a-7111-86d8-3ca6756e56fd.jsonl"
+            )),
+            &page2,
+        );
+        let codex = adapter(home.path(), None);
+
+        let result = codex.scan();
+
+        assert!(result.complete, "{:?}", result.errors);
+        assert_eq!(result.sessions.len(), 1);
+        let session = &result.sessions[0];
+        assert_eq!(session.files.len(), 2);
+        let texts: Vec<String> = codex
+            .transcript(session)
+            .unwrap()
+            .head
+            .into_iter()
+            .map(|m| m.text)
+            .collect();
+        assert_eq!(texts, vec!["first page", "second page"]);
     }
 
     #[test]
     fn id_falls_back_to_uuid_suffix_of_file_name() {
         let home = tempfile::tempdir().unwrap();
+        let other = "019e98e4-15db-7de3-af03-a2b011ccb8d5";
         write(
             &home.path().join(format!(
                 "sessions/2026/01/01/rollout-2026-01-01T00-00-00-{ID}.jsonl"
             )),
             "",
         );
-        assert_eq!(adapter(home.path(), None).scan().sessions[0].id, ID);
+        write_zst(
+            &home.path().join(format!(
+                "sessions/2026/01/01/rollout-2026-01-01T00-00-00-{other}.jsonl.zst"
+            )),
+            "",
+        );
+        let result = adapter(home.path(), None).scan();
+        assert!(result.complete, "{:?}", result.errors);
+        let mut ids: Vec<String> = result.sessions.into_iter().map(|s| s.id).collect();
+        ids.sort();
+        assert_eq!(ids, vec![other, ID]);
     }
 
     #[test]
