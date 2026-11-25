@@ -89,6 +89,10 @@ impl DemoHome {
                 "MARDUK_JETBRAINS_SYSTEM_DIR",
                 self.root.join("jetbrains/system"),
             ),
+            (
+                "MARDUK_ANTIGRAVITY_DIR",
+                self.root.join(".gemini").join("antigravity"),
+            ),
             ("CLAUDE_CONFIG_DIR", self.root.join(".claude")),
             ("MARDUK_CLAUDE_DESKTOP_DIR", self.root.join("Claude")),
             ("CODEX_HOME", self.root.join(".codex")),
@@ -119,6 +123,7 @@ impl DemoHome {
         writer.sessions()?;
         writer.vscode_chats()?;
         writer.jetbrains_sessions()?;
+        writer.antigravity_sessions()?;
         writer.claude_memory()?;
         writer.codex_memory()?;
         writer.save_labels()
@@ -1444,6 +1449,107 @@ impl Writer<'_> {
         )
     }
 
+    fn antigravity_sessions(&self) -> io::Result<()> {
+        let root = self.home.var("MARDUK_ANTIGRAVITY_DIR");
+        let conv_dir = root.join("conversations");
+        let ann_dir = root.join("annotations");
+        fs::create_dir_all(&conv_dir)?;
+        fs::create_dir_all(&ann_dir)?;
+
+        let title = "Trace slow startup on cold cache";
+        let id = uuid(title);
+        let project = self.project(API)?;
+        let uri = format!(
+            "file://{}{}",
+            if project.starts_with('/') { "" } else { "/" },
+            project.replace('\\', "/").replace(' ', "%20")
+        );
+        let conv_db = conv_dir.join(format!("{id}.db"));
+        Connection::open(&conv_db).map_err(io::Error::other)?;
+        self.set_modified(&conv_db, 4 * DAY)?;
+
+        fs::write(
+            ann_dir.join(format!("{id}.pbtxt")),
+            format!("title:\"{title}\" archived:false pinned:false"),
+        )?;
+
+        let summaries =
+            Connection::open(root.join("conversation_summaries.db")).map_err(io::Error::other)?;
+        summaries
+            .execute_batch(
+                "create table conversation_summaries (
+                    conversation_id text primary key,
+                    title text not null default '',
+                    preview text not null default '',
+                    step_count integer not null default 0,
+                    last_modified_time datetime not null,
+                    workspace_uris text not null,
+                    status text not null default '',
+                    project_id text not null default '',
+                    agent_name text not null default '',
+                    parent_conversation_id text not null default '',
+                    last_user_input_time datetime not null default ''
+                );",
+            )
+            .map_err(io::Error::other)?;
+        let modified = self.stamp(4 * DAY);
+        summaries
+            .execute(
+                "insert into conversation_summaries values \
+                 (?1, ?2, ?2, 4, ?3, ?4, 'CASCADE_RUN_STATUS_IDLE', '', '', '', ?3)",
+                params![id, title, modified, json!([uri]).to_string()],
+            )
+            .map_err(io::Error::other)?;
+
+        let logs = root
+            .join("brain")
+            .join(&id)
+            .join(".system_generated")
+            .join("logs");
+        fs::create_dir_all(&logs)?;
+        let records = [
+            json!({
+                "step_index": 0,
+                "source": "USER_EXPLICIT",
+                "type": "USER_INPUT",
+                "created_at": self.stamp(4 * DAY + HOUR),
+                "content": format!("<USER_REQUEST>\n{title}\n</USER_REQUEST>"),
+            }),
+            json!({
+                "step_index": 1,
+                "source": "MODEL",
+                "type": "PLANNER_RESPONSE",
+                "created_at": self.stamp(4 * DAY + 30 * MINUTE),
+                "model": "gemini-3-pro",
+                "content": PLAN,
+                "tool_calls": [{
+                    "name": "run_command",
+                    "args": { "CommandLine": json!(COMMAND).to_string() },
+                }],
+            }),
+            json!({
+                "step_index": 2,
+                "source": "MODEL",
+                "type": "RUN_COMMAND",
+                "created_at": self.stamp(4 * DAY + 29 * MINUTE),
+                "content": format!("Created At: {}\nCompleted At: {}\n{LISTING}", self.stamp(4 * DAY + 29 * MINUTE), self.stamp(4 * DAY + 29 * MINUTE)),
+            }),
+            json!({
+                "step_index": 3,
+                "source": "MODEL",
+                "type": "PLANNER_RESPONSE",
+                "created_at": self.stamp(4 * DAY),
+                "model": "gemini-3-pro",
+                "content": summary(title),
+            }),
+        ];
+        self.write_jsonl(
+            &logs.join("transcript.jsonl"),
+            &records,
+            &spec(title, API, 4 * DAY + HOUR, 4 * DAY, 0),
+        )
+    }
+
     /// Claude Code memory: a healthy project, one with a memory missing from its index, one
     /// whose project folder is gone, and an empty memory folder. `.claude.json` lists them all.
     fn claude_memory(&self) -> io::Result<()> {
@@ -1805,6 +1911,7 @@ mod tests {
 
     use super::*;
     use crate::adapter::AgentAdapter;
+    use crate::agents::antigravity::AntigravityAdapter;
     use crate::agents::claude::ClaudeAdapter;
     use crate::agents::codex::CodexAdapter;
     use crate::agents::copilot::CopilotAdapter;
@@ -1849,6 +1956,9 @@ mod tests {
                 home.root().to_path_buf(),
             )),
             Box::new(AirAdapter::new(home.var("MARDUK_JETBRAINS_SYSTEM_DIR"))),
+            Box::new(AntigravityAdapter::new(vec![
+                home.var("MARDUK_ANTIGRAVITY_DIR"),
+            ])),
         ]
     }
 

@@ -1,3 +1,4 @@
+pub mod antigravity;
 pub mod claude;
 pub mod cli;
 pub mod codex;
@@ -77,6 +78,7 @@ pub(crate) fn find_program(name: &str) -> Option<PathBuf> {
         .unwrap_or_default();
     dirs.extend([
         home.join(".local/bin"),
+        home.join(".gemini/bin"),
         home.join(".bun/bin"),
         home.join(".npm-global/bin"),
         home.join(".cargo/bin"),

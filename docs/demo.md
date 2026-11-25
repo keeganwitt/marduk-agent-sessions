@@ -24,6 +24,7 @@ The sessions come from `crates/marduk-core/src/demo.rs`, which writes each agent
 - **Pi:** JSONL session trees in `.pi/agent/sessions/`, each with a reply the user rewound past, which Marduk should hide.
 - **JetBrains AI Assistant:** an IntelliJ workspace with an agent chat and its `aia-task-history` event log.
 - **JetBrains Air:** an archived IntelliJ session with a local event journal under `acp/projects/`.
+- **Antigravity:** a SQLite session in `.gemini/antigravity/` with its summary index, annotation and JSONL transcript.
 - **Labels:** five labels applied to eight sessions, in `marduk/labels.db`.
 - **Memory:** Claude Code memory for four projects (healthy, a memory missing from its index, a deleted project, an empty folder), and a Codex memory store with memories turned on.
 
@@ -46,6 +47,7 @@ The demo sets these variables for Marduk (and for any agent CLI that Marduk runs
 | `PI_CODING_AGENT_DIR`         | `.pi/agent`                         |
 | `MARDUK_JETBRAINS_CONFIG_DIR` | `jetbrains/config`                  |
 | `MARDUK_JETBRAINS_SYSTEM_DIR` | `jetbrains/system`                  |
+| `MARDUK_ANTIGRAVITY_DIR`      | `.gemini/antigravity`               |
 | `XDG_DATA_HOME`               | `.local/share` (OpenCode and Kilo)  |
 | `OPENCODE_DB`                 | `.local/share/opencode/opencode.db` |
 | `KILO_DB`                     | `.local/share/kilo/kilo.db`         |

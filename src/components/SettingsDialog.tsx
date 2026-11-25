@@ -63,7 +63,9 @@ function CliRow({
         </div>
       ) : (
         <div className="cli-detail missing">
-          {status.agent === "pi" || status.agent === "copilot"
+          {status.agent === "pi" ||
+          status.agent === "copilot" ||
+          status.agent === "antigravity"
             ? t("resume.cliMissing", { agent: status.agentName })
             : status.optional
               ? t("settings.cli.missingOptional", { agent: status.agentName })
