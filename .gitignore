@@ -27,3 +27,5 @@ dist-ssr
 /__MACOSX/
 /src-tauri/icons/android/
 /src-tauri/icons/ios/
+/.run/Install.run.xml
+/.run/Run.run.xml
