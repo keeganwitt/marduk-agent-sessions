@@ -7,9 +7,20 @@ use serde_json::Value;
 
 const TITLE_MAX_CHARS: usize = 120;
 
-/// Calls `on_line` with each non-empty line of a JSONL file. Invalid UTF-8 lines are skipped.
+/// Calls `on_line` with each non-empty line of a JSONL file (plain or Zstandard-compressed).
+/// Invalid UTF-8 lines are skipped.
 pub fn for_each_line(path: &Path, mut on_line: impl FnMut(&str)) -> io::Result<()> {
-    let mut reader = BufReader::new(File::open(path)?);
+    let file = File::open(path)?;
+    if path.extension().is_some_and(|ext| ext == "zst") {
+        let mut reader = BufReader::new(zstd::stream::read::Decoder::new(file)?);
+        for_each_line_in(&mut reader, &mut on_line)
+    } else {
+        let mut reader = BufReader::new(file);
+        for_each_line_in(&mut reader, &mut on_line)
+    }
+}
+
+fn for_each_line_in(reader: &mut impl BufRead, on_line: &mut impl FnMut(&str)) -> io::Result<()> {
     let mut buffer = Vec::new();
     loop {
         buffer.clear();
@@ -136,5 +147,25 @@ mod tests {
         let mut lines = Vec::new();
         for_each_line(&path, |line| lines.push(line.to_string())).unwrap();
         assert_eq!(lines, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn for_each_line_decompresses_zstd_including_multiple_frames() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.jsonl.zst");
+        let mut bytes = zstd::encode_all(&b"first\n\n\xff\xfe\n"[..], 0).unwrap();
+        bytes.extend(zstd::encode_all(&b"second\nthird"[..], 0).unwrap());
+        std::fs::write(&path, bytes).unwrap();
+        let mut lines = Vec::new();
+        for_each_line(&path, |line| lines.push(line.to_string())).unwrap();
+        assert_eq!(lines, vec!["first", "second", "third"]);
+    }
+
+    #[test]
+    fn for_each_line_errors_on_corrupt_zstd() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.jsonl.zst");
+        std::fs::write(&path, b"not zstd").unwrap();
+        assert!(for_each_line(&path, |_| {}).is_err());
     }
 }
