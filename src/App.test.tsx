@@ -837,10 +837,18 @@ describe("App", () => {
     expect(previewDelete).not.toHaveBeenCalled();
   });
 
-  it("opens a session's transcript from its title", async () => {
+  it("opens a transcript from its title and displays and copies the session ID", async () => {
     const user = userEvent.setup();
     scanSessions.mockResolvedValue(
-      scanOf(makeSession({ uid: "u1", title: "Mystery session" })),
+      scanOf(
+        makeSession({
+          uid: "u1",
+          id: "ses_abc123",
+          agent: "opencode",
+          agentName: "OpenCode",
+          title: "Mystery session",
+        }),
+      ),
     );
     loadTranscript.mockResolvedValue({
       head: [
@@ -866,6 +874,13 @@ describe("App", () => {
     expect(
       await screen.findByText("Explain the flaky test"),
     ).toBeInTheDocument();
+    const dialog = within(
+      screen.getByRole("dialog", { name: "Mystery session" }),
+    );
+    expect(dialog.getByText("ses_abc123", { selector: "code" })).toBeVisible();
+    await user.click(dialog.getByRole("button", { name: "Copy session ID" }));
+    expect(await navigator.clipboard.readText()).toBe("ses_abc123");
+
     await user.click(screen.getByRole("button", { name: "Close transcript" }));
     expect(
       screen.queryByText("Explain the flaky test"),
